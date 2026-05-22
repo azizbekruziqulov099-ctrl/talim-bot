@@ -69,20 +69,62 @@ TEXT_TO_ID = {
     "📊 Mening natijam": BTN_MY,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
-
 CLASSES = [
-    "0-sinf",
-    "1-sinf",
-    "2-sinf",
-    "3-sinf",
-    "4-sinf",
-    "5-sinf",
-    "6-sinf",
-    "7-sinf",
-    "8-sinf",
-    "9-sinf",
-    "10-sinf",
-    "11-sinf"
+    "🏫 Oddiy 1-sinf",
+    "⭐ IDUM 1-sinf",
+    "🏆 Prezident 1-sinf",
+    "🏢 Xususiy 1-sinf",
+
+   "🏫 Oddiy 2-sinf",
+    "⭐ IDUM 2-sinf",
+    "🏆 Prezident 2-sinf",
+    "🏢 Xususiy 2-sinf",
+
+   "🏫 Oddiy 3-sinf",
+    "⭐ IDUM 3-sinf",
+    "🏆 Prezident 3-sinf",
+    "🏢 Xususiy 3-sinf",
+
+   "🏫 Oddiy 4-sinf",
+    "⭐ IDUM 4-sinf",
+    "🏆 Prezident 4-sinf",
+    "🏢 Xususiy 4-sinf",
+
+   "🏫 Oddiy 5-sinf",
+    "⭐ IDUM 5-sinf",
+    "🏆 Prezident 5-sinf",
+    "🏢 Xususiy 5-sinf",
+
+   "🏫 Oddiy 6-sinf",
+    "⭐ IDUM 6-sinf",
+    "🏆 Prezident 6-sinf",
+    "🏢 Xususiy 6-sinf",
+
+   "🏫 Oddiy 7-sinf",
+    "⭐ IDUM 7-sinf",
+    "🏆 Prezident 7-sinf",
+    "🏢 Xususiy 7-sinf",
+
+   "🏫 Oddiy 8-sinf",
+    "⭐ IDUM 8-sinf",
+    "🏆 Prezident 8-sinf",
+    "🏢 Xususiy 8-sinf",
+
+   "🏫 Oddiy 9-sinf",
+    "⭐ IDUM 9-sinf",
+    "🏆 Prezident 9-sinf",
+    "🏢 Xususiy 9-sinf",
+
+   "🏫 Oddiy 10-sinf",
+    "⭐ IDUM 10-sinf",
+    "🏆 Prezident 10-sinf",
+    "🏢 Xususiy 10-sinf",
+
+   "🏫 Oddiy 11-sinf",
+    "⭐ IDUM 11-sinf",
+    "🏆 Prezident 11-sinf",
+    "🏢 Xususiy 11-sinf",
+
 ]
 
 SUBJECTS_BY_LEVEL = {
@@ -119,86 +161,79 @@ SUBJECTS_BY_LEVEL = {
 SUBJECTS_BY_CLASS = {
 
     "0-sinf": [
-        ["🟢 Oson o‘yinlar","🟡 Qiziqarli topshiriqlar"],
-        ["🟠 Diqqat sinovi","🔵 Mantiqiy o‘yinlar"],
-        ["🟣 Rasmli jumboqlar"]
-    ],
-
-    "1-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "2-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "3-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "4-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "5-sinf": [
-        ["Matematika", "Ona tili", "Adabiyot"],
-        ["Ingliz tili", "Rus tili", "Tarix"],
-        ["Biologiya", "Geografiya", "Informatika"],
-        ["Texnologiya"]
-    ],
-
-    "6-sinf": [
-        ["Matematika", "Ona tili", "Adabiyot"],
-        ["Ingliz tili", "Rus tili", "Tarix"],
-        ["Biologiya", "Geografiya", "Informatika"],
-        ["Texnologiya"]
-    ],
-
-    "7-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "8-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "9-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "10-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Huquq", "Iqtisod", "Geografiya"],
-        ["Informatika", "Ingliz tili", "Ona tili"],
-        ["Adabiyot"]
-    ],
-
-    "11-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Huquq", "Iqtisod", "Geografiya"],
-        ["Informatika", "Ingliz tili", "Ona tili"],
-        ["Adabiyot"]
+        ["🔤 O‘zbekcha so‘zlar","🇬🇧 English Kids"],
+        ["🇷🇺 Русский детям","🔢 Sonlar olami"],
+        ["🎨 Ranglar","🐶 Hayvonlar"],
+        ["🧩 Jumboqlar","👀 Diqqat"],
+        ["🎯 Mantiqiy o‘yinlar"]
     ]
 }
+
+# 1-4 sinf
+PRIMARY_SUBJECTS = [
+    ["Matematika", "Ona tili", "O‘qish"],
+    ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
+    ["Musiqa", "Rasm"]
+]
+
+# 5-6 sinf
+MIDDLE_SUBJECTS = [
+    ["Matematika", "Ona tili", "Adabiyot"],
+    ["Ingliz tili", "Rus tili", "Tarix"],
+    ["Biologiya", "Geografiya", "Informatika"],
+    ["Texnologiya"]
+]
+
+# 7-9 sinf
+UPPER_SUBJECTS = [
+    ["Algebra", "Geometriya", "Fizika"],
+    ["Kimyo", "Biologiya", "Tarix"],
+    ["Geografiya", "Informatika", "Ingliz tili"],
+    ["Ona tili", "Adabiyot"]
+]
+
+# 10-11 sinf
+HIGH_SUBJECTS = [
+    ["Algebra", "Geometriya", "Fizika"],
+    ["Kimyo", "Biologiya", "Tarix"],
+    ["Huquq", "Iqtisod", "Geografiya"],
+    ["Informatika", "Ingliz tili", "Ona tili"],
+    ["Adabiyot"]
+]
+
+for school in [
+    "🏫 Oddiy",
+    "⭐ IDUM",
+    "🏆 Prezident",
+    "🏢 Xususiy"
+]:
+
+    # 1-4
+    SUBJECTS_BY_CLASS[f"{school} 1-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 2-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 3-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 4-sinf"] = PRIMARY_SUBJECTS
+
+    # 5-6
+    SUBJECTS_BY_CLASS[f"{school} 5-sinf"] = MIDDLE_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 6-sinf"] = MIDDLE_SUBJECTS
+
+    # 7-9
+    SUBJECTS_BY_CLASS[f"{school} 7-sinf"] = UPPER_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 8-sinf"] = UPPER_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 9-sinf"] = UPPER_SUBJECTS
+
+    # 10-11
+    SUBJECTS_BY_CLASS[f"{school} 10-sinf"] = HIGH_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 11-sinf"] = HIGH_SUBJECTS
+
+ZERO_TEST_TYPES = [
+    "🔤 Harflar",
+    "📖 So‘zlar",
+    "🖼 Rasmli o‘yin",
+    "🎵 Eshit va top",
+    "🎁 Aralash"
+]
 
 TEST_TYPES = [
     "1-chorak",
@@ -423,7 +458,8 @@ def init_db():
         difficulty TEXT,
         type TEXT,
         img TEXT,
-        voice_type TEXT
+        voice_type TEXT,
+        school_type TEXT           
     )
     """)
 
@@ -1390,42 +1426,41 @@ async def handle_all(message: types.Message):
 
         elif message.text == "🏫 Maktabni almashtirish":
 
-            user_state[message.from_user.id] = "change_school"
+            user_state[user_id] = "change_school_type"
 
             await message.answer(
-                "Yangi maktab nomi yoki raqamini kiriting:"
+                "Maktab turini tanlang:",
+                reply_markup=make_keyboard(SCHOOL_TYPES)
+            )
+
+            return
+        
+        elif user_state.get(user_id) == "change_school_type":
+
+            temp_user[user_id] = {
+                "new_school_type": message.text
+            }
+
+            user_state[user_id] = "change_school"
+
+            await message.answer(
+                "Maktab raqami yoki nomini kiriting:"
             )
 
             return
 
-        elif user_state.get(message.from_user.id) == "change_school":
+        elif user_state.get(user_id) == "change_school":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            school = (
+                f"{temp_user[user_id]['new_school_type']} - "
+                f"{message.text}"
+            )
 
             cursor.execute("""
             UPDATE users
             SET school=?
             WHERE user_id=?
-            """, (
-                message.text,
-                message.from_user.id
-            ))
-
-            conn.commit()
-            conn.close()
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                f"✅ Maktab o‘zgartirildi: {message.text}",
-                reply_markup=get_main_keyboard(
-                    temp_user[message.from_user.id]["role"]
-                )
-            )
-
-            return
-
+            """,(school,user_id))
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
 
@@ -1542,20 +1577,26 @@ async def handle_all(message: types.Message):
         # ===== SUBJECT =====
         elif user_state.get(message.from_user.id) == "subject":
 
-            # fan saqlash
             temp_user[message.from_user.id]["subject"] = message.text
 
-            # keyingi state
             set_state(message.from_user.id, "test_type")
 
-            # test turi tanlash
-            await message.answer(
-                "Test turini tanlang:",
-                reply_markup=base_keyboard(TEST_TYPES)
-            )
+            if temp_user[message.from_user.id].get("class") == "0-sinf":
+
+                await message.answer(
+                    "O‘yin turini tanlang:",
+                    reply_markup=base_keyboard(ZERO_TEST_TYPES)
+                )
+
+            else:
+
+                await message.answer(
+                    "Test turini tanlang:",
+                    reply_markup=base_keyboard(TEST_TYPES)
+                )
 
             return
-
+        
         elif user_state.get(message.from_user.id) == "test":
 
             if message.text not in ["➡️", "❌ Testni tugatish"]:
@@ -2223,18 +2264,23 @@ async def handle_all(message: types.Message):
             # O‘quvchi
             else:
 
+                school_class = temp_user[user_id]["class"]
+
                 cursor.execute("""
-                SELECT * FROM questions
+                SELECT *
+                FROM questions
                 WHERE role='O‘quvchi'
                 AND class=?
                 AND subject=?
                 AND test_type=?
+                AND school_type IN (?, 'all')
                 ORDER BY RANDOM()
                 LIMIT 20
                 """, (
-                    temp_user[message.from_user.id]["class"],
-                    temp_user[message.from_user.id]["subject"],
-                    temp_user[message.from_user.id]["test_type"]
+                    temp_user[user_id]["class"],
+                    temp_user[user_id]["subject"],
+                    temp_user[user_id]["test_type"],
+                    school_class
                 ))
 
                 questions = cursor.fetchall()
@@ -2793,6 +2839,13 @@ async def handle_all(message: types.Message):
                         step = 7
 
                         # IMG
+                        school_type = "all"
+
+                        if i+1 < len(lines) and lines[i+1].startswith("SCHOOL:"):
+
+                            school_type = lines[i+1].split(":",1)[1].strip()
+
+                            i += 1
                         if i+1 < len(lines) and lines[i+1].startswith("IMG:"):
 
                             img = lines[i+1].split(":",1)[1].strip()
@@ -2853,9 +2906,10 @@ async def handle_all(message: types.Message):
                             difficulty,
                             type,
                             img,
-                            voice_type
+                            voice_type,
+                            school_type
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             role,
                             cls,
