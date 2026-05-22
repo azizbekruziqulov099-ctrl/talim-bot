@@ -16,7 +16,7 @@ import edge_tts
 from aiogram.types import FSInputFile
 import os
 
-API_TOKEN = os.getenv("BOT_TOKEN")
+API_TOKEN = "8673749392:AAFCVC86jOhSKh4w4JUe3ZhCmLPbe16kbEg"
 
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
@@ -340,12 +340,22 @@ def init_db():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
+
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS survey_answers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         survey_id INTEGER,
         answer TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS images(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        file_id TEXT
     )
     """)
 
@@ -418,6 +428,40 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+@dp.message(F.photo)
+async def save_image(message: types.Message):
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    if not message.caption:
+        await message.answer(
+            "Rasm nomini captionga yozing"
+        )
+        return
+
+    name = message.caption.strip()
+
+    file_id = message.photo[-1].file_id
+
+    conn = sqlite3.connect("data.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT OR REPLACE INTO images(
+        name,
+        file_id
+    )
+    VALUES(?,?)
+    """,(name,file_id))
+
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"✅ Saqlandi: {name}"
+    )
 
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
@@ -1574,12 +1618,24 @@ async def handle_all(message: types.Message):
                     limit = 120
                 if q[14]:
 
-                    await bot.send_photo(
-                        message.chat.id,
-                        photo=FSInputFile(
-                            f"images/{q[14]}"
-                        )
+                    conn = sqlite3.connect("data.db")
+                    cur = conn.cursor()
+
+                    cur.execute(
+                        "SELECT file_id FROM images WHERE name=?",
+                        (q[14],)
                     )
+
+                    row = cur.fetchone()
+
+                    conn.close()
+
+                    if row:
+
+                        await bot.send_photo(
+                            message.chat.id,
+                            photo=row[0]
+                        )
                 # LATEX
                 if q[13] and "latex" in str(q[13]).lower():
 
@@ -1879,12 +1935,25 @@ async def handle_all(message: types.Message):
             q = test["questions"][test["index"]]
 
             if q[14]:
-                await bot.send_photo(
-                    message.chat.id,
-                    photo=FSInputFile(
-                        f"images/{q[14]}"
-                    )
+
+                conn = sqlite3.connect("data.db")
+                cur = conn.cursor()
+
+                cur.execute(
+                    "SELECT file_id FROM images WHERE name=?",
+                    (q[14],)
                 )
+
+                row = cur.fetchone()
+
+                conn.close()
+
+                if row:
+
+                    await bot.send_photo(
+                        message.chat.id,
+                        photo=row[0]
+                    )
 
             difficulty = q[12]
 
@@ -2206,11 +2275,26 @@ async def handle_all(message: types.Message):
 
             # LATEX SAVOL
             # RASM
-            if q[14]:
-                await bot.send_photo(
-                    message.chat.id,
-                    photo=FSInputFile(f"images/{q[14]}")
-                )
+    if q[14]:
+
+        conn = sqlite3.connect("data.db")
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT file_id FROM images WHERE name=?",
+            (q[14],)
+        )
+
+        row = cur.fetchone()
+
+        conn.close()
+
+        if row:
+
+            await bot.send_photo(
+                message.chat.id,
+                photo=row[0]
+            )
 
             # LATEX
             if q[13] and "latex" in str(q[13]).lower():
@@ -3082,12 +3166,23 @@ async def test_buttons(call: types.CallbackQuery):
         test["expired"] = False
         if q[14]:
 
-            await bot.send_photo(
-                call.message.chat.id,
-                photo=FSInputFile(
-                    f"images/{q[14]}"
-                )
+            conn = sqlite3.connect("data.db")
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT file_id FROM images WHERE name=?",
+                (q[14],)
             )
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            if row:
+                await bot.send_photo(
+                    call.message.chat.id,
+                    photo=row[0]
+                )
         if q[13] and "latex" in str(q[13]).lower():
 
             latex = q[5]
@@ -3337,12 +3432,24 @@ async def question_timer(user_id, limit):
         test["expired"] = False
         if q[14]:
 
-            await bot.send_photo(
-                user_id,
-                photo=FSInputFile(
-                    f"images/{q[14]}"
-                )
-            )        # LATEX
+            conn = sqlite3.connect("data.db")
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT file_id FROM images WHERE name=?",
+                (q[14],)
+            )
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            if row:
+                await bot.send_photo(
+                    user_id,
+                    photo=row[0]
+                )      
+             # LATEX
         if q[13] == "latex":
 
             latex = q[5]
