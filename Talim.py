@@ -1,5 +1,4 @@
 import asyncio
-import sqlite3
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
@@ -15,6 +14,7 @@ import random
 import time
 import edge_tts
 from aiogram.types import FSInputFile
+import psycopg2
 import os
 
 API_TOKEN = "8673749392:AAFCVC86jOhSKh4w4JUe3ZhCmLPbe16kbEg"
@@ -23,6 +23,11 @@ with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
 ADMINS = [401251407]  
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -33,6 +38,7 @@ user_test = {}
 user_locks = {}
 admin_state = {}
 state_history = {}
+
 
 def set_state(user_id, state):
 
@@ -353,16 +359,16 @@ def get_stats_keyboard():
 
 def check_survey(user_id):
 
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
     SELECT survey_done
     FROM users
-    WHERE user_id=?
+    WHERE user_id=%s
     """, (user_id,))
 
-    row = cursor.fetchone()
+    row = cur.fetchone()
 
     conn.close()
 
@@ -373,32 +379,32 @@ def check_survey(user_id):
 
 
 def init_db():
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
 
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS survey_answers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         survey_id INTEGER,
         answer TEXT
     )
     """)
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS images(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT UNIQUE,
         file_id TEXT
     )
     """)
 
     # USERS
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         full_name TEXT,
         role TEXT,
@@ -411,9 +417,9 @@ def init_db():
     """)
 
     # SURVEY
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS surveys (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         role TEXT,
         question TEXT,
         q_type TEXT,
@@ -424,9 +430,9 @@ def init_db():
     )
     """)
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS results (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         class TEXT,
         subject TEXT,
@@ -441,9 +447,9 @@ def init_db():
 
     # QUESTIONS
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS questions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         role TEXT,
         class TEXT,
         level TEXT,
@@ -482,17 +488,19 @@ async def save_image(message: types.Message):
 
     file_id = message.photo[-1].file_id
 
-    conn = sqlite3.connect("data.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT OR REPLACE INTO images(
+    INSERT INTO images(
         name,
         file_id
     )
-    VALUES(?,?)
-    """,(name,file_id))
-
+    VALUES(%s,%s)
+    ON CONFLICT (name)
+    DO UPDATE SET
+    file_id = EXCLUDED.file_id
+    """, (name, file_id))
     conn.commit()
     conn.close()
 
@@ -518,15 +526,15 @@ async def test_ovoz(message: types.Message):
 @dp.message(CommandStart())
 async def start(message: types.Message):
 
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-    cursor.execute(
-        "SELECT role FROM users WHERE user_id=?",
+    cur.execute(
+        "SELECT role FROM users WHERE user_id=%s",
         (message.from_user.id,)
     )
 
-    user = cursor.fetchone()
+    user = cur.fetchone()
     conn.close()
 
     # AGAR OLDIN RO‘YXATDAN O‘TGAN BO‘LSA
@@ -554,6 +562,12 @@ async def start(message: types.Message):
 @dp.message()
 async def handle_all(message: types.Message):
     user_id = message.from_user.id
+
+    if user_id not in temp_user:
+        temp_user[user_id] = {}
+
+    if user_id not in user_state:
+        user_state[user_id] = None
 
     # lock yaratish
     if user_id not in user_locks:
@@ -608,15 +622,15 @@ async def handle_all(message: types.Message):
                     return
 
             # history yo‘q bo‘lsa
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (user_id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
@@ -656,8 +670,8 @@ async def handle_all(message: types.Message):
             if message.from_user.id not in ADMINS:
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
             text = "📚 BILIMNI SINASH bazasi\n"
 
@@ -675,13 +689,13 @@ async def handle_all(message: types.Message):
 
                 for subject in flat_subjects:
 
-                    cursor.execute("""
+                    cur.execute("""
                     SELECT COUNT(*)
                     FROM questions
-                    WHERE class=? AND subject=?
+                    WHERE class=%s AND subject=%s
                     """, (cls, subject))
 
-                    count = cursor.fetchone()[0]
+                    count = cur.fetchone()[0]
 
                     short = subject[:4]
 
@@ -700,13 +714,13 @@ async def handle_all(message: types.Message):
 
                 for subject in subjects:
 
-                    cursor.execute("""
+                    cur.execute("""
                     SELECT COUNT(*)
                     FROM questions
-                    WHERE level=? AND subject=?
+                    WHERE level=%s AND subject=%s
                     """, (level, subject))
 
-                    count = cursor.fetchone()[0]
+                    count = cur.fetchone()[0]
 
                     short = subject[:4]
 
@@ -716,12 +730,12 @@ async def handle_all(message: types.Message):
                 text += " ".join(row_text)
 
             # ===== SO'ROVNOMA =====
-            cursor.execute("""
+            cur.execute("""
             SELECT COUNT(*)
             FROM surveys
             """)
 
-            survey_count = cursor.fetchone()[0]
+            survey_count = cur.fetchone()[0]
 
             text += (
                 f"\n\n━━━━━━━━━━\n"
@@ -750,8 +764,8 @@ async def handle_all(message: types.Message):
 
             blocks = text.replace("\r", "").split("\n\n")
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
             count = 0
 
@@ -777,7 +791,7 @@ async def handle_all(message: types.Message):
                     c = lines[5].replace("C:", "").strip()
                     d = lines[6].replace("D:", "").strip()
 
-                    cursor.execute("""
+                    cur.execute("""
                     INSERT INTO surveys (
                         role,
                         question,
@@ -787,7 +801,7 @@ async def handle_all(message: types.Message):
                         c,
                         d
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (
                         role,
                         question,
@@ -835,10 +849,10 @@ async def handle_all(message: types.Message):
             if message.from_user.id not in ADMINS:
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT surveys.question,
             survey_answers.answer,
             COUNT(*)
@@ -848,7 +862,7 @@ async def handle_all(message: types.Message):
             GROUP BY surveys.question, survey_answers.answer
             """)
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -901,16 +915,16 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["admin_district"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT DISTINCT school
             FROM users
-            WHERE district=?
+            WHERE district=%s
             """, (message.text,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -929,16 +943,16 @@ async def handle_all(message: types.Message):
 
             school = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE school=?
+            WHERE school=%s
             """, (school,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -997,15 +1011,15 @@ async def handle_all(message: types.Message):
         # 🏠 HOME
         elif message.text == HOME:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
@@ -1021,18 +1035,18 @@ async def handle_all(message: types.Message):
         # ===== O'QITUVCHI BILIM DARAJASI =====
         elif message.text == "📊 Bilim darajam":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject,
             AVG(score * 100.0 / total)
             FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -1072,16 +1086,16 @@ async def handle_all(message: types.Message):
         # ===== O'QUVCHILAR NATIJASI =====
         elif message.text == "👨‍🎓 O‘quvchilar natijasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
             WHERE role='O‘quvchi'
             """)
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1110,15 +1124,15 @@ async def handle_all(message: types.Message):
         # ===== VILOYAT =====
         elif message.text == "🌍 Viloyat statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT region FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             if not row:
                 conn.close()
@@ -1126,13 +1140,13 @@ async def handle_all(message: types.Message):
 
             region = row[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE region=?
+            WHERE region=%s
             """, (region,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1161,15 +1175,15 @@ async def handle_all(message: types.Message):
         # ===== RESPUBLIKA =====
         elif message.text == "🇺🇿 Respublika statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
             """)
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1198,18 +1212,18 @@ async def handle_all(message: types.Message):
         # ===== MENING NATIJAM =====
         elif message.text == "📊 Mening natijam":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject,
             AVG(score * 100.0 / total)
             FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -1257,15 +1271,15 @@ async def handle_all(message: types.Message):
         # ===== MAKTAB STATISTIKASI =====
         elif message.text == "🏫 Maktab statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT school FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             if not row:
                 await message.answer("❌ Maktab topilmadi")
@@ -1274,13 +1288,13 @@ async def handle_all(message: types.Message):
 
             school = row[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE school=?
+            WHERE school=%s
             """, (school,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1331,13 +1345,13 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(message.from_user.id) == "change_role":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET role=?
-            WHERE user_id=?
+            SET role=%s
+            WHERE user_id=%s
             """, (
                 message.text,
                 message.from_user.id
@@ -1390,13 +1404,13 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(message.from_user.id) == "change_district":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET region=?, district=?
-            WHERE user_id=?
+            SET region=%s, district=%s
+            WHERE user_id=%s
             """, (
                 temp_user[message.from_user.id]["new_region"],
                 message.text,
@@ -1405,12 +1419,12 @@ async def handle_all(message: types.Message):
 
             conn.commit()
 
-            cursor.execute(
-                "SELECT role FROM users WHERE user_id=?",
+            cur.execute(
+                "SELECT role FROM users WHERE user_id=%s",
                 (message.from_user.id,)
             )
 
-            role = cursor.fetchone()[0]
+            role = cur.fetchone()[0]
 
             conn.close()
 
@@ -1455,12 +1469,25 @@ async def handle_all(message: types.Message):
                 f"{temp_user[user_id]['new_school_type']} - "
                 f"{message.text}"
             )
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET school=?
-            WHERE user_id=?
+            SET school=%s
+            WHERE user_id=%s
             """,(school,user_id))
+
+            conn.commit()
+            conn.close()
+
+            user_state[user_id] = None
+
+            await message.answer(
+                "✅ Maktab o'zgartirildi",
+                reply_markup=get_main_keyboard(role)
+            )
+            return
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
 
@@ -1475,13 +1502,13 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(message.from_user.id) == "change_class":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET class=?
-            WHERE user_id=?
+            SET class=%s
+            WHERE user_id=%s
             """, (
                 message.text,
                 message.from_user.id
@@ -1489,12 +1516,12 @@ async def handle_all(message: types.Message):
 
             conn.commit()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             conn.close()
 
@@ -1660,11 +1687,11 @@ async def handle_all(message: types.Message):
                     limit = 120
                 if q[14]:
 
-                    conn = sqlite3.connect("data.db")
+                    conn = psycopg2.connect(DATABASE_URL)
                     cur = conn.cursor()
 
                     cur.execute(
-                        "SELECT file_id FROM images WHERE name=?",
+                        "SELECT file_id FROM images WHERE name=%s",
                         (q[14],)
                     )
 
@@ -1917,10 +1944,10 @@ async def handle_all(message: types.Message):
                 score = test["score"]
                 total = len(test["questions"])
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute("""
+                cur.execute("""
                 INSERT INTO results (
                     user_id,
                     class,
@@ -1932,7 +1959,7 @@ async def handle_all(message: types.Message):
                     school,
                     role
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id,
                     temp_user[user_id].get("class"),
@@ -1978,11 +2005,11 @@ async def handle_all(message: types.Message):
 
             if q[14]:
 
-                conn = sqlite3.connect("data.db")
+                conn = psycopg2.connect(DATABASE_URL)
                 cur = conn.cursor()
 
                 cur.execute(
-                    "SELECT file_id FROM images WHERE name=?",
+                    "SELECT file_id FROM images WHERE name=%s",
                     (q[14],)
                 )
 
@@ -2196,8 +2223,8 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["test_type"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
             # O‘qituvchi
             if temp_user[message.from_user.id]["role"] == "O‘qituvchi":
@@ -2209,12 +2236,12 @@ async def handle_all(message: types.Message):
                 test_type = temp_user[message.from_user.id]["test_type"]
 
                 # EASY
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='easy'
                 ORDER BY RANDOM()
                 LIMIT 10
@@ -2224,15 +2251,15 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
 
                 # MEDIUM
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='medium'
                 ORDER BY RANDOM()
                 LIMIT 7
@@ -2242,15 +2269,15 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
 
                 # HARD
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='hard'
                 ORDER BY RANDOM()
                 LIMIT 3
@@ -2260,30 +2287,46 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
+
+            if user_id not in temp_user:
+                await message.answer(
+                    "♻️ Bot yangilangan. Testni qayta boshlang."
+                )
+                return
+
             # O‘quvchi
             else:
 
-                school_class = temp_user[user_id]["class"]
+                if "Oddiy" in temp_user[user_id]["class"]:
+                    school_type = "🏫 Oddiy"
+                elif "IDUM" in temp_user[user_id]["class"]:
+                    school_type = "⭐ IDUM"
+                elif "Prezident" in temp_user[user_id]["class"]:
+                    school_type = "🏆 Prezident"
+                elif "Xususiy" in temp_user[user_id]["class"]:
+                    school_type = "🏢 Xususiy"
+                else:
+                    school_type = "all"
 
-                cursor.execute("""
+                cur.execute("""
                 SELECT *
                 FROM questions
                 WHERE role='O‘quvchi'
-                AND class=?
-                AND subject=?
-                AND test_type=?
-                AND school_type IN (?, 'all')
+                AND class=%s
+                AND subject=%s
+                AND test_type=%s
+                AND school_type IN (%s, 'all')
                 ORDER BY RANDOM()
                 LIMIT 20
                 """, (
                     temp_user[user_id]["class"],
                     temp_user[user_id]["subject"],
                     temp_user[user_id]["test_type"],
-                    school_class
+                    school_type
                 ))
 
-                questions = cursor.fetchall()
+                questions = cur.fetchall()
 
             conn.close()
 
@@ -2326,11 +2369,11 @@ async def handle_all(message: types.Message):
             # RASM
             if q[14]:
 
-                conn = sqlite3.connect("data.db")
+                conn = psycopg2.connect(DATABASE_URL)
                 cur = conn.cursor()
 
                 cur.execute(
-                    "SELECT file_id FROM images WHERE name=?",
+                    "SELECT file_id FROM images WHERE name=%s",
                     (q[14],)
                 )
 
@@ -2491,15 +2534,15 @@ async def handle_all(message: types.Message):
                 return
 
             # o‘qituvchi bo‘lsa save
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             INSERT INTO users (
                 user_id, role, region,
                 district, school, class
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 message.from_user.id,
                 temp_user[message.from_user.id]["role"],
@@ -2535,16 +2578,16 @@ async def handle_all(message: types.Message):
         # ===== SURVEY =====
         elif action == BTN_SURVEY:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role
             FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
 
             if not user:
                 conn.close()
@@ -2552,15 +2595,15 @@ async def handle_all(message: types.Message):
 
             role = user[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT *
             FROM surveys
-            WHERE role=?
+            WHERE role=%s
             ORDER BY RANDOM()
             LIMIT 20
             """, (role,))
 
-            surveys = cursor.fetchall()
+            surveys = cur.fetchall()
 
             conn.close()
 
@@ -2597,15 +2640,15 @@ async def handle_all(message: types.Message):
             # ===== TEST =====
         elif action == BTN_TEST:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             if not user:
@@ -2625,16 +2668,15 @@ async def handle_all(message: types.Message):
 
             # O‘quvchi
             if role == "O‘quvchi":
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
-
-                cursor.execute("""
+                cur.execute("""
                 SELECT class FROM users
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
-                row = cursor.fetchone()
+                row = cur.fetchone()
 
                 conn.close()
 
@@ -2683,15 +2725,15 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["class"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             INSERT INTO users (
                 user_id, role, region,
                 district, school, class
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 message.from_user.id,
                 temp_user[message.from_user.id]["role"],
@@ -2722,13 +2764,13 @@ async def handle_all(message: types.Message):
             # oxiri
             if data["index"] >= len(data["surveys"]) - 1:
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute("""
+                cur.execute("""
                 UPDATE users
                 SET survey_done=1
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
                 conn.commit()
@@ -2817,8 +2859,8 @@ async def handle_all(message: types.Message):
                 await message.answer("ROLE xato ❌")
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
             i = 4
             count = 0
@@ -2890,7 +2932,7 @@ async def handle_all(message: types.Message):
 
                         correct = lines[i+5].split(":",1)[1].strip().lower()
 
-                        cursor.execute("""
+                        cur.execute("""
                         INSERT INTO questions (
                             role,
                             class,
@@ -2909,7 +2951,7 @@ async def handle_all(message: types.Message):
                             voice_type,
                             school_type
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
                             role,
                             cls,
@@ -2925,7 +2967,8 @@ async def handle_all(message: types.Message):
                             difficulty,
                             q_type,
                             img,
-                            voice_type
+                            voice_type,
+                            school_type
                         ))
 
                         count += 1
@@ -2952,16 +2995,15 @@ async def handle_all(message: types.Message):
 
         # ===== MY STATS =====
         elif action == BTN_MY:
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
-
-            cursor.execute("""
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            cur.execute("""
             SELECT subject, AVG(score*1.0/total) FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
             conn.close()
 
             if not rows:
@@ -2977,15 +3019,15 @@ async def handle_all(message: types.Message):
             await message.answer(text)
         # ===== GLOBAL =====
         elif action == BTN_GLOBAL:
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject, AVG(score*1.0/total) FROM results
             GROUP BY subject
             """)
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
             conn.close()
 
             if not rows:
@@ -3006,19 +3048,19 @@ async def handle_all(message: types.Message):
 
                 value = int(message.text)
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute(
-                    "INSERT INTO survey (user_id, pressure) VALUES (?, ?)",
+                cur.execute(
+                    "INSERT INTO survey (user_id, pressure) VALUES (%s, %s)",
                     (message.from_user.id, value)
                 )
 
                 # ✅ survey bajarildi
-                cursor.execute("""
+                cur.execute("""
                 UPDATE users
                 SET survey_done=1
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
                 conn.commit()
@@ -3054,18 +3096,18 @@ async def handle_all(message: types.Message):
         # ===== O'ZLASHTIRISH =====
         elif message.text == "📈 O‘zlashtirish":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject,
             AVG(score * 100.0 / total)
             FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -3105,6 +3147,12 @@ async def handle_all(message: types.Message):
 async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
+    if user_id not in user_test:
+        await call.answer(
+            "♻️ Bot yangilangan. Testni qayta boshlang.",
+            show_alert=True
+        )
+        return
     await call.answer()
 
     if call.data.startswith("listen_"):
@@ -3223,11 +3271,11 @@ async def test_buttons(call: types.CallbackQuery):
         test["expired"] = False
         if q[14]:
 
-            conn = sqlite3.connect("data.db")
+            conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
             cur.execute(
-                "SELECT file_id FROM images WHERE name=?",
+                "SELECT file_id FROM images WHERE name=%s",
                 (q[14],)
             )
 
@@ -3367,16 +3415,16 @@ async def test_buttons(call: types.CallbackQuery):
 
         user_state[user_id] = None
 
-        conn = sqlite3.connect("data.db")
-        cursor = conn.cursor()
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
 
-        cursor.execute("""
+        cur.execute("""
         SELECT role
         FROM users
-        WHERE user_id=?
+        WHERE user_id=%s
         """, (user_id,))
 
-        row = cursor.fetchone()
+        row = cur.fetchone()
 
         conn.close()
 
@@ -3388,6 +3436,9 @@ async def test_buttons(call: types.CallbackQuery):
         )
 
 async def question_timer(user_id, limit):
+
+    if user_id not in user_test:
+        return
 
     try:
 
@@ -3489,11 +3540,11 @@ async def question_timer(user_id, limit):
         test["expired"] = False
         if q[14]:
 
-            conn = sqlite3.connect("data.db")
+            conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
             cur.execute(
-                "SELECT file_id FROM images WHERE name=?",
+                "SELECT file_id FROM images WHERE name=%s",
                 (q[14],)
             )
 
