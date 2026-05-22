@@ -1457,7 +1457,7 @@ async def handle_all(message: types.Message):
             user_state[user_id] = "change_school"
 
             await message.answer(
-                "Maktab raqami yoki nomini kiriting:"
+                "Maktab raqami kiriting:"
             )
 
             return
@@ -1497,7 +1497,7 @@ async def handle_all(message: types.Message):
 
             await message.answer(
                 "✅ Maktab o'zgartirildi",
-                reply_markup=get_main_keyboard(role)
+                reply_markup=get_main_keyboard("O‘quvchi")
             )
 
             return
