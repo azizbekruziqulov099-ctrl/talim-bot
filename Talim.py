@@ -2526,32 +2526,25 @@ async def handle_all(message: types.Message):
 
                 user_state[message.from_user.id] = "class_register"
 
+                school_type = temp_user[message.from_user.id]["school_type"]
+
+                if school_type == "🏫 Oddiy davlat maktabi":
+                    classes = [c for c in CLASSES if "Oddiy" in c]
+                elif school_type == "⭐ Ixtisoslashgan (IDUM)":
+                    classes = [c for c in CLASSES if "IDUM" in c]
+
+                elif school_type == "🏆 Prezident maktabi":
+                    classes = [c for c in CLASSES if "Prezident" in c]
+
+                else:
+                    classes = [c for c in CLASSES if "Xususiy" in c]
+
                 await message.answer(
                     "Sinf tanlang:",
-                    school_type = temp_user[message.from_user.id]["school_type"]
-
-                    if school_type == "🏫 Oddiy davlat maktabi":
-                        classes = [c for c in CLASSES if "Oddiy" in c]
-
-                    elif school_type == "⭐ Ixtisoslashgan (IDUM)":
-                        classes = [c for c in CLASSES if "IDUM" in c]
-
-                    elif school_type == "🏆 Prezident maktabi":
-                        classes = [c for c in CLASSES if "Prezident" in c]
-
-                    else:
-                        classes = [c for c in CLASSES if "Xususiy" in c]
-
-                    await message.answer(
-                        "Sinf tanlang:",
-                        reply_markup=base_keyboard(classes)
-                    )
-
-                    return
+                    reply_markup=base_keyboard(classes)
                 )
 
                 return
-
             # o‘qituvchi bo‘lsa save
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
