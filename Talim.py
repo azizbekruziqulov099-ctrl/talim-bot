@@ -3,6 +3,7 @@ import sqlite3
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
+from aiogram import F
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
