@@ -1,0 +1,105 @@
+{
+
+  "Toshkent shahri": [
+      ["Bektemir", "Chilonzor", "Mirobod"],
+      ["Mirzo Ulug‘bek", "Olmazor", "Sergeli"],
+      ["Shayxontohur", "Uchtepa", "Yakkasaroy"],
+      ["Yashnobod", "Yunusobod"]
+  ],
+
+  "Toshkent viloyati": [
+      ["Bekobod", "Bo‘ka", "Bo‘stonliq"],
+      ["Chinoz", "Qibray", "Ohangaron"],
+      ["Oqqo‘rg‘on", "Parkent", "Piskent"],
+      ["Quyi Chirchiq", "Yangiyo‘l", "Zangiota"],
+      ["Yuqori Chirchiq"]
+  ],
+
+  "Samarqand": [
+      ["Bulung‘ur", "Ishtixon", "Jomboy"],
+      ["Kattaqo‘rg‘on", "Narpay", "Nurobod"],
+      ["Oqdaryo", "Payariq", "Pastdarg‘om"],
+      ["Paxtachi", "Qo‘shrabot", "Samarqand"],
+      ["Toyloq", "Urgut"]
+  ],
+
+  "Farg‘ona": [
+      ["Bag‘dod", "Beshariq", "Buvayda"],
+      ["Dang‘ara", "Farg‘ona", "Furqat"],
+      ["Oltiariq", "Qo‘qon", "Quva"],
+      ["Rishton", "So‘x", "Toshloq"],
+      ["Uchko‘prik", "Yozyovon"]
+  ],
+
+  "Andijon": [
+      ["Andijon", "Asaka", "Baliqchi"],
+      ["Bo‘z", "Buloqboshi", "Izboskan"],
+      ["Jalaquduq", "Marhamat", "Oltinko‘l"],
+      ["Paxtaobod", "Shahrixon", "Ulug‘nor"],
+      ["Xo‘jaobod"]
+  ],
+
+  "Namangan": [
+      ["Chortoq", "Chust", "Kosonsoy"],
+      ["Mingbuloq", "Namangan", "Norin"],
+      ["Pop", "To‘raqo‘rg‘on", "Uchqo‘rg‘on"],
+      ["Uychi", "Yangiqo‘rg‘on"]
+  ],
+
+  "Buxoro": [
+      ["Buxoro", "G‘ijduvon", "Jondor"],
+      ["Kogon", "Olot", "Peshku"],
+      ["Qorako‘l", "Qorovulbozor", "Romitan"],
+      ["Shofirkon", "Vobkent"]
+  ],
+
+  "Xorazm": [
+      ["Bog‘ot", "Gurlan", "Hazorasp"],
+      ["Khiva", "Qo‘shko‘pir", "Shovot"],
+      ["Urganch", "Xonqa", "Yangiariq"],
+      ["Yangibozor"]
+  ],
+
+  "Qashqadaryo": [
+      ["Chiroqchi", "Dehqonobod", "G‘uzor"],
+      ["Kasbi", "Kitob", "Koson"],
+      ["Mirishkor", "Muborak", "Nishon"],
+      ["Qamashi", "Qarshi", "Shahrisabz"],
+      ["Yakkabog‘"]
+  ],
+
+  "Surxondaryo": [
+      ["Angor", "Bandixon", "Boysun"],
+      ["Denov", "Jarqo‘rg‘on", "Muzrabot"],
+      ["Oltinsoy", "Qiziriq", "Qumqo‘rg‘on"],
+      ["Sherobod", "Sho‘rchi", "Termiz"],
+      ["Uzun"]
+  ],
+
+  "Jizzax": [
+      ["Arnasoy", "Baxmal", "Do‘stlik"],
+      ["Forish", "G‘allaorol", "Jizzax"],
+      ["Mirzacho‘l", "Paxtakor", "Yangiobod"],
+      ["Zafarobod", "Zomin"]
+  ],
+
+  "Sirdaryo": [
+      ["Boyovut", "Guliston", "Mirzaobod"],
+      ["Oqoltin", "Sardoba", "Sayxunobod"],
+      ["Shirin", "Sirdaryo", "Yangiyer"]
+  ],
+
+  "Navoiy": [
+      ["Karmana", "Konimex", "Navbahor"],
+      ["Navoiy", "Nurota", "Qiziltepa"],
+      ["Tomdi", "Uchquduq", "Zarafshon"]
+  ],
+
+  "Qoraqalpog‘iston": [
+      ["Amudaryo", "Beruniy", "Chimboy"],
+      ["Ellikqala", "Kegeyli", "Mo‘ynoq"],
+      ["Nukus", "Qo‘ng‘irot", "Qonliko‘l"],
+      ["Shumanay", "Taxtako‘pir", "To‘rtko‘l"],
+      ["Xo‘jayli"]
+  ]
+}
