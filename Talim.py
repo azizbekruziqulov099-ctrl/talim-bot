@@ -76,6 +76,11 @@ TEXT_TO_ID = {
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
 CLASSES = [
+    "🏫 Oddiy 0-sinf",
+    "⭐ IDUM 0-sinf",
+    "🏆 Prezident 0-sinf",
+    "🏢 Xususiy 0-sinf",
+
     "🏫 Oddiy 1-sinf",
     "⭐ IDUM 1-sinf",
     "🏆 Prezident 1-sinf",
@@ -329,7 +334,8 @@ def get_main_keyboard(role=None):
             KeyboardButton(text="👨‍🏫 TOP o‘qituvchilar")],
             [KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             KeyboardButton(text="📋 So‘rovnoma natijalari")],
-            [KeyboardButton(text="📚 BILIMNI SINASH bazasi")]
+            [KeyboardButton(text="📚 BILIMNI SINASH bazasi"),
+             KeyboardButton(text="👥 Foydalanuvchilar statistikasi")]
         ]
     
 
@@ -562,6 +568,23 @@ async def start(message: types.Message):
 @dp.message()
 async def handle_all(message: types.Message):
     user_id = message.from_user.id
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        UPDATE users
+        SET last_seen=NOW()
+        WHERE user_id=%s
+        """, (user_id,))
+
+        conn.commit()
+        conn.close()
+
+    except:
+        pass
+
+
 
     if user_id not in temp_user:
         temp_user[user_id] = {}
@@ -572,6 +595,41 @@ async def handle_all(message: types.Message):
     # lock yaratish
     if user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
+
+    elif message.text == "👥 Foydalanuvchilar statistikasi":
+
+        if message.from_user.id not in ADMINS:
+            return
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM users")
+        total = cur.fetchone()[0]
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM users
+        WHERE DATE(last_seen)=CURRENT_DATE
+        """)
+        today = cur.fetchone()[0]
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM users
+        WHERE last_seen >= NOW() - INTERVAL '30 day'
+        """)
+        month = cur.fetchone()[0]
+
+        conn.close()
+
+        await message.answer(
+            f"👥 Jami foydalanuvchilar: {total}\n\n"
+            f"📅 Bugun kirganlar: {today}\n"
+            f"🗓 Oxirgi 30 kun: {month}"
+        )
+
+        return
 
     # parallel message bloklash
     async with user_locks[user_id]:
