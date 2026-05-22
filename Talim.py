@@ -218,6 +218,11 @@ for school in [
     "🏆 Prezident",
     "🏢 Xususiy"
 ]:
+    # 0
+    SUBJECTS_BY_CLASS["🏫 Oddiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["⭐ IDUM 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["🏆 Prezident 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["🏢 Xususiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
 
     # 1-4
     SUBJECTS_BY_CLASS[f"{school} 1-sinf"] = PRIMARY_SUBJECTS
@@ -1704,7 +1709,9 @@ async def handle_all(message: types.Message):
 
             set_state(message.from_user.id, "test_type")
 
-            if temp_user[message.from_user.id].get("class") == "0-sinf":
+            selected_class = temp_user[message.from_user.id].get("class", "")
+
+            if "0-sinf" in selected_class:
 
                 await message.answer(
                     "O‘yin turini tanlang:",
