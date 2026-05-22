@@ -3,7 +3,6 @@ import sqlite3
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
-from aiogram import F
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -2274,28 +2273,30 @@ async def handle_all(message: types.Message):
             elif difficulty == "hard":
                 limit = 120
 
+
+            
             # LATEX SAVOL
             # RASM
-    if q[14]:
+            if q[14]:
 
-        conn = sqlite3.connect("data.db")
-        cur = conn.cursor()
+                conn = sqlite3.connect("data.db")
+                cur = conn.cursor()
 
-        cur.execute(
-            "SELECT file_id FROM images WHERE name=?",
-            (q[14],)
-        )
+                cur.execute(
+                    "SELECT file_id FROM images WHERE name=?",
+                    (q[14],)
+                )
 
-        row = cur.fetchone()
+                row = cur.fetchone()
 
-        conn.close()
+                conn.close()
 
-        if row:
+                if row:
 
-            await bot.send_photo(
-                message.chat.id,
-                photo=row[0]
-            )
+                    await bot.send_photo(
+                        message.chat.id,
+                        photo=row[0]
+                    )
 
             # LATEX
             if q[13] and "latex" in str(q[13]).lower():
