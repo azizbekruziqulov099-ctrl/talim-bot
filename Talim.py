@@ -1448,12 +1448,11 @@ async def handle_all(message: types.Message):
             )
 
             return
-        
+
+
         elif user_state.get(user_id) == "change_school_type":
 
-            temp_user[user_id] = {
-                "new_school_type": message.text
-            }
+            temp_user[user_id]["new_school_type"] = message.text
 
             user_state[user_id] = "change_school"
 
@@ -1463,12 +1462,14 @@ async def handle_all(message: types.Message):
 
             return
 
+
         elif user_state.get(user_id) == "change_school":
 
             school = (
                 f"{temp_user[user_id]['new_school_type']} - "
                 f"{message.text}"
             )
+
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
@@ -1476,10 +1477,21 @@ async def handle_all(message: types.Message):
             UPDATE users
             SET school=%s
             WHERE user_id=%s
-            """,(school,user_id))
+            """, (school, user_id))
 
             conn.commit()
+
+            cur.execute("""
+            SELECT role
+            FROM users
+            WHERE user_id=%s
+            """, (user_id,))
+
+            row = cur.fetchone()
+
             conn.close()
+
+            role = row[0] if row else "O‘quvchi"
 
             user_state[user_id] = None
 
@@ -1487,19 +1499,46 @@ async def handle_all(message: types.Message):
                 "✅ Maktab o'zgartirildi",
                 reply_markup=get_main_keyboard(role)
             )
+
             return
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT school
+            FROM users
+            WHERE user_id=%s
+            """, (message.from_user.id,))
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            school = row[0] if row else ""
+
+            if "Oddiy" in school:
+                classes = [c for c in CLASSES if "Oddiy" in c]
+
+            elif "IDUM" in school:
+                classes = [c for c in CLASSES if "IDUM" in c]
+
+            elif "Prezident" in school:
+                classes = [c for c in CLASSES if "Prezident" in c]
+
+            else:
+                classes = [c for c in CLASSES if "Xususiy" in c]
 
             user_state[message.from_user.id] = "change_class"
 
             await message.answer(
                 "Yangi sinfni tanlang:",
-                reply_markup=base_keyboard(CLASSES)
+                reply_markup=base_keyboard(classes)
             )
 
             return
-
         elif user_state.get(message.from_user.id) == "change_class":
 
             conn = psycopg2.connect(DATABASE_URL)
