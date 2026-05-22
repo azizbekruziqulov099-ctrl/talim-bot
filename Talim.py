@@ -1496,8 +1496,7 @@ async def handle_all(message: types.Message):
             user_state[user_id] = None
 
             await message.answer(
-                "✅ Maktab o'zgartirildi",
-                reply_markup=get_main_keyboard("O‘quvchi")
+                f"✅ Maktab o'zgartirildi\nRole: {role}"
             )
 
             return
