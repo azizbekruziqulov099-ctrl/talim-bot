@@ -2041,269 +2041,6 @@ async def handle_all(message: types.Message):
 
             test = user_test[message.from_user.id]
 
-            # TESTNI TUGATISH
-            if message.text == FINISH:
-
-                score = test["score"]
-                total = len(test["questions"])
-
-                await message.answer(
-                    f"🏁 Test tugatildi\n\n"
-                    f"📊 Natija: {score}/{total}",
-                    reply_markup=get_main_keyboard(
-                        temp_user[message.from_user.id]["role"]
-                    )
-                )
-
-                user_state[message.from_user.id] = None
-                user_test.pop(message.from_user.id, None)
-
-                return
-
-            # KEYINGI SAVOL
-            if message.text == "➡️":
-
-                # oxirgi savol bo‘lmasa
-                if test["index"] < len(test["questions"]) - 1:
-
-                    test["index"] += 1
-
-                else:
-
-                    await message.answer(
-                        "❌ Oxirgi savol"
-                    )
-
-                    return
-
-                test["question_start"] = time.time()
-                test["question_uid"] = random.randint(100000,999999)
-                test["expired"] = False
-                test["answered"] = False
-
-                q = test["questions"][test["index"]]
-
-                difficulty = q[12]
-
-                limit = 60
-
-                if difficulty == "medium":
-                    limit = 90
-
-                elif difficulty == "hard":
-                    limit = 120
-                if q[14]:
-
-                    conn = psycopg2.connect(DATABASE_URL)
-                    cur = conn.cursor()
-
-                    cur.execute(
-                        "SELECT file_id FROM images WHERE name=%s",
-                        (q[14],)
-                    )
-
-                    row = cur.fetchone()
-
-                    conn.close()
-
-                    if row:
-
-                        await bot.send_photo(
-                            message.chat.id,
-                            photo=row[0]
-                        )
-                # LATEX
-                if q[13] and "latex" in str(q[13]).lower():
-
-                    latex = q[5]
-
-                    encoded = quote(f"\\dpi{{300}} \\huge {latex}")
-
-                    url = f"https://latex.codecogs.com/png.image?{encoded}"
-
-                    await bot.send_photo(
-                        message.chat.id,
-                        photo=url
-                    )
-                    markup = InlineKeyboardMarkup(
-                        inline_keyboard=[
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 Savol",
-                                    callback_data="listen_q"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 A",
-                                    callback_data="listen_a"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[6],
-                                    callback_data="a"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 B",
-                                    callback_data="listen_b"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[7],
-                                    callback_data="b"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 C",
-                                    callback_data="listen_c"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[8],
-                                    callback_data="c"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 D",
-                                    callback_data="listen_d"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[9],
-                                    callback_data="d"
-                                )
-                            ],[
-                        InlineKeyboardButton(
-                            text="❌ Testni tugatish",
-                            callback_data="finish"
-                        ) 
-                    ]
-                        ]
-                    )
-
-                    text = "⬆️ Savol yuqoridagi rasmda"
-                else:
-                    text = q[5]
-
-                    markup = InlineKeyboardMarkup(
-                        inline_keyboard=[
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 Savol",
-                                    callback_data="listen_q"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 A",
-                                    callback_data="listen_a"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[6],
-                                    callback_data="a"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 B",
-                                    callback_data="listen_b"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[7],
-                                    callback_data="b"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 C",
-                                    callback_data="listen_c"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[8],
-                                    callback_data="c"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 D",
-                                    callback_data="listen_d"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[9],
-                                    callback_data="d"
-                                )
-                            ],[
-                        InlineKeyboardButton(
-                            text="❌ Testni tugatish",
-                            callback_data="finish"
-                        ) 
-                    ]
-                        ]
-                    )
-                msg = await bot.send_message(
-                    message.chat.id,
-                    text,
-                    reply_markup=markup
-                )
-
-            
-                if q[15] in ["uz", "ru", "en"]:
-
-                    voice = "uz-UZ-SardorNeural"
-
-                    if q[15] == "ru":
-                        voice = "ru-RU-DmitryNeural"
-
-                    elif q[15] == "en":
-                        voice = "en-US-GuyNeural"
-
-                    communicate = edge_tts.Communicate(
-                        text=q[5],
-                        voice=voice
-                    )
-
-                    await communicate.save("temp.mp3")
-
-                #    await bot.send_voice(
-                  #      message.chat.id,
-                  #      voice=FSInputFile("temp.mp3")
-                 #   )
-
-                    
-
-                # eski countdownni o‘chirish
-                if test.get("countdown_task"):
-                    test["countdown_task"].cancel()
-
-                # eski timerni o‘chirish
-                if test.get("timer_task"):
-                    test["timer_task"].cancel()
-                test["expired"] = False
-                test["answered"] = False
-
-                # eski timerni o‘chirish
-                old_task = test.get("timer_task")
-
-                if old_task:
-                    old_task.cancel()
-
-                test["timer_task"] = asyncio.create_task(
-                    question_timer(message.from_user.id, limit)
-                )
-                test["msg_id"] = msg.message_id
-
-                return
-
             user_id = message.from_user.id
 
             test = user_test[user_id]
@@ -2416,6 +2153,7 @@ async def handle_all(message: types.Message):
             test["question_start"] = time.time()
             test["question_uid"] = random.randint(100000,999999)
             test["expired"] = False
+            test["processing"] = False
             test["answered"] = False
 
             q = test["questions"][test["index"]]
@@ -2464,6 +2202,9 @@ async def handle_all(message: types.Message):
                     message.chat.id,
                     photo=url
                 )
+
+                text = "Savol rasmi yuqorida ⬆️"
+
                 markup = InlineKeyboardMarkup(
                     inline_keyboard=[
 
@@ -3575,6 +3316,24 @@ async def test_buttons(call: types.CallbackQuery):
         return
     await call.answer()
 
+     if call.data == "finish":
+        test = active_tests.get(user_id)
+
+        if not test:
+            return
+
+        score = test["score"]
+        total = len(test["questions"])
+
+        await call.message.answer(
+            f"📊 Test yakunlandi\n\n"
+            f"Natija: {score}/{total}"
+        )
+
+        del active_tests[user_id]
+
+        return
+
     if test.get("expired", False):
         await call.answer(
             "⏰ Vaqt tugagan"
@@ -3645,10 +3404,6 @@ async def test_buttons(call: types.CallbackQuery):
 
     q = test["questions"][test["index"]]
     old_q = q
-    test = active_tests.get(user_id)
-
-    if not test:
-        return
 
     if test.get("answered", False):
         await call.answer(
@@ -3657,6 +3412,13 @@ async def test_buttons(call: types.CallbackQuery):
         return
 
     test["answered"] = True
+
+    if test.get("processing"):
+        await call.answer("⏳ Kuting...")
+        return
+
+    test["processing"] = True
+
     user_ans = call.data
     correct = old_q[10].lower()
 
@@ -3810,25 +3572,9 @@ async def test_buttons(call: types.CallbackQuery):
             f"{result_text}\n\n{text}",
             reply_markup=markup
         )  
-        if call.data == "finish":
-
-            test = active_tests.get(user_id)
-
-            if not test:
-                return
-
-            score = test["score"]
-            total = len(test["questions"])
-
-            await call.message.answer(
-                f"📊 Test yakunlandi\n\n"
-                f"Natija: {score}/{total}"
-            )
-
-            del active_tests[user_id]
-
-            return
-        if q[15] in ["uz", "ru", "en"]:
+       
+        if q[15] in ["uz", "ru", 
+        "en"]:
 
             voice = "uz-UZ-SardorNeural"
 
@@ -4032,6 +3778,8 @@ async def question_timer(user_id, limit):
                 user_id,
                 photo=url
             )
+
+            text = "Savol rasmi yuqorida ⬆️"
 
             text = (
                 f"{test['index']+1}/{len(test['questions'])}-savol\n\n"
