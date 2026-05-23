@@ -1029,6 +1029,8 @@ async def handle_all(message: types.Message):
 
             temp_user[user_id]["current_questions"] = rows
 
+            set_state(user_id, "question_list")
+
             for i, (qid, question) in enumerate(rows, start=1):
                 text += f"{i}. {question}\n"
 
@@ -1045,7 +1047,10 @@ async def handle_all(message: types.Message):
             )
             return
 
-        elif message.text == "🗑 Savol(lar)ni o‘chirish":
+        elif (
+            user_state.get(user_id) == "question_list"
+            and message.text == "🗑 Savol(lar)ni o‘chirish"
+        ):
 
             set_state(user_id, "delete_questions")
 
