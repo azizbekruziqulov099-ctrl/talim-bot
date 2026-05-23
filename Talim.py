@@ -3319,30 +3319,36 @@ async def test_buttons(call: types.CallbackQuery):
     test = user_test[user_id]
 
     if call.data == "finish":
-        test = user_test.get(user_id)
-
-        if not test:
-            return
-
-        score = test["score"]
-        total = len(test["questions"])
 
         await call.message.answer(
-            f"📊 Test yakunlandi\n\n"
-            f"Natija: {score}/{total}"
+            "Testni tugatmoqchimisiz?",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Ha",
+                            callback_data="finish_yes"
+                        ),
+                        InlineKeyboardButton(
+                            text="❌ Yo‘q",
+                            callback_data="finish_no"
+                        )
+                    ]
+                ]
+            )
         )
-
-        user_test.pop(user_id, None)
-        user_state[user_id] = None
-
         return
+
+    if call.data == "finish_no":
+        return
+  
+    if call.data == "finish_yes":
 
     if test.get("expired", False):
         await call.answer(
             "⏰ Vaqt tugagan"
         )
         return
-
 
     if call.data.startswith("listen_"):
 
@@ -3410,7 +3416,19 @@ async def test_buttons(call: types.CallbackQuery):
     q = test["questions"][test["index"]]
     old_q = q
 
-    user_ans = call.data
+    if ":" in call.data:
+
+        user_ans, uid = call.data.split(":")
+
+        if str(test["question_uid"]) != uid:
+            await call.answer(
+                "Bu eski savol ⏳"
+            )
+            return
+
+    else:
+        user_ans = call.data
+
     correct = old_q[10].lower()
 
     if user_ans == correct:
