@@ -3316,7 +3316,7 @@ async def test_buttons(call: types.CallbackQuery):
         return
     await call.answer()
 
-     if call.data == "finish":
+    if call.data == "finish":
         test = active_tests.get(user_id)
 
         if not test:
