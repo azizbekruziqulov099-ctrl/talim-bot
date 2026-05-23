@@ -727,20 +727,18 @@ async def handle_all(message: types.Message):
 
             return
 
-        # ===== TEST BAZASI =====
         elif message.text == "📚 BILIMNI SINASH bazasi":
 
-            if message.from_user.id not in ADMINS:
+            if user_id not in ADMINS:
                 return
 
             await message.answer(
                 "📚 Savollar boshqaruvi",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="📖 Savollarni ko‘rish")],
-                        [KeyboardButton(text="🗑 Bitta savolni o‘chirish")],
-                        [KeyboardButton(text="🗑 Blokni o‘chirish")],
-                        [KeyboardButton(text="📊 Savollar statistikasi")],
+                        [KeyboardButton(text="👨‍🎓 O‘quvchi bazasi")],
+                        [KeyboardButton(text="👨‍🏫 O‘qituvchi bazasi")],
+                        [KeyboardButton(text="📋 So‘rovnoma bazasi")],
                         [KeyboardButton(text=BACK)]
                     ],
                     resize_keyboard=True
@@ -749,7 +747,7 @@ async def handle_all(message: types.Message):
 
             return
 
-        elif message.text == "📖 Savollarni ko‘rish":
+        elif message.text == "👨‍🎓 O‘quvchi bazasi":
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
@@ -762,24 +760,59 @@ async def handle_all(message: types.Message):
             """)
 
             rows = cur.fetchall()
+
             conn.close()
 
             schools = [r[0] for r in rows if r[0]]
 
-            user_state[user_id] = "view_school"
+            user_state[user_id] = "db_school"
 
             await message.answer(
-                "Maktab turini tanlang:",
+                "🏫 Maktab turini tanlang:",
                 reply_markup=base_keyboard(schools)
             )
 
             return
 
-        elif user_state.get(user_id) == "view_class":
+        elif user_state.get(user_id) == "db_school":
+
+            temp_user[user_id]["db_school"] = message.text
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT class, COUNT(*)
+            FROM questions
+            WHERE role='O‘quvchi'
+            AND school_type=%s
+            GROUP BY class
+            ORDER BY class
+            """, (message.text,))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            classes = []
+
+            for cls, cnt in rows:
+                classes.append(f"{cls} ({cnt})")
+
+            user_state[user_id] = "db_class"
+
+            await message.answer(
+                "🎓 Sinfni tanlang:",
+                reply_markup=base_keyboard(classes)
+            )
+
+            return
+
+        elif user_state.get(user_id) == "db_class":
 
             selected_class = message.text.split(" (")[0]
 
-            temp_user[user_id]["view_class"] = selected_class
+            temp_user[user_id]["db_class"] = selected_class
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
@@ -793,27 +826,28 @@ async def handle_all(message: types.Message):
             """, (selected_class,))
 
             rows = cur.fetchall()
+
             conn.close()
 
-            subjects = [
-                f"{subject} ({cnt})"
-                for subject, cnt in rows
-            ]
+            subjects = []
 
-            user_state[user_id] = "view_subject"
+            for subject, cnt in rows:
+                subjects.append(f"{subject} ({cnt})")
+
+            user_state[user_id] = "db_subject"
 
             await message.answer(
-                "Fan tanlang:",
+                "📘 Fan tanlang:",
                 reply_markup=base_keyboard(subjects)
             )
 
             return
 
-        elif user_state.get(user_id) == "view_subject":
+        elif user_state.get(user_id) == "db_subject":
 
             subject = message.text.split(" (")[0]
 
-            temp_user[user_id]["view_subject"] = subject
+            temp_user[user_id]["db_subject"] = subject
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
@@ -826,28 +860,73 @@ async def handle_all(message: types.Message):
             GROUP BY test_type
             ORDER BY test_type
             """, (
-                temp_user[user_id]["view_class"],
+                temp_user[user_id]["db_class"],
                 subject
             ))
 
             rows = cur.fetchall()
+
             conn.close()
 
-            tests = [
-                f"{test} ({cnt})"
-                for test, cnt in rows
-            ]
+            tests = []
 
-            user_state[user_id] = "view_test"
+            for test_type, cnt in rows:
+                tests.append(f"{test_type} ({cnt})")
+
+            user_state[user_id] = "db_test"
 
             await message.answer(
-                "Test turini tanlang:",
+                "📝 Test turini tanlang:",
                 reply_markup=base_keyboard(tests)
             )
 
             return
 
+        elif user_state.get(user_id) == "db_test":
 
+            test_type = message.text.split(" (")[0]
+
+            temp_user[user_id]["db_test"] = test_type
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT id, question
+            FROM questions
+            WHERE class=%s
+            AND subject=%s
+            AND test_type=%s
+            ORDER BY id
+            """, (
+                temp_user[user_id]["db_class"],
+                temp_user[user_id]["db_subject"],
+                test_type
+            ))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            if not rows:
+
+                await message.answer("Savollar topilmadi ❌")
+                return
+
+            text = (
+                f"📚 {temp_user[user_id]['db_class']}\n"
+                f"📘 {temp_user[user_id]['db_subject']}\n"
+                f"📝 {test_type}\n\n"
+            )
+
+            for qid, question in rows:
+                text += f"#{qid} {question}\n"
+
+            user_state[user_id] = "db_question_view"
+
+            await message.answer(text[:4000])
+
+            return
 
         # ===== SURVEY RESULTS =====
         elif message.text == "📋 So‘rovnoma natijalari":
