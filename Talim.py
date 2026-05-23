@@ -3558,6 +3558,13 @@ async def test_buttons(call: types.CallbackQuery):
         return
     await call.answer()
 
+    if test.get("expired", False):
+        await call.answer(
+            "⏰ Vaqt tugagan"
+        )
+        return
+
+
     if call.data.startswith("listen_"):
 
         q = user_test[user_id]["questions"][
@@ -3621,7 +3628,18 @@ async def test_buttons(call: types.CallbackQuery):
 
     q = test["questions"][test["index"]]
     old_q = q
+    test = active_tests.get(user_id)
 
+    if not test:
+        return
+
+    if test.get("answered", False):
+        await call.answer(
+            "Bu savolga javob berilgan ✅"
+        )
+        return
+
+    test["answered"] = True
     user_ans = call.data
     correct = old_q[10].lower()
 
