@@ -3576,10 +3576,6 @@ async def test_buttons(call: types.CallbackQuery):
     # callback lock
     if test.get("processing"):
         await call.answer("⏳ Kuting...", show_alert=False)
-        try:
-            await call.message.edit_reply_markup(reply_markup=None)
-        except:
-            pass
         return
 
     test["processing"] = True
@@ -3589,26 +3585,13 @@ async def test_buttons(call: types.CallbackQuery):
             "♻️ Bot yangilangan. Testni qayta boshlang.",
             show_alert=True
         )
-        try:
-            await call.message.edit_reply_markup(reply_markup=None)
-        except:
-            pass
         return
     await call.answer()
-
-    try:
-        await call.message.edit_reply_markup(reply_markup=None)
-    except:
-        pass
 
     if test.get("expired", False):
         await call.answer(
             "⏰ Vaqt tugagan"
         )
-        try:
-            await call.message.edit_reply_markup(reply_markup=None)
-        except:
-            pass
         return
 
 
@@ -3684,10 +3667,6 @@ async def test_buttons(call: types.CallbackQuery):
         await call.answer(
             "Bu savolga javob berilgan ✅"
         )
-        try:
-            await call.message.edit_reply_markup(reply_markup=None)
-        except:
-            pass
         return
 
     test["answered"] = True
