@@ -1133,8 +1133,88 @@ async def handle_all(message: types.Message):
             await message.answer(
                 f"✅ {deleted} ta savol o‘chirildi"
             )
+            set_state(user_id, "question_list")
 
-            user_state[user_id] = None
+            return
+
+        elif (
+            user_state.get(user_id) == "question_list"
+            and message.text == "🗑 Shu blokni o‘chirish"
+        ):
+
+            rows = temp_user[user_id].get("current_questions", [])
+
+            temp_user[user_id]["block_delete_count"] = len(rows)
+
+            set_state(user_id, "confirm_block_delete")
+
+            await message.answer(
+                f"⚠️ Shu blokdagi {len(rows)} ta savol o‘chirilsinmi?\n\n"
+                f"📚 {temp_user[user_id]['db_class']}\n"
+                f"📘 {temp_user[user_id]['db_subject']}\n"
+                f"📝 {temp_user[user_id]['db_test']}",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="✅ Ha")],
+                        [KeyboardButton(text="❌ Yo‘q")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+
+            return
+
+        elif (
+            user_state.get(user_id) == "confirm_block_delete"
+            and message.text == "✅ Ha"
+        ):
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            DELETE FROM questions
+            WHERE class=%s
+            AND subject=%s
+            AND test_type=%s
+            """, (
+                temp_user[user_id]["db_class"],
+                temp_user[user_id]["db_subject"],
+                temp_user[user_id]["db_test"]
+            ))
+
+            deleted = cur.rowcount
+
+            conn.commit()
+            conn.close()
+
+            await message.answer(
+                f"✅ {deleted} ta savol o‘chirildi"
+            )
+
+            set_state(user_id, "db_test")
+
+            return
+
+        elif (
+            user_state.get(user_id) == "confirm_block_delete"
+            and message.text == "❌ Yo‘q"
+        ):
+
+            set_state(user_id, "question_list")
+
+            await message.answer(
+                "Bekor qilindi ✅",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="🗑 Savol(lar)ni o‘chirish")],
+                        [KeyboardButton(text="🗑 Shu blokni o‘chirish")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
 
             return
 
