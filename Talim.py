@@ -3567,19 +3567,6 @@ async def handle_all(message: types.Message):
 async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
-
-    test = user_test.get(user_id)
-
-    if not test:
-        return
-
-    # callback lock
-    if test.get("processing"):
-        await call.answer("⏳ Kuting...", show_alert=False)
-        return
-
-    test["processing"] = True
-
     if user_id not in user_test:
         await call.answer(
             "♻️ Bot yangilangan. Testni qayta boshlang.",
