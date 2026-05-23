@@ -928,6 +928,124 @@ async def handle_all(message: types.Message):
 
             return
 
+        elif user_state.get(user_id) == "delete_questions":
+
+            ids = set()
+
+            try:
+
+                for part in message.text.split(","):
+
+                    part = part.strip()
+
+                    if "-" in part:
+
+                        start, end = part.split("-")
+
+                        start = int(start.strip())
+                        end = int(end.strip())
+
+                        if start > end:
+                            start, end = end, start
+
+                        for x in range(start, end + 1):
+                            ids.add(x)
+
+                    else:
+
+                        ids.add(int(part))
+
+            except:
+                await message.answer(
+                    "Format xato ❌\n\nMisol:\n102\n102,105,109\n102-112"
+                )
+                return
+
+            if not ids:
+
+                await message.answer("ID topilmadi ❌")
+                return
+
+            temp_user[user_id]["delete_ids"] = list(ids)
+
+            await message.answer(
+                f"🗑 {len(ids)} ta savol topildi.\n\n"
+                f"O‘chirishni tasdiqlaysizmi?\n\n"
+                f"ID lar:\n"
+                f"{', '.join(map(str, sorted(ids[:30])))}"
+                + (
+                    " ..."
+                    if len(ids) > 30
+                    else ""
+                ),
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="✅ Ha")],
+                        [KeyboardButton(text="❌ Yo‘q")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+
+            user_state[user_id] = "delete_questions_confirm"
+
+            return
+
+        elif (
+            user_state.get(user_id) == "delete_questions_confirm"
+            and message.text == "✅ Ha"
+        ):
+
+            ids = temp_user[user_id]["delete_ids"]
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            DELETE FROM questions
+            WHERE id = ANY(%s)
+            """, (ids,))
+
+            deleted = cur.rowcount
+
+            conn.commit()
+            conn.close()
+
+            user_state[user_id] = None
+
+            await message.answer(
+                f"✅ {deleted} ta savol o‘chirildi"
+            )
+
+            return
+
+        elif (
+            user_state.get(user_id) == "delete_questions_confirm"
+            and message.text == "❌ Yo‘q"
+        ):
+
+            user_state[user_id] = None
+
+            await message.answer(
+                "Bekor qilindi ✅"
+            )
+
+            return
+
+        elif message.text == "🗑 Savollarni o‘chirish":
+
+            user_state[user_id] = "delete_questions"
+
+            await message.answer(
+                "ID yuboring:\n\n"
+                "102\n"
+                "102,105,109\n"
+                "102-112\n"
+                "102,105,109-120"
+            )
+
+            return
+
         # ===== SURVEY RESULTS =====
         elif message.text == "📋 So‘rovnoma natijalari":
 
