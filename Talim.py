@@ -707,6 +707,113 @@ async def handle_all(message: types.Message):
 
             return
 
+            elif prev_state == "db_school":
+
+                await message.answer(
+                    "🏫 Maktab turini tanlang:",
+                    reply_markup=base_keyboard([
+                        "all",
+                        "🏫 Oddiy",
+                        "⭐ IDUM",
+                        "🏆 Prezident",
+                        "🏢 Xususiy"
+                    ])
+                )
+                return
+
+            elif prev_state == "db_class":
+
+                school = temp_user[user_id].get("db_school")
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+
+                cur.execute("""
+                SELECT class, COUNT(*)
+                FROM questions
+                WHERE role='O‘quvchi'
+                AND school_type=%s
+                GROUP BY class
+                ORDER BY class
+                """, (school,))
+
+                rows = cur.fetchall()
+
+                conn.close()
+
+                classes = [
+                    f"{cls} ({cnt})"
+                    for cls, cnt in rows
+                ]
+
+                await message.answer(
+                    "🎓 Sinfni tanlang:",
+                    reply_markup=base_keyboard(classes)
+                )
+                return
+
+            elif prev_state == "db_subject":
+
+                selected_class = temp_user[user_id]["db_class"]
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+
+                cur.execute("""
+                SELECT subject, COUNT(*)
+                FROM questions
+                WHERE class=%s
+                GROUP BY subject
+                ORDER BY subject
+                """, (selected_class,))
+
+                rows = cur.fetchall()
+
+                conn.close()
+
+                subjects = [
+                    f"{subject} ({cnt})"
+                    for subject, cnt in rows
+                ]
+
+                await message.answer(
+                    "📘 Fan tanlang:",
+                    reply_markup=base_keyboard(subjects)
+                )
+                return
+
+            elif prev_state == "db_test":
+
+                selected_class = temp_user[user_id]["db_class"]
+                subject = temp_user[user_id]["db_subject"]
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+
+                cur.execute("""
+                SELECT test_type, COUNT(*)
+                FROM questions
+                WHERE class=%s
+                AND subject=%s
+                GROUP BY test_type
+                ORDER BY test_type
+                """, (selected_class, subject))
+
+                rows = cur.fetchall()
+
+                conn.close()
+
+                tests = [
+                    f"{test_type} ({cnt})"
+                    for test_type, cnt in rows
+                ]
+
+                await message.answer(
+                    "📝 Test turini tanlang:",
+                    reply_markup=base_keyboard(tests)
+                )
+                return
+
         # ===== TEACHER TEST =====
         elif message.text == "🧠 Bilimni sinash":
 
@@ -765,7 +872,7 @@ async def handle_all(message: types.Message):
 
             schools = [r[0] for r in rows if r[0]]
 
-            user_state[user_id] = "db_school"
+            set_state(user_id, "db_school")
 
             await message.answer(
                 "🏫 Maktab turini tanlang:",
@@ -799,7 +906,7 @@ async def handle_all(message: types.Message):
             for cls, cnt in rows:
                 classes.append(f"{cls} ({cnt})")
 
-            user_state[user_id] = "db_class"
+            set_state(user_id, "db_class")
 
             await message.answer(
                 "🎓 Sinfni tanlang:",
@@ -834,7 +941,7 @@ async def handle_all(message: types.Message):
             for subject, cnt in rows:
                 subjects.append(f"{subject} ({cnt})")
 
-            user_state[user_id] = "db_subject"
+            set_state(user_id, "db_subject")
 
             await message.answer(
                 "📘 Fan tanlang:",
@@ -873,7 +980,7 @@ async def handle_all(message: types.Message):
             for test_type, cnt in rows:
                 tests.append(f"{test_type} ({cnt})")
 
-            user_state[user_id] = "db_test"
+            set_state(user_id, "db_test")
 
             await message.answer(
                 "📝 Test turini tanlang:",
@@ -919,18 +1026,43 @@ async def handle_all(message: types.Message):
                 f"📝 {test_type}\n\n"
             )
 
-            for qid, question in rows:
-                text += f"#{qid} {question}\n"
+            temp_user[user_id]["current_questions"] = rows
 
-            user_state[user_id] = "db_question_view"
+            for i, (qid, question) in enumerate(rows, start=1):
+                text += f"{i}. {question}\n"
 
-            await message.answer(text[:4000])
+            await message.answer(
+                text[:4000],
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="🗑 Savol(lar)ni o‘chirish")],
+                        [KeyboardButton(text="🗑 Shu blokni o‘chirish")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+            return
+
+        elif message.text == "🗑 Savol(lar)ni o‘chirish":
+
+            set_state(user_id, "delete_questions")
+
+            await message.answer(
+                "Qaysi savollarni o‘chirasiz?\n\n"
+                "Misollar:\n"
+                "2\n"
+                "2,5,8\n"
+                "2-7"
+            )
 
             return
 
         elif user_state.get(user_id) == "delete_questions":
 
-            ids = set()
+            rows = temp_user[user_id].get("current_questions", [])
+
+            selected = set()
 
             try:
 
@@ -949,54 +1081,35 @@ async def handle_all(message: types.Message):
                             start, end = end, start
 
                         for x in range(start, end + 1):
-                            ids.add(x)
+                            selected.add(x)
 
                     else:
 
-                        ids.add(int(part))
+                        selected.add(int(part))
 
             except:
+
                 await message.answer(
-                    "Format xato ❌\n\nMisol:\n102\n102,105,109\n102-112"
+                    "Format xato ❌\n\n"
+                    "Misollar:\n"
+                    "2\n"
+                    "2,5,8\n"
+                    "2-7"
                 )
                 return
+
+            ids = []
+
+            for num in selected:
+
+                if 1 <= num <= len(rows):
+
+                    ids.append(rows[num - 1][0])
 
             if not ids:
 
-                await message.answer("ID topilmadi ❌")
+                await message.answer("Savol topilmadi ❌")
                 return
-
-            temp_user[user_id]["delete_ids"] = list(ids)
-
-            await message.answer(
-                f"🗑 {len(ids)} ta savol topildi.\n\n"
-                f"O‘chirishni tasdiqlaysizmi?\n\n"
-                f"ID lar:\n"
-                f"{', '.join(map(str, sorted(ids[:30])))}"
-                + (
-                    " ..."
-                    if len(ids) > 30
-                    else ""
-                ),
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[
-                        [KeyboardButton(text="✅ Ha")],
-                        [KeyboardButton(text="❌ Yo‘q")]
-                    ],
-                    resize_keyboard=True
-                )
-            )
-
-            user_state[user_id] = "delete_questions_confirm"
-
-            return
-
-        elif (
-            user_state.get(user_id) == "delete_questions_confirm"
-            and message.text == "✅ Ha"
-        ):
-
-            ids = temp_user[user_id]["delete_ids"]
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
@@ -1011,38 +1124,11 @@ async def handle_all(message: types.Message):
             conn.commit()
             conn.close()
 
-            user_state[user_id] = None
-
             await message.answer(
                 f"✅ {deleted} ta savol o‘chirildi"
             )
 
-            return
-
-        elif (
-            user_state.get(user_id) == "delete_questions_confirm"
-            and message.text == "❌ Yo‘q"
-        ):
-
             user_state[user_id] = None
-
-            await message.answer(
-                "Bekor qilindi ✅"
-            )
-
-            return
-
-        elif message.text == "🗑 Savollarni o‘chirish":
-
-            user_state[user_id] = "delete_questions"
-
-            await message.answer(
-                "ID yuboring:\n\n"
-                "102\n"
-                "102,105,109\n"
-                "102-112\n"
-                "102,105,109-120"
-            )
 
             return
 
