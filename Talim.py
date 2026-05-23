@@ -2995,57 +2995,35 @@ async def handle_all(message: types.Message):
 
                         step = 7
 
-                        # IMG
-                        school_type = "all"
+                        data = {}
 
-                        if i+1 < len(lines) and lines[i+1].startswith("SCHOOL:"):
+                        j = i + 1
 
-                            school_type = lines[i+1].split(":",1)[1].strip()
+                        while j < len(lines):
 
-                            i += 1
-                        if i+1 < len(lines) and lines[i+1].startswith("IMG:"):
+                            if lines[j].startswith("Q:"):
+                                break
 
-                            img = lines[i+1].split(":",1)[1].strip()
+                            if ":" in lines[j]:
+                                key, value = lines[j].split(":", 1)
+                                data[key.strip().upper()] = value.strip()
 
-                            i += 1
-                            step += 1
+                            j += 1
 
-                        # TYPE
-                        if i+1 < len(lines) and lines[i+1].startswith("TYPE:"):
+                        q_type = data.get("TYPE", "text")
+                        img = data.get("IMG")
+                        voice_type = data.get("VOICE", "none")
+                        difficulty = data.get("DIFFICULTY", "easy")
+                        school_type = data.get("SCHOOL", "all")
 
-                            q_type = lines[i+1].split(":",1)[1].strip()
+                        a = data.get("A")
+                        b = data.get("B")
+                        c = data.get("C")
+                        d = data.get("D")
 
-                            i += 1
-                            step += 1
+                        correct = data.get("ANSWER", "").lower()
 
-                        # DIFFICULTY
-                        if i+1 < len(lines) and lines[i+1].startswith("DIFFICULTY:"):
-
-                            difficulty = lines[i+1].split(":",1)[1].strip()
-
-                            i += 1
-                            step += 1
-
-                            #ovoz
-                        if i+1 < len(lines) and lines[i+1].startswith("VOICE:"):
-
-                            voice_type = lines[i+1].split(":",1)[1].strip()
-
-                            i += 1
-                        if i+1 < len(lines) and lines[i+1].startswith("TYPE:"):
-
-                            q_type = (
-                                lines[i+1]
-                                .split(":",1)[1]
-                                .strip()
-                                .lower()
-                            )
-                        a = lines[i+1].split(":",1)[1].strip()
-                        b = lines[i+2].split(":",1)[1].strip()
-                        c = lines[i+3].split(":",1)[1].strip()
-                        d = lines[i+4].split(":",1)[1].strip()
-
-                        correct = lines[i+5].split(":",1)[1].strip().lower()
+                        i = j - 1
 
                         cur.execute("""
                         INSERT INTO questions (
@@ -3087,8 +3065,6 @@ async def handle_all(message: types.Message):
                         ))
 
                         count += 1
-
-                        i += 6
 
                     except Exception as e:
 
