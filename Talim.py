@@ -684,6 +684,113 @@ async def handle_all(message: types.Message):
                     )
                     return
 
+                elif prev_state == "db_school":
+
+                    await message.answer(
+                        "🏫 Maktab turini tanlang:",
+                        reply_markup=base_keyboard([
+                            "all",
+                            "🏫 Oddiy",
+                            "⭐ IDUM",
+                            "🏆 Prezident",
+                            "🏢 Xususiy"
+                        ])
+                    )
+                    return
+
+                elif prev_state == "db_class":
+
+                    school = temp_user[user_id].get("db_school")
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT class, COUNT(*)
+                    FROM questions
+                    WHERE role='O‘quvchi'
+                    AND school_type=%s
+                    GROUP BY class
+                    ORDER BY class
+                    """, (school,))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    classes = [
+                        f"{cls} ({cnt})"
+                        for cls, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "🎓 Sinfni tanlang:",
+                        reply_markup=base_keyboard(classes)
+                    )
+                    return
+
+                elif prev_state == "db_subject":
+
+                    selected_class = temp_user[user_id]["db_class"]
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT subject, COUNT(*)
+                    FROM questions
+                    WHERE class=%s
+                    GROUP BY subject
+                    ORDER BY subject
+                    """, (selected_class,))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    subjects = [
+                        f"{subject} ({cnt})"
+                        for subject, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "📘 Fan tanlang:",
+                        reply_markup=base_keyboard(subjects)
+                    )
+                    return
+
+                elif prev_state == "db_test":
+
+                    selected_class = temp_user[user_id]["db_class"]
+                    subject = temp_user[user_id]["db_subject"]
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT test_type, COUNT(*)
+                    FROM questions
+                    WHERE class=%s
+                    AND subject=%s
+                    GROUP BY test_type
+                    ORDER BY test_type
+                    """, (selected_class, subject))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    tests = [
+                        f"{test_type} ({cnt})"
+                        for test_type, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "📝 Test turini tanlang:",
+                        reply_markup=base_keyboard(tests)
+                    )
+                    return
+
             # history yo‘q bo‘lsa
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
@@ -707,112 +814,6 @@ async def handle_all(message: types.Message):
 
             return
 
-            elif prev_state == "db_school":
-
-                await message.answer(
-                    "🏫 Maktab turini tanlang:",
-                    reply_markup=base_keyboard([
-                        "all",
-                        "🏫 Oddiy",
-                        "⭐ IDUM",
-                        "🏆 Prezident",
-                        "🏢 Xususiy"
-                    ])
-                )
-                return
-
-            elif prev_state == "db_class":
-
-                school = temp_user[user_id].get("db_school")
-
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                SELECT class, COUNT(*)
-                FROM questions
-                WHERE role='O‘quvchi'
-                AND school_type=%s
-                GROUP BY class
-                ORDER BY class
-                """, (school,))
-
-                rows = cur.fetchall()
-
-                conn.close()
-
-                classes = [
-                    f"{cls} ({cnt})"
-                    for cls, cnt in rows
-                ]
-
-                await message.answer(
-                    "🎓 Sinfni tanlang:",
-                    reply_markup=base_keyboard(classes)
-                )
-                return
-
-            elif prev_state == "db_subject":
-
-                selected_class = temp_user[user_id]["db_class"]
-
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                SELECT subject, COUNT(*)
-                FROM questions
-                WHERE class=%s
-                GROUP BY subject
-                ORDER BY subject
-                """, (selected_class,))
-
-                rows = cur.fetchall()
-
-                conn.close()
-
-                subjects = [
-                    f"{subject} ({cnt})"
-                    for subject, cnt in rows
-                ]
-
-                await message.answer(
-                    "📘 Fan tanlang:",
-                    reply_markup=base_keyboard(subjects)
-                )
-                return
-
-            elif prev_state == "db_test":
-
-                selected_class = temp_user[user_id]["db_class"]
-                subject = temp_user[user_id]["db_subject"]
-
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                SELECT test_type, COUNT(*)
-                FROM questions
-                WHERE class=%s
-                AND subject=%s
-                GROUP BY test_type
-                ORDER BY test_type
-                """, (selected_class, subject))
-
-                rows = cur.fetchall()
-
-                conn.close()
-
-                tests = [
-                    f"{test_type} ({cnt})"
-                    for test_type, cnt in rows
-                ]
-
-                await message.answer(
-                    "📝 Test turini tanlang:",
-                    reply_markup=base_keyboard(tests)
-                )
-                return
 
         # ===== TEACHER TEST =====
         elif message.text == "🧠 Bilimni sinash":
