@@ -2141,9 +2141,9 @@ async def handle_all(message: types.Message):
                         temp_user[user_id]["role"]
                     )
                 )
-
-                user_state[user_id] = None
+                
                 user_test.pop(user_id, None)
+                user_state[user_id] = None
 
                 return
 
@@ -3316,8 +3316,10 @@ async def test_buttons(call: types.CallbackQuery):
         return
     await call.answer()
 
+    test = user_test[user_id]
+
     if call.data == "finish":
-        test = active_tests.get(user_id)
+        test = user_test.get(user_id)
 
         if not test:
             return
@@ -3330,7 +3332,8 @@ async def test_buttons(call: types.CallbackQuery):
             f"Natija: {score}/{total}"
         )
 
-        del active_tests[user_id]
+        user_test.pop(user_id, None)
+        user_state[user_id] = None
 
         return
 
@@ -3392,10 +3395,12 @@ async def test_buttons(call: types.CallbackQuery):
     test = user_test[user_id]
 
     if test.get("answered"):
+        await call.answer(
+            "Bu savolga javob berilgan ✅"
+        )
         return
 
     test["answered"] = True
-
     try:
         if test.get("timer_task"):
             test["timer_task"].cancel()
@@ -3404,20 +3409,6 @@ async def test_buttons(call: types.CallbackQuery):
 
     q = test["questions"][test["index"]]
     old_q = q
-
-    if test.get("answered", False):
-        await call.answer(
-            "Bu savolga javob berilgan ✅"
-        )
-        return
-
-    test["answered"] = True
-
-    if test.get("processing"):
-        await call.answer("⏳ Kuting...")
-        return
-
-    test["processing"] = True
 
     user_ans = call.data
     correct = old_q[10].lower()
