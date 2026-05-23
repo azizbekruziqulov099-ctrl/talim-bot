@@ -3343,7 +3343,7 @@ async def test_buttons(call: types.CallbackQuery):
         return
   
     if call.data == "finish_yes":
-
+        pass
     if test.get("expired", False):
         await call.answer(
             "⏰ Vaqt tugagan"
