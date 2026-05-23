@@ -349,14 +349,6 @@ def get_main_keyboard(role=None):
         resize_keyboard=True
     )
 
-def test_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="⬅️ Orqaga"), KeyboardButton(text="➡️ Keyingi")]
-        ],
-        resize_keyboard=True
-    )
-
 def get_stats_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -2038,10 +2030,10 @@ async def handle_all(message: types.Message):
                 )
 
             return
-        
+
         elif user_state.get(message.from_user.id) == "test":
 
-            if message.text not in ["➡️", "❌ Testni tugatish"]:
+            if message.text not in ["❌ Testni tugatish"]:
                 await message.answer(
                     "👇 Javobni faqat tugmalar orqali tanlang."
                 )
@@ -2185,7 +2177,12 @@ async def handle_all(message: types.Message):
                                     text=q[9],
                                     callback_data="d"
                                 )
-                            ]
+                            ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                         ]
                     )
 
@@ -2245,7 +2242,12 @@ async def handle_all(message: types.Message):
                                     text=q[9],
                                     callback_data="d"
                                 )
-                            ]
+                            ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                         ]
                     )
                 msg = await bot.send_message(
@@ -2514,7 +2516,12 @@ async def handle_all(message: types.Message):
                                 text=q[9],
                                 callback_data="d"
                             )
-                        ]
+                        ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                     ]
                 )
 
@@ -2574,7 +2581,12 @@ async def handle_all(message: types.Message):
                                 text=q[9],
                                 callback_data="d"
                             )
-                        ]
+                        ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                     ]
                 )
             msg = await bot.send_message(
@@ -2876,6 +2888,11 @@ async def handle_all(message: types.Message):
                             text=q[9],
                             callback_data="d"
                         )
+                    ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
                     ]
                 ]
             )
@@ -3550,18 +3567,48 @@ async def handle_all(message: types.Message):
 async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
+
+    test = user_test.get(user_id)
+
+    if not test:
+        return
+
+    # callback lock
+    if test.get("processing"):
+        await call.answer("⏳ Kuting...", show_alert=False)
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except:
+            pass
+        return
+
+    test["processing"] = True
+
     if user_id not in user_test:
         await call.answer(
             "♻️ Bot yangilangan. Testni qayta boshlang.",
             show_alert=True
         )
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except:
+            pass
         return
     await call.answer()
+
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except:
+        pass
 
     if test.get("expired", False):
         await call.answer(
             "⏰ Vaqt tugagan"
         )
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except:
+            pass
         return
 
 
@@ -3637,6 +3684,10 @@ async def test_buttons(call: types.CallbackQuery):
         await call.answer(
             "Bu savolga javob berilgan ✅"
         )
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except:
+            pass
         return
 
     test["answered"] = True
@@ -3724,6 +3775,7 @@ async def test_buttons(call: types.CallbackQuery):
 
             text = "Savol rasmi yuqorida ⬆️"
 
+
         else:
 
             text = q[5]
@@ -3780,6 +3832,11 @@ async def test_buttons(call: types.CallbackQuery):
                             text=q[9],
                             callback_data="d"
                         )
+                    ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
                     ]
                 ]
             )
@@ -3787,6 +3844,24 @@ async def test_buttons(call: types.CallbackQuery):
             f"{result_text}\n\n{text}",
             reply_markup=markup
         )  
+        if call.data == "finish":
+
+            test = active_tests.get(user_id)
+
+            if not test:
+                return
+
+            score = test["score"]
+            total = len(test["questions"])
+
+            await call.message.answer(
+                f"📊 Test yakunlandi\n\n"
+                f"Natija: {score}/{total}"
+            )
+
+            del active_tests[user_id]
+
+            return
         if q[15] in ["uz", "ru", "en"]:
 
             voice = "uz-UZ-SardorNeural"
@@ -4024,6 +4099,11 @@ async def question_timer(user_id, limit):
                             text=q[9],
                             callback_data="d"
                         )
+                    ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
                     ]
                 ]
             )
@@ -4054,7 +4134,12 @@ async def question_timer(user_id, limit):
                         text=q[9],
                         callback_data="d"
                     )
-                ]
+                ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
             ]
         )
 
