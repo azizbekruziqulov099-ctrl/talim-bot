@@ -733,178 +733,48 @@ async def handle_all(message: types.Message):
             if message.from_user.id not in ADMINS:
                 return
 
+            await message.answer(
+                "📚 Savollar boshqaruvi",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="📖 Savollarni ko‘rish")],
+                        [KeyboardButton(text="🗑 Bitta savolni o‘chirish")],
+                        [KeyboardButton(text="🗑 Blokni o‘chirish")],
+                        [KeyboardButton(text="📊 Savollar statistikasi")],
+                        [KeyboardButton(text=BACK)]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+
+            return
+
+        elif message.text == "📖 Savollarni ko‘rish":
+
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
-            text = "📚 BILIMNI SINASH bazasi\n"
-
-            # ===== O'QUVCHI =====
-            for cls in CLASSES:
-
-                subjects = SUBJECTS_BY_CLASS.get(cls, [])
-
-                flat_subjects = []
-
-                for row in subjects:
-                    flat_subjects.extend(row)
-
-                row_text = []
-
-                for subject in flat_subjects:
-
-                    cur.execute("""
-                    SELECT COUNT(*)
-                    FROM questions
-                    WHERE class=%s AND subject=%s
-                    """, (cls, subject))
-
-                    count = cur.fetchone()[0]
-
-                    short = subject[:4]
-
-                    row_text.append(f"{short}:{count}")
-
-                text += f"\n\n🎓 {cls}\n"
-                text += " ".join(row_text)
-
-            # ===== O'QITUVCHI =====
-            text += "\n\n━━━━━━━━━━\n"
-            text += "👨‍🏫 O‘QITUVCHI\n"
-
-            for level, subjects in SUBJECTS_BY_LEVEL.items():
-
-                row_text = []
-
-                for subject in subjects:
-
-                    cur.execute("""
-                    SELECT COUNT(*)
-                    FROM questions
-                    WHERE level=%s AND subject=%s
-                    """, (level, subject))
-
-                    count = cur.fetchone()[0]
-
-                    short = subject[:4]
-
-                    row_text.append(f"{short}:{count}")
-
-                text += f"\n\n{level}\n"
-                text += " ".join(row_text)
-
-            # ===== SO'ROVNOMA =====
             cur.execute("""
-            SELECT COUNT(*)
-            FROM surveys
+            SELECT DISTINCT class
+            FROM questions
+            WHERE role='O‘quvchi'
+            ORDER BY class
             """)
 
-            survey_count = cur.fetchone()[0]
-
-            text += (
-                f"\n\n━━━━━━━━━━\n"
-                f"📋 So‘rovnoma: {survey_count} ta"
-            )
+            classes = [x[0] for x in cur.fetchall()]
 
             conn.close()
 
-            await message.answer(text)
-
-            return
-
-        elif message.text == "/addsurvey" and message.from_user.id in ADMINS:
-
-            admin_state[message.from_user.id] = "survey_add"
+            user_state[user_id] = "view_questions_class"
 
             await message.answer(
-                "Survey yuboring"
+                "Sinf tanlang:",
+                reply_markup=base_keyboard(classes)
             )
 
             return
 
-        elif admin_state.get(message.from_user.id) == "survey_add":
 
-            text = message.text.strip()
-
-            blocks = text.replace("\r", "").split("\n\n")
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            count = 0
-
-            for block in blocks:
-
-                lines = [
-                    l.strip().replace("\r", "")
-                    for l in block.split("\n")
-                    if l.strip()
-                ]
-
-                if len(lines) < 7:
-                    continue
-
-                try:
-
-                    role = lines[0].replace("ROLE:", "").strip()
-                    question = lines[1].replace("QUESTION:", "").strip()
-                    q_type = lines[2].replace("TYPE:", "").strip()
-
-                    a = lines[3].replace("A:", "").strip()
-                    b = lines[4].replace("B:", "").strip()
-                    c = lines[5].replace("C:", "").strip()
-                    d = lines[6].replace("D:", "").strip()
-
-                    cur.execute("""
-                    INSERT INTO surveys (
-                        role,
-                        question,
-                        q_type,
-                        a,
-                        b,
-                        c,
-                        d
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        role,
-                        question,
-                        q_type,
-                        a,
-                        b,
-                        c,
-                        d
-                    ))
-
-                    count += 1
-
-                except Exception as e:
-                    print(e)
-
-            conn.commit()
-            conn.close()
-
-            admin_state[message.from_user.id] = None
-
-            await message.answer(
-                f"✅ {count} ta survey qo‘shildi"
-            )
-
-            return
-
-    # ===== ADMIN MAKTAB =====
-        elif message.text == "🏫 Maktab statistikasi":
-
-            if message.from_user.id not in ADMINS:
-                return
-
-            user_state[message.from_user.id] = "admin_region"
-
-            await message.answer(
-                "Viloyat tanlang:",
-                reply_markup=base_keyboard(REGIONS.keys())
-            )
-
-            return
 
         # ===== SURVEY RESULTS =====
         elif message.text == "📋 So‘rovnoma natijalari":
