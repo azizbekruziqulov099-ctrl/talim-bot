@@ -755,21 +755,94 @@ async def handle_all(message: types.Message):
             cur = conn.cursor()
 
             cur.execute("""
-            SELECT DISTINCT class
+            SELECT DISTINCT school_type
             FROM questions
             WHERE role='O‘quvchi'
-            ORDER BY class
+            ORDER BY school_type
             """)
 
-            classes = [x[0] for x in cur.fetchall()]
-
+            rows = cur.fetchall()
             conn.close()
 
-            user_state[user_id] = "view_questions_class"
+            schools = [r[0] for r in rows if r[0]]
+
+            user_state[user_id] = "view_school"
 
             await message.answer(
-                "Sinf tanlang:",
-                reply_markup=base_keyboard(classes)
+                "Maktab turini tanlang:",
+                reply_markup=base_keyboard(schools)
+            )
+
+            return
+
+        elif user_state.get(user_id) == "view_class":
+
+            selected_class = message.text.split(" (")[0]
+
+            temp_user[user_id]["view_class"] = selected_class
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT subject, COUNT(*)
+            FROM questions
+            WHERE class=%s
+            GROUP BY subject
+            ORDER BY subject
+            """, (selected_class,))
+
+            rows = cur.fetchall()
+            conn.close()
+
+            subjects = [
+                f"{subject} ({cnt})"
+                for subject, cnt in rows
+            ]
+
+            user_state[user_id] = "view_subject"
+
+            await message.answer(
+                "Fan tanlang:",
+                reply_markup=base_keyboard(subjects)
+            )
+
+            return
+
+        elif user_state.get(user_id) == "view_subject":
+
+            subject = message.text.split(" (")[0]
+
+            temp_user[user_id]["view_subject"] = subject
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT test_type, COUNT(*)
+            FROM questions
+            WHERE class=%s
+            AND subject=%s
+            GROUP BY test_type
+            ORDER BY test_type
+            """, (
+                temp_user[user_id]["view_class"],
+                subject
+            ))
+
+            rows = cur.fetchall()
+            conn.close()
+
+            tests = [
+                f"{test} ({cnt})"
+                for test, cnt in rows
+            ]
+
+            user_state[user_id] = "view_test"
+
+            await message.answer(
+                "Test turini tanlang:",
+                reply_markup=base_keyboard(tests)
             )
 
             return
