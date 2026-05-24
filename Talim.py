@@ -3101,6 +3101,7 @@ async def handle_all(message: types.Message):
                         question = lines[i][2:].strip()
 
                         img = None
+                        topic = ""
                         q_type = "single"
                         difficulty = "easy"
                         voice_type = "none"
@@ -3124,6 +3125,7 @@ async def handle_all(message: types.Message):
 
                         q_type = data.get("TYPE", "text")
                         img = data.get("IMG") or data.get("IMAGE")
+                        topic = data.get("TOPIC", "")
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
@@ -3144,6 +3146,7 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
+                            topic,
                             a,
                             b,
                             c,
@@ -3156,13 +3159,14 @@ async def handle_all(message: types.Message):
                             voice_type,
                             school_type
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
                             role,
                             cls,
                             level,
                             subject,
                             question,
+                            topic,
                             a,
                             b,
                             c,
