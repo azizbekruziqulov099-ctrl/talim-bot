@@ -3860,7 +3860,7 @@ async def question_timer(user_id, limit):
                     photo=row[0]
                 )      
              # LATEX
-        if q[13] == "latex":
+        if q[13] and "latex" in str(q[13]).lower():
 
             latex = f"""
         {q[5]}
@@ -3886,43 +3886,8 @@ async def question_timer(user_id, limit):
             )
 
             text = "Savol rasmi yuqorida ⬆️"
-
-            text = "Savol rasmi yuqorida ⬆️"
-            markup = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="A",
-                            callback_data="a"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="B",
-                            callback_data="b"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="C",
-                            callback_data="c"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="D",
-                            callback_data="d"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="❌ Testni tugatish",
-                            callback_data="finish"
-                        )
-                    ]
-                ]
-            )
-        if q[13] == "latex":
+            
+        if q[13] and "latex" in str(q[13]).lower():
             text = "Savol rasmi yuqorida ⬆️"
         else:
             text = q[5]
