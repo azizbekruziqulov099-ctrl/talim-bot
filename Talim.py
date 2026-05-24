@@ -3101,14 +3101,14 @@ async def handle_all(message: types.Message):
                         question = lines[i][2:].strip()
 
                         img = None
-                        category = ""
-                        topic = ""
-                        subtopic = ""
-                        framework = ""
-                        skill = ""
                         q_type = "single"
                         difficulty = "easy"
                         voice_type = "none"
+                        topic = ""
+                        category = ""
+                        subtopic = ""
+                        framework = ""
+                        skill = ""
 
                         step = 7
 
@@ -3129,7 +3129,7 @@ async def handle_all(message: types.Message):
 
                         q_type = data.get("TYPE", "text")
                         img = data.get("IMG") or data.get("IMAGE")
-                        category = ata.get("CATEGORY","")
+                        category = data.get("CATEGORY","")
                         topic = data.get("TOPIC", "")
                         subtopic = data.get("SUBTOPIC","")
                         framework = date.get("FRAMEWORK","")
@@ -3167,9 +3167,9 @@ async def handle_all(message: types.Message):
                             school_type,
                             topic,
                             category,
-                            suptopic,
-                            framwork,
-                            skill,
+                            subtopic,
+                            framework,
+                            skill
                         )
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
@@ -3193,7 +3193,7 @@ async def handle_all(message: types.Message):
                             category,
                             subtopic,
                             framework,
-                            skill,
+                            skill
                         ))
 
                         count += 1
