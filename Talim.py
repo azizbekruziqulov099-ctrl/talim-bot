@@ -2227,17 +2227,7 @@ async def handle_all(message: types.Message):
            # LATEX
             if q[13] and "latex" in str(q[13]).lower():
 
-                latex = f"""
-            {q[5]}
-
-            A) {q[6]}
-
-            B) {q[7]}
-
-            C) {q[8]}
-
-            D) {q[9]}
-            """
+                latex = q[5]
 
                 encoded = quote(
                     f"\\dpi{{300}} \\huge {latex}"
@@ -2604,17 +2594,7 @@ async def handle_all(message: types.Message):
             # LATEX
             if q[13] and "latex" in str(q[13]).lower():
 
-                latex = f"""
-                {q[5]}
-
-                A) {q[6]}
-
-                B) {q[7]}
-
-                C) {q[8]}
-
-                D) {q[9]}
-                """
+                latex = q[5]
 
                 encoded = quote(
                     f"\\dpi{{300}} \\huge {latex}"
@@ -3574,17 +3554,7 @@ async def test_buttons(call: types.CallbackQuery):
                 )
         if q[13] and "latex" in str(q[13]).lower():
 
-            latex = f"""
-            {q[5]}
-
-            A) {q[6]}
-
-            B) {q[7]}
-
-            C) {q[8]}
-
-            D) {q[9]}
-            """
+            latex = q[5]
 
             encoded = quote(f"\\dpi{{300}} \\huge {latex}")
 
@@ -3862,17 +3832,7 @@ async def question_timer(user_id, limit):
              # LATEX
         if q[13] and "latex" in str(q[13]).lower():
 
-            latex = f"""
-        {q[5]}
-
-        A) {q[6]}
-
-        B) {q[7]}
-
-        C) {q[8]}
-
-        D) {q[9]}
-        """
+            latex = q[5]
 
             encoded = quote(
                 f"\\dpi{{300}} \\huge {latex}"
