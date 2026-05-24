@@ -2224,14 +2224,24 @@ async def handle_all(message: types.Message):
             elif difficulty == "hard":
                 limit = 120
 
-                # LATEX
+           # LATEX
             if q[13] and "latex" in str(q[13]).lower():
 
-                latex = q[5]
+                latex = f"""
+            {q[5]}
 
-                encoded = quote(f"\\dpi{{300}} \\huge {latex}")
+            A) {q[6]}
 
-                url = f"https://latex.codecogs.com/png.image?{encoded}"
+            B) {q[7]}
+
+            C) {q[8]}
+
+            D) {q[9]}
+            """
+
+                encoded = quote(
+                    f"\\dpi{{300}} \\huge {latex}"
+                )
 
                 await bot.send_photo(
                     message.chat.id,
@@ -2594,7 +2604,17 @@ async def handle_all(message: types.Message):
             # LATEX
             if q[13] and "latex" in str(q[13]).lower():
 
-                latex = q[5]
+                latex = f"""
+                {q[5]}
+
+                A) {q[6]}
+
+                B) {q[7]}
+
+                C) {q[8]}
+
+                D) {q[9]}
+                """
 
                 encoded = quote(
                     f"\\dpi{{300}} \\huge {latex}"
@@ -3375,9 +3395,29 @@ async def test_buttons(call: types.CallbackQuery):
         return
 
     if call.data == "finish_no":
+
+        await call.message.delete()
+
         return
   
     if call.data == "finish_yes":
+
+        try:
+            if test.get("timer_task"):
+                test["timer_task"].cancel()
+        except:
+            pass
+
+        score = test["score"]
+        total = len(test["questions"])
+
+        await call.message.answer(
+            f"🏁 Test tugadi\n\n📊 Natija: {score}/{total}"
+        )
+
+        user_test.pop(user_id, None)
+        user_state[user_id] = None
+
         return
     if test.get("expired", False):
         await call.answer(
@@ -3534,7 +3574,17 @@ async def test_buttons(call: types.CallbackQuery):
                 )
         if q[13] and "latex" in str(q[13]).lower():
 
-            latex = q[5]
+            latex = f"""
+            {q[5]}
+
+            A) {q[6]}
+
+            B) {q[7]}
+
+            C) {q[8]}
+
+            D) {q[9]}
+            """
 
             encoded = quote(f"\\dpi{{300}} \\huge {latex}")
 
@@ -3812,9 +3862,21 @@ async def question_timer(user_id, limit):
              # LATEX
         if q[13] == "latex":
 
-            latex = q[5]
+            latex = f"""
+        {q[5]}
 
-            encoded = quote(f"\\dpi{{300}} \\huge {latex}")
+        A) {q[6]}
+
+        B) {q[7]}
+
+        C) {q[8]}
+
+        D) {q[9]}
+        """
+
+            encoded = quote(
+                f"\\dpi{{300}} \\huge {latex}"
+            )
 
             url = f"https://latex.codecogs.com/png.image?{encoded}"
 
@@ -3825,47 +3887,45 @@ async def question_timer(user_id, limit):
 
             text = "Savol rasmi yuqorida ⬆️"
 
-            text = (
-                f"{test['index']+1}/{len(test['questions'])}-savol\n\n"
-                f"A) {q[6]}\n"
-                f"B) {q[7]}\n"
-                f"C) {q[8]}\n"
-                f"D) {q[9]}"
-            )
+            text = "Savol rasmi yuqorida ⬆️"
             markup = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text=q[6],
+                            text="A",
                             callback_data="a"
                         )
                     ],
                     [
                         InlineKeyboardButton(
-                            text=q[7],
+                            text="B",
                             callback_data="b"
                         )
                     ],
                     [
                         InlineKeyboardButton(
-                            text=q[8],
+                            text="C",
                             callback_data="c"
                         )
                     ],
                     [
                         InlineKeyboardButton(
-                            text=q[9],
+                            text="D",
                             callback_data="d"
                         )
-                    ],[
+                    ],
+                    [
                         InlineKeyboardButton(
                             text="❌ Testni tugatish",
                             callback_data="finish"
-                        ) 
+                        )
                     ]
                 ]
             )
-        text = f"{q[5]}"
+        if q[13] == "latex":
+            text = "Savol rasmi yuqorida ⬆️"
+        else:
+            text = q[5]
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
