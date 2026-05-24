@@ -3129,11 +3129,11 @@ async def handle_all(message: types.Message):
 
                         q_type = data.get("TYPE", "text")
                         img = data.get("IMG") or data.get("IMAGE")
-                        category = data.get("CATEGORY","")
+                        category = data.get("CATEGORY", "")
                         topic = data.get("TOPIC", "")
-                        subtopic = data.get("SUBTOPIC","")
-                        framework = data.get("FRAMEWORK","")
-                        skill = data.get("SKILL","")
+                        subtopic = data.get("SUBTOPIC", "")
+                        framework = data.get("FRAMEWORK", "")
+                        skill = data.get("SKILL", "")
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
@@ -3513,13 +3513,63 @@ async def test_buttons(call: types.CallbackQuery):
 
     correct = old_q[10].lower()
 
+    subject = old_q[4]
+
+    topic = old_q[17]
+    category = old_q[18]
+    subtopic = old_q[19]
+
     if user_ans == correct:
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO student_progress
+        (user_id, subject, category, topic, subtopic, correct, wrong)
+        VALUES (%s,%s,%s,%s,%s,1,0)
+        ON CONFLICT (user_id, subject, category, topic, subtopic)
+        DO UPDATE SET
+        correct = student_progress.correct + 1,
+        last_update = NOW()
+        """, (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        ))
+
+        conn.commit()
+        conn.close()
 
         test["score"] += 1
 
         result_text = "🎉 ✅ To‘g‘ri"
 
     else:
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO student_progress
+        (user_id, subject, category, topic, subtopic, correct, wrong)
+        VALUES (%s,%s,%s,%s,%s,0,1)
+        ON CONFLICT (user_id, subject, category, topic, subtopic)
+        DO UPDATE SET
+        wrong = student_progress.wrong + 1,
+        last_update = NOW()
+        """, (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        ))
+
+        conn.commit()
+        conn.close()
 
         correct_text = ""
 
@@ -3534,6 +3584,7 @@ async def test_buttons(call: types.CallbackQuery):
 
         elif correct == "d":
             correct_text = old_q[9]
+
         result_text = (
             f"❌ Noto‘g‘ri\n\n"
             f"✅ To‘g‘ri javob: {correct_text}"
