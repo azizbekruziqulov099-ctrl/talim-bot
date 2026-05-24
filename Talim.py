@@ -3101,7 +3101,11 @@ async def handle_all(message: types.Message):
                         question = lines[i][2:].strip()
 
                         img = None
+                        category = ""
                         topic = ""
+                        subtopic = ""
+                        framework = ""
+                        skill = ""
                         q_type = "single"
                         difficulty = "easy"
                         voice_type = "none"
@@ -3125,7 +3129,11 @@ async def handle_all(message: types.Message):
 
                         q_type = data.get("TYPE", "text")
                         img = data.get("IMG") or data.get("IMAGE")
+                        category = ata.get("CATEGORY","")
                         topic = data.get("TOPIC", "")
+                        subtopic = data.get("SUBTOPIC","")
+                        framework = date.get("FRAMEWORK","")
+                        skill = ("SKILL","")
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
@@ -3146,7 +3154,11 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
+                            category,
                             topic,
+                            suptopic,
+                            framwork,
+                            skill,
                             a,
                             b,
                             c,
@@ -3166,7 +3178,11 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
+                            category,
                             topic,
+                            subtopic,
+                            framework,
+                            skill,
                             a,
                             b,
                             c,
