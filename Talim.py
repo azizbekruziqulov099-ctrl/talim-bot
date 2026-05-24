@@ -1803,7 +1803,8 @@ async def handle_all(message: types.Message):
             )
 
             return
-        # ===== MAKTABNI ALMASHTIRISH =====
+
+# ===== MAKTABNI ALMASHTIRISH =====
 
         elif message.text == "🏫 Maktabni almashtirish":
 
@@ -1832,19 +1833,48 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(user_id) == "change_school":
 
-            school = (
-                f"{temp_user[user_id]['new_school_type']} - "
-                f"{message.text}"
+            temp_user[user_id]["new_school"] = (
+                f"{temp_user[user_id]['new_school_type']} - {message.text}"
             )
+
+            school_type = temp_user[user_id]["new_school_type"]
+
+            if school_type == "🏫 Oddiy":
+                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
+
+            elif school_type == "⭐ IDUM":
+                classes = [c for c in CLASSES if "⭐ IDUM" in c]
+
+            elif school_type == "🏆 Prezident":
+                classes = [c for c in CLASSES if "🏆 Prezident" in c]
+
+            else:
+                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
+
+            user_state[user_id] = "change_school_class"
+
+            await message.answer(
+                "Sinfni tanlang:",
+                reply_markup=base_keyboard(classes)
+            )
+
+            return
+
+
+        elif user_state.get(user_id) == "change_school_class":
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
             cur.execute("""
             UPDATE users
-            SET school=%s
+            SET school=%s, class=%s
             WHERE user_id=%s
-            """, (school, user_id))
+            """, (
+                temp_user[user_id]["new_school"],
+                message.text,
+                user_id
+            ))
 
             conn.commit()
 
@@ -1863,10 +1893,13 @@ async def handle_all(message: types.Message):
             user_state[user_id] = None
 
             await message.answer(
-                f"✅ Maktab o'zgartirildi\nRole: {role}"
+                "✅ Maktab va sinf o‘zgartirildi",
+                reply_markup=get_main_keyboard(role)
             )
 
             return
+
+
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
 
@@ -1905,6 +1938,8 @@ async def handle_all(message: types.Message):
             )
 
             return
+
+
         elif user_state.get(message.from_user.id) == "change_class":
 
             conn = psycopg2.connect(DATABASE_URL)
