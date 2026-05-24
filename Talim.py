@@ -1885,17 +1885,17 @@ async def handle_all(message: types.Message):
 
             school = row[0] if row else ""
 
-            if "Oddiy" in school:
-                classes = [c for c in CLASSES if "Oddiy" in c]
+            if "🏫 Oddiy" in school:
+                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
 
-            elif "IDUM" in school:
-                classes = [c for c in CLASSES if "IDUM" in c]
+            elif "⭐ IDUM" in school:
+                classes = [c for c in CLASSES if "⭐ IDUM" in c]
 
-            elif "Prezident" in school:
-                classes = [c for c in CLASSES if "Prezident" in c]
+            elif "🏆 Prezident" in school:
+                classes = [c for c in CLASSES if "🏆 Prezident" in c]
 
             else:
-                classes = [c for c in CLASSES if "Xususiy" in c]
+                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
 
             user_state[message.from_user.id] = "change_class"
 
@@ -1992,7 +1992,7 @@ async def handle_all(message: types.Message):
                 await message.answer("Fan topilmadi ❌")
                 return
 
-            # nested list -> oddiy list
+            # nested list -> 🏫 Oddiy list
             flat_subjects = []
 
             for row in subjects:
@@ -2466,13 +2466,13 @@ async def handle_all(message: types.Message):
             # O‘quvchi
             else:
 
-                if "Oddiy" in temp_user[user_id]["class"]:
+                if "🏫 Oddiy" in temp_user[user_id]["class"]:
                     school_type = "🏫 Oddiy"
-                elif "IDUM" in temp_user[user_id]["class"]:
+                elif "⭐ IDUM" in temp_user[user_id]["class"]:
                     school_type = "⭐ IDUM"
-                elif "Prezident" in temp_user[user_id]["class"]:
+                elif "🏆 Prezident" in temp_user[user_id]["class"]:
                     school_type = "🏆 Prezident"
-                elif "Xususiy" in temp_user[user_id]["class"]:
+                elif "🏢 Xususiy" in temp_user[user_id]["class"]:
                     school_type = "🏢 Xususiy"
                 else:
                     school_type = "all"
@@ -2702,15 +2702,15 @@ async def handle_all(message: types.Message):
                 school_type = temp_user[message.from_user.id]["school_type"]
 
                 if school_type == "🏫 Oddiy davlat maktabi":
-                    classes = [c for c in CLASSES if "Oddiy" in c]
+                    classes = [c for c in CLASSES if "🏫 Oddiy" in c]
                 elif school_type == "⭐ Ixtisoslashgan (IDUM)":
-                    classes = [c for c in CLASSES if "IDUM" in c]
+                    classes = [c for c in CLASSES if "⭐ IDUM" in c]
 
                 elif school_type == "🏆 Prezident maktabi":
-                    classes = [c for c in CLASSES if "Prezident" in c]
+                    classes = [c for c in CLASSES if "🏆 Prezident" in c]
 
                 else:
-                    classes = [c for c in CLASSES if "Xususiy" in c]
+                    classes = [c for c in CLASSES if "🏢 Xususiy" in c]
 
                 await message.answer(
                     "Sinf tanlang:",
@@ -3243,11 +3243,11 @@ async def handle_all(message: types.Message):
             if message.text == "🏫 Oddiy davlat maktabi":
                 await message.answer("Maktab raqamini kiriting (masalan: 23)")
             elif message.text == "⭐ Ixtisoslashgan (IDUM)":
-                await message.answer("IDUM maktab raqamini kiriting (masalan: 1, 2, ...)")
+                await message.answer("⭐ IDUM maktab raqamini kiriting (masalan: 1, 2, ...)")
             elif message.text == "🏆 Prezident maktabi":
-                await message.answer("Prezident maktabi nomini yozing (masalan: Toshkent PM)")
+                await message.answer("🏆 Prezident maktabi nomini yozing (masalan: Toshkent PM)")
             else:
-                await message.answer("Xususiy maktab nomini yozing")
+                await message.answer("🏢 Xususiy maktab nomini yozing")
             return
             
 
