@@ -1,4 +1,5 @@
 import asyncio
+from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
@@ -16,15 +17,13 @@ import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
 import os
-
-API_TOKEN = "8673749392:AAFCVC86jOhSKh4w4JUe3ZhCmLPbe16kbEg"
-
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
-ADMINS = [401251407]  
+ADMINS = [401251407]
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
@@ -2365,6 +2364,14 @@ async def handle_all(message: types.Message):
                     ]
                     ]
                 )
+
+            
+            await bot.send_message(
+                message.chat.id,
+                "📚 Test boshlandi",
+                reply_markup=ReplyKeyboardRemove()
+            )
+
             msg = await bot.send_message(
                 message.chat.id,
                 f"{result_text}\n\n{text}",
@@ -3116,7 +3123,7 @@ async def handle_all(message: types.Message):
                             j += 1
 
                         q_type = data.get("TYPE", "text")
-                        img = data.get("IMG")
+                        img = data.get("IMG") or data.get("IMAGE")
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
@@ -3632,6 +3639,11 @@ async def test_buttons(call: types.CallbackQuery):
                     ]
                 ]
             )
+        await call.message.answer(
+            " ",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
         msg = await call.message.answer(
             f"{result_text}\n\n{text}",
             reply_markup=markup
