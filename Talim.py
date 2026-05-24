@@ -3133,7 +3133,7 @@ async def handle_all(message: types.Message):
                         topic = data.get("TOPIC", "")
                         subtopic = data.get("SUBTOPIC","")
                         framework = data.get("FRAMEWORK","")
-                        skill = ("SKILL","")
+                        skill = data.get("SKILL","")
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
