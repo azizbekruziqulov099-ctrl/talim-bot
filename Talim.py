@@ -3154,11 +3154,6 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
-                            category,
-                            topic,
-                            suptopic,
-                            framwork,
-                            skill,
                             a,
                             b,
                             c,
@@ -3169,7 +3164,12 @@ async def handle_all(message: types.Message):
                             type,
                             img,
                             voice_type,
-                            school_type
+                            school_type,
+                            topic,
+                            category,
+                            suptopic,
+                            framwork,
+                            skill,
                         )
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
@@ -3178,11 +3178,6 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
-                            category,
-                            topic,
-                            subtopic,
-                            framework,
-                            skill,
                             a,
                             b,
                             c,
@@ -3193,7 +3188,12 @@ async def handle_all(message: types.Message):
                             q_type,
                             img,
                             voice_type,
-                            school_type
+                            school_type,
+                            topic,
+                            category,
+                            subtopic,
+                            framework,
+                            skill,
                         ))
 
                         count += 1
