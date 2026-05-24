@@ -3853,38 +3853,65 @@ async def question_timer(user_id, limit):
             text = q[5]
 
         markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=q[6],
-                        callback_data="a"
+                        inline_keyboard=[
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 Savol",
+                                    callback_data="listen_q"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 A",
+                                    callback_data="listen_a"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[6],
+                                    callback_data="a"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 B",
+                                    callback_data="listen_b"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[7],
+                                    callback_data="b"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 C",
+                                    callback_data="listen_c"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[8],
+                                    callback_data="c"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 D",
+                                    callback_data="listen_d"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[9],
+                                    callback_data="d"
+                                )
+                            ],[
+                                InlineKeyboardButton(
+                                    text="❌ Testni tugatish",
+                                    callback_data="finish"
+                                ) 
+                            ]
+                        ]
                     )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[7],
-                        callback_data="b"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[8],
-                        callback_data="c"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[9],
-                        callback_data="d"
-                    )
-                ],[
-                        InlineKeyboardButton(
-                            text="❌ Testni tugatish",
-                            callback_data="finish"
-                        ) 
-                    ]
-            ]
-        )
 
         await bot.send_message(
             user_id,
