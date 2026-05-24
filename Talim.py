@@ -1839,13 +1839,13 @@ async def handle_all(message: types.Message):
 
             school_type = temp_user[user_id]["new_school_type"]
 
-            if school_type == "🏫 Oddiy":
+            if school_type == "🏫 Oddiy davlat maktabi":
                 classes = [c for c in CLASSES if "🏫 Oddiy" in c]
 
-            elif school_type == "⭐ IDUM":
+            elif school_type == "⭐ Ixtisoslashgan (IDUM)":
                 classes = [c for c in CLASSES if "⭐ IDUM" in c]
 
-            elif school_type == "🏆 Prezident":
+            elif school_type == "🏆 Prezident maktabi":
                 classes = [c for c in CLASSES if "🏆 Prezident" in c]
 
             else:
