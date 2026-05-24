@@ -3711,7 +3711,7 @@ async def test_buttons(call: types.CallbackQuery):
                 ]
             )
         await call.message.answer(
-            " ",
+            "keyingi savol",
             reply_markup=ReplyKeyboardRemove()
         )
 
