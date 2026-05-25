@@ -694,6 +694,7 @@ async def handle_all(message: types.Message):
 
             if cell.value is None:
                 headers.append("")
+
             else:
                 headers.append(
                     str(cell.value)
@@ -724,9 +725,30 @@ async def handle_all(message: types.Message):
 
         if rows:
 
+            row = rows[0]
+
             await message.answer(
                 "Birinchi qator:\n\n" +
-                str(rows[0])
+                str(row)
+            )
+
+            grade = row[0]
+
+            subject = str(row[1]).upper()
+
+            quarter = f"Q{row[2]}"
+
+            topic_code = (
+                f"{subject}-"
+                f"{quarter}-"
+                f"B01-"
+                f"BL01-"
+                f"M01-"
+                f"S001"
+            )
+
+            await message.answer(
+                f"Test kodi:\n{topic_code}"
             )
 
         return
