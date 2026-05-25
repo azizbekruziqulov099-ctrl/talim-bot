@@ -1523,7 +1523,7 @@ async def handle_all(message: types.Message):
             cur = conn.cursor()
 
             cur.execute("""
-            SELECT region FROM users
+            SELECT region users
             WHERE user_id=%s
             """, (message.from_user.id,))
 
@@ -3091,7 +3091,28 @@ async def handle_all(message: types.Message):
                         age_group = ""
                         exam_type = ""
 
-                        step = 7
+                        # YANGI MAYDONLAR
+                        topic_code = ""
+                        bloom = ""
+                        timss = ""
+                        pisa = ""
+                        four_k = ""
+                        comp = ""
+                        goal = ""
+                        qtype_new = "Q1"
+                        src = ""
+                        lang = "UZ"
+                        author = ""
+                        sch = ""
+
+                        time_limit = 60
+                        weight = 1
+                        is_latex = False
+
+                        audio_file = ""
+                        video_file = ""
+                        explanation = ""
+                        answer_explanation = ""
 
                         data = {}
 
@@ -3108,11 +3129,12 @@ async def handle_all(message: types.Message):
 
                             j += 1
 
+                        # ESKI MAYDONLAR
                         q_type = data.get("TYPE", "text")
+
                         img = data.get("IMG") or data.get("IMAGE")
 
                         category = data.get("CATEGORY", "")
-                        topic = data.get("TOPIC", "")
                         subtopic = data.get("SUBTOPIC", "")
 
                         framework = data.get("FRAMEWORK", "")
@@ -3127,19 +3149,299 @@ async def handle_all(message: types.Message):
                         age_group = data.get("AGE_GROUP", "")
                         exam_type = data.get("EXAM_TYPE", "")
 
+                        # YANGI STANDART
+                        topic_code = data.get("TOPIC", "")
+                        topic = topic_code
+
+                        bloom = data.get("BLOOM", "")
+                        timss = data.get("TIMSS", "")
+                        pisa = data.get("PISA", "")
+                        four_k = data.get("4K", "")
+                        comp = data.get("COMP", "")
+                        goal = data.get("GOAL", "")
+
+                        qtype_new = data.get("QTYPE", "Q1")
+
+                        src = data.get("SRC", "")
+                        lang = data.get("LANG", "UZ")
+                        author = data.get("AUTHOR", "")
+                        sch = data.get("SCH", "")
+
+                        audio_file = data.get("AUDIO", "")
+                        video_file = data.get("VIDEO", "")
+
+                        explanation = data.get("EXPLANATION", "")
+                        answer_explanation = data.get(
+                            "ANSWER_EXPLANATION",
+                            ""
+                        )
+
+                        try:
+                            time_limit = int(
+                                data.get("TIME", "60")
+                            )
+                        except:
+                            time_limit = 60
+
+                        try:
+                            weight = int(
+                                data.get("WEIGHT", "1")
+                            )
+                        except:
+                            weight = 1
+
+                        is_latex = (
+                            data.get("LATEX", "0").upper()
+                            in ["1", "YES", "TRUE"]
+                        )
+
                         voice_type = data.get("VOICE", "none")
-                        difficulty = data.get("DIFFICULTY", "easy")
-                        school_type = data.get("SCHOOL", "all")
+                        difficulty = data.get(
+                            "DIFFICULTY",
+                            "easy"
+                        )
+
+                        school_type = data.get(
+                            "SCHOOL",
+                            "all"
+                        )
 
                         a = data.get("A")
                         b = data.get("B")
                         c = data.get("C")
                         d = data.get("D")
 
-                        correct = data.get("ANSWER", "").lower()
+                        correct = (
+                            data.get("ANSWER", "")
+                            .strip()
+                            .lower()
+                        )
 
                         i = j - 1
+                        # =========================
+                        # VALIDATION
+                        # =========================
 
+                        VALID_LEVELS = {
+                            "D1", "D2", "D3", "D4", "D5"
+                        }
+
+                        VALID_BLOOM = {
+                            "B1", "B2", "B3",
+                            "B4", "B5", "B6"
+                        }
+
+                        VALID_TIMSS = {
+                            "T1", "T2", "T3"
+                        }
+
+                        VALID_PISA = {
+                            "P1", "P2", "P3"
+                        }
+
+                        VALID_4K = {
+                            "K1", "K2", "K3", "K4"
+                        }
+
+                        VALID_STEAM = {
+                            "S1", "S2", "S3", "S4", "S5"
+                        }
+
+                        VALID_COMP = {
+                            "C1", "C2", "C3", "C4", "C5"
+                        }
+
+                        VALID_GOAL = {
+                            "G1", "G2", "G3", "G4", "G5"
+                        }
+
+                        VALID_QTYPE = {
+                            "Q1", "Q2", "Q3", "Q4",
+                            "Q5", "Q6", "Q7", "Q8",
+                            "Q9", "Q10", "Q11"
+                        }
+
+                        VALID_SRC = {
+                            "SRC1", "SRC2", "SRC3",
+                            "SRC4", "SRC5", "SRC6",
+                            "SRC7", "SRC8", "SRC9"
+                        }
+
+                        VALID_SCH = {
+                            "SCH1", "SCH2", "SCH3",
+                            "SCH4", "SCH5", "SCH6",
+                            "SCH7"
+                        }
+
+                        VALID_LANG = {
+                            "UZ", "RU", "EN", "KK"
+                        }
+
+                        VALID_ANSWERS = {
+                            "a", "b", "c", "d"
+                        }
+
+                        # LEVEL
+                        if level not in VALID_LEVELS:
+                            level = "D1"
+
+                        # BLOOM
+                        if bloom not in VALID_BLOOM:
+                            bloom = ""
+
+                        # TIMSS
+                        if timss not in VALID_TIMSS:
+                            timss = ""
+
+                        # PISA
+                        if pisa not in VALID_PISA:
+                            pisa = ""
+
+                        # 4K
+                        if four_k not in VALID_4K:
+                            four_k = ""
+
+                        # STEAM
+                        if steam not in VALID_STEAM:
+                            steam = ""
+
+                        # COMP
+                        if comp not in VALID_COMP:
+                            comp = ""
+
+                        # GOAL
+                        if goal not in VALID_GOAL:
+                            goal = ""
+
+                        # QTYPE
+                        if qtype_new not in VALID_QTYPE:
+                            qtype_new = "Q1"
+
+                        # SRC
+                        if src not in VALID_SRC:
+                            src = ""
+
+                        # SCH
+                        if sch not in VALID_SCH:
+                            sch = ""
+
+                        # LANG
+                        lang = lang.upper()
+
+                        if lang not in VALID_LANG:
+                            lang = "UZ"
+
+                        # TIME LIMIT
+                        if time_limit < 10:
+                            time_limit = 10
+
+                        if time_limit > 3600:
+                            time_limit = 3600
+
+                        # WEIGHT
+                        if weight < 1:
+                            weight = 1
+
+                        if weight > 10:
+                            weight = 10
+
+                        # ANSWER
+                        if correct not in VALID_ANSWERS:
+                            correct = "a"
+
+                        # IMAGE
+                        if img:
+                            img = img.strip()
+
+                        # AUDIO
+                        if audio_file:
+                            audio_file = audio_file.strip()
+
+                        # VIDEO
+                        if video_file:
+                            video_file = video_file.strip()
+
+                        # AUTHOR
+                        if author:
+                            author = author[:100]
+
+                        # TOPIC CODE
+                        if topic_code:
+                            topic_code = topic_code.strip().upper()
+
+                        # QUESTION
+                        question = question.strip()
+
+                        if not question:
+                            continue
+
+                        # OPTIONS
+
+                        if a:
+                            a = a.strip()
+
+                        if b:
+                            b = b.strip()
+
+                        if c:
+                            c = c.strip()
+
+                        if d:
+                            d = d.strip()
+
+                        # EXPLANATIONS
+
+                        if explanation:
+                            explanation = explanation.strip()
+
+                        if answer_explanation:
+                            answer_explanation = answer_explanation.strip()
+
+                        # LATEX AUTO
+
+                        if "\\frac" in question:
+                            is_latex = True
+
+                        if "\\sqrt" in question:
+                            is_latex = True
+
+                        if "\\sum" in question:
+                            is_latex = True
+
+                        if "\\int" in question:
+                            is_latex = True
+
+                        # AUDIO AUTO
+
+                        if audio_file:
+                            qtype_new = "Q6"
+
+                        # IMAGE AUTO
+
+                        if img and qtype_new == "Q1":
+                            qtype_new = "Q5"
+
+                        # VIDEO AUTO
+
+                        if video_file:
+                            qtype_new = "Q5"
+
+                        # XP / DIFFICULTY
+
+                        if level == "D1" and weight == 1:
+                            weight = 1
+
+                        elif level == "D2" and weight == 1:
+                            weight = 2
+
+                        elif level == "D3" and weight == 1:
+                            weight = 3
+
+                        elif level == "D4" and weight == 1:
+                            weight = 4
+
+                        elif level == "D5" and weight == 1:
+                            weight = 5
                         cur.execute("""
                         INSERT INTO questions (
                             role,
@@ -3168,7 +3470,29 @@ async def handle_all(message: types.Message):
                             steam,
                             future_skill,
                             age_group,
-                            exam_type
+                            exam_type,
+
+                            topic_code,
+                            bloom,
+                            timss,
+                            pisa,
+                            four_k,
+                            comp,
+                            goal,
+                            qtype,
+                            src,
+                            sch,
+                            lang,
+
+                            time_limit,
+                            weight,
+                            author,
+                            is_latex,
+
+                            audio_file,
+                            video_file,
+                            explanation,
+                            answer_explanation
                         )
                         VALUES (
                             %s,%s,%s,%s,%s,
@@ -3176,7 +3500,15 @@ async def handle_all(message: types.Message):
                             %s,%s,%s,%s,%s,
                             %s,%s,%s,%s,%s,
                             %s,%s,%s,%s,%s,
-                            %s,%s
+                            %s,%s,
+
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,
+
+                            %s,%s,%s,%s,
+
+                            %s,%s,%s,%s
                         )
                         """, (
                             role,
@@ -3205,9 +3537,30 @@ async def handle_all(message: types.Message):
                             steam,
                             future_skill,
                             age_group,
-                            exam_type
-                        ))
+                            exam_type,
 
+                            topic_code,
+                            bloom,
+                            timss,
+                            pisa,
+                            four_k,
+                            comp,
+                            goal,
+                            qtype_new,
+                            src,
+                            sch,
+                            lang,
+
+                            time_limit,
+                            weight,
+                            author,
+                            is_latex,
+
+                            audio_file,
+                            video_file,
+                            explanation,
+                            answer_explanation
+                        ))
                         count += 1
 
                     except Exception as e:
@@ -3646,17 +3999,35 @@ async def test_buttons(call: types.CallbackQuery):
     topic = old_q[17]
     category = old_q[18]
     subtopic = old_q[19]
+    topic_code = old_q[28]
+
+    bloom = old_q[29]
+    timss = old_q[30]
+    pisa = old_q[31]
+    four_k = old_q[32]
+    comp = old_q[33]
+    goal = old_q[34]
+
+    level = old_q[3]
 
     if user_ans == correct:
 
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
+        # student_progress
         cur.execute("""
         INSERT INTO student_progress
-        (user_id, subject, category, topic, subtopic, correct, wrong)
+        (user_id, subject, category, topic, subtopic,
+        correct, wrong)
         VALUES (%s,%s,%s,%s,%s,1,0)
-        ON CONFLICT (user_id, subject, category, topic, subtopic)
+        ON CONFLICT (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        )
         DO UPDATE SET
         correct = student_progress.correct + 1,
         last_update = NOW()
@@ -3666,6 +4037,55 @@ async def test_buttons(call: types.CallbackQuery):
             category,
             topic,
             subtopic
+        ))
+
+        # topic_progress
+        cur.execute("""
+        INSERT INTO topic_progress
+        (user_id, topic_code, correct, wrong)
+        VALUES (%s,%s,1,0)
+        ON CONFLICT (user_id, topic_code)
+        DO UPDATE SET
+        correct = topic_progress.correct + 1
+        """, (
+            user_id,
+            topic_code
+        ))
+
+        # level_progress
+        cur.execute("""
+        INSERT INTO level_progress
+        (user_id, level_code, correct, wrong)
+        VALUES (%s,%s,1,0)
+        ON CONFLICT (user_id, level_code)
+        DO UPDATE SET
+        correct = level_progress.correct + 1
+        """, (
+            user_id,
+            level
+        ))
+
+        # bloom
+        cur.execute("""
+        INSERT INTO framework_progress
+        (
+            user_id,
+            framework_type,
+            framework_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,'BLOOM',%s,1,0)
+        ON CONFLICT (
+            user_id,
+            framework_type,
+            framework_code
+        )
+        DO UPDATE SET
+        correct = framework_progress.correct + 1
+        """, (
+            user_id,
+            bloom
         ))
 
         conn.commit()
@@ -3680,11 +4100,27 @@ async def test_buttons(call: types.CallbackQuery):
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
+        # student_progress
+
         cur.execute("""
         INSERT INTO student_progress
-        (user_id, subject, category, topic, subtopic, correct, wrong)
+        (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic,
+            correct,
+            wrong
+        )
         VALUES (%s,%s,%s,%s,%s,0,1)
-        ON CONFLICT (user_id, subject, category, topic, subtopic)
+        ON CONFLICT (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        )
         DO UPDATE SET
         wrong = student_progress.wrong + 1,
         last_update = NOW()
@@ -3694,6 +4130,74 @@ async def test_buttons(call: types.CallbackQuery):
             category,
             topic,
             subtopic
+        ))
+
+        # topic_progress
+
+        cur.execute("""
+        INSERT INTO topic_progress
+        (
+            user_id,
+            topic_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,%s,0,1)
+        ON CONFLICT (
+            user_id,
+            topic_code
+        )
+        DO UPDATE SET
+        wrong = topic_progress.wrong + 1
+        """, (
+            user_id,
+            topic_code
+        ))
+
+        # level_progress
+
+        cur.execute("""
+        INSERT INTO level_progress
+        (
+            user_id,
+            level_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,%s,0,1)
+        ON CONFLICT (
+            user_id,
+            level_code
+        )
+        DO UPDATE SET
+        wrong = level_progress.wrong + 1
+        """, (
+            user_id,
+            level
+        ))
+
+        # BLOOM
+
+        cur.execute("""
+        INSERT INTO framework_progress
+        (
+            user_id,
+            framework_type,
+            framework_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,'BLOOM',%s,0,1)
+        ON CONFLICT (
+            user_id,
+            framework_type,
+            framework_code
+        )
+        DO UPDATE SET
+        wrong = framework_progress.wrong + 1
+        """, (
+            user_id,
+            bloom
         ))
 
         conn.commit()
