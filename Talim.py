@@ -666,46 +666,53 @@ async def handle_all(message: types.Message):
         )
 
         return
-
     elif (
         admin_state.get(user_id) == "dts_import"
         and message.document
     ):
 
+        from openpyxl import load_workbook
+
         file = await bot.get_file(
             message.document.file_id
         )
 
-        filename = f"dts_{user_id}.txt"
+        filename = f"dts_{user_id}.xlsx"
 
         await bot.download_file(
             file.file_path,
             filename
         )
 
-        with open(
-            filename,
-            "r",
-            encoding="utf-8"
-        ) as f:
+        wb = load_workbook(filename)
 
-            text = f.read()
+        ws = wb.active
 
-        lines = [
-            l.strip()
-            for l in text.split("\n")
-            if l.strip()
-        ]
+        headers = []
+
+        for cell in ws[1]:
+
+            if cell.value is None:
+                headers.append("")
+
+            else:
+                headers.append(
+                    str(cell.value)
+                )
 
         await message.answer(
-            f"Qatorlar soni: {len(lines)}"
+            f"✅ Excel saqlandi: {filename}\n\n"
+            f"Qatorlar: {ws.max_row}\n"
+            f"Ustunlar: {ws.max_column}"
         )
 
         await message.answer(
-            f"✅ Saqlandi: {filename}\n\n{text[:3500]}"
+            "Sarlavhalar:\n\n" +
+            "\n".join(headers)
         )
 
-        return    # parallel message bloklash
+        return
+    # parallel message bloklash
     async with user_locks[user_id]:
 
         action = TEXT_TO_ID.get(message.text)
