@@ -672,12 +672,30 @@ async def handle_all(message: types.Message):
         and message.document
     ):
 
+        file = await bot.get_file(
+            message.document.file_id
+        )
+
+        filename = f"dts_{user_id}.txt"
+
+        await bot.download_file(
+            file.file_path,
+            filename
+        )
+
+        with open(
+            filename,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            text = f.read()
+
         await message.answer(
-            "✅ Fayl qabul qilindi"
+            f"✅ Saqlandi: {filename}\n\n{text[:3500]}"
         )
 
         return
-
     # parallel message bloklash
     async with user_locks[user_id]:
 
