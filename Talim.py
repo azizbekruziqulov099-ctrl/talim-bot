@@ -71,7 +71,7 @@ TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
     "📚 BILIMNI SINASH": BTN_TEST,
     "📈 Statistika": BTN_STATS,
-    "📊 Mening natijam": BTN_MY,
+    "🪪 Bilim Pasportim": BTN_MY,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
 CLASSES = [
@@ -339,7 +339,7 @@ def get_main_keyboard(role=None):
     if role == "O‘quvchi":
         keyboard = [
             [KeyboardButton(text="📚 BILIMNI SINASH"),
-            KeyboardButton(text="📊 Mening natijam")],
+            KeyboardButton(text="🪪 Bilim Pasportim")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="📊 So‘rovnoma"),
@@ -380,7 +380,7 @@ def get_main_keyboard(role=None):
 def get_stats_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Mening natijam")],
+            [KeyboardButton(text="🪪 Bilim Pasportim")],
             [KeyboardButton(text="📈 Umumiy statistika")],
             [KeyboardButton(text=BACK)],
             [KeyboardButton(text=HOME)]
@@ -1604,58 +1604,7 @@ async def handle_all(message: types.Message):
 
             return
 
-        # ===== MENING NATIJAM =====
-        elif message.text == "📊 Mening natijam":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            SELECT subject,
-            AVG(score * 100.0 / total)
-            FROM results
-            WHERE user_id=%s
-            GROUP BY subject
-            """, (message.from_user.id,))
-
-            rows = cur.fetchall()
-
-            conn.close()
-
-            if not rows:
-
-                await message.answer(
-                    "❌ Hali natija yo‘q"
-                )
-                return
-
-            text = "📊 Sizning natijalaringiz\n\n"
-
-            total_avg = 0
-
-            for subject, avg in rows:
-
-                avg = round(avg, 1)
-
-                total_avg += avg
-
-                bar = "█" * int(avg // 10)
-                empty = "░" * (10 - int(avg // 10))
-
-                text += (
-                    f"📘 {subject}\n"
-                    f"{bar}{empty} {avg}%\n\n"
-                )
-
-            overall = round(total_avg / len(rows), 1)
-
-            text += f"🎯 Umumiy o‘zlashtirish: {overall}%"
-
-            await message.answer(text)
-
-            return
-
-        # ===== MAKTAB STATISTIKASI =====
+       # ===== MAKTAB STATISTIKASI =====
         elif message.text == "🏫 Maktab statistikasi":
 
             conn = psycopg2.connect(DATABASE_URL)
@@ -3417,7 +3366,9 @@ async def handle_all(message: types.Message):
                     "mustahkamlash tavsiya etiladi."
                 )
 
-            await message.answer(text)        # ===== GLOBAL =====
+            await message.answer(text)      
+        
+          # ===== GLOBAL =====
         elif action == BTN_GLOBAL:
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
