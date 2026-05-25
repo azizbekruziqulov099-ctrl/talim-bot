@@ -3025,32 +3025,16 @@ async def handle_all(message: types.Message):
             # ===== O‘QUVCHI =====
             if role == "O‘quvchi":
 
-                if (
-                    not lines[1].startswith("CLASS") or
-                    not lines[2].startswith("SUBJECT") or
-                    not lines[3].startswith("TEST_TYPE")
-                ):
-                    await message.answer("Format noto‘g‘ri ❌")
-                    return
-
-                cls = lines[1].split(":",1)[1].strip()
-                subject = lines[2].split(":",1)[1].strip()
-                test_type = lines[3].split(":",1)[1].strip()
+                cls = ""
+                subject = ""
+                test_type = "DTS"
 
             # ===== O‘QITUVCHI =====
             elif role == "O‘qituvchi":
 
-                if (
-                    not lines[1].startswith("LEVEL") or
-                    not lines[2].startswith("SUBJECT") or
-                    not lines[3].startswith("TEST_TYPE")
-                ):
-                    await message.answer("Format noto‘g‘ri ❌")
-                    return
-
-                level = lines[1].split(":",1)[1].strip()
-                subject = lines[2].split(":",1)[1].strip()
-                test_type = lines[3].split(":",1)[1].strip()
+                level = "D1"
+                subject = ""
+                test_type = "DTS"
 
             else:
                 await message.answer("ROLE xato ❌")
@@ -3059,7 +3043,7 @@ async def handle_all(message: types.Message):
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
-            i = 4
+            i = 1
             count = 0
 
             while i < len(lines):
@@ -3109,6 +3093,12 @@ async def handle_all(message: types.Message):
                         weight = 1
                         is_latex = False
 
+                        track = ""
+                        bob_code = ""
+                        bolim_code = ""
+                        mavzu_code = ""
+                        kichik_mavzu_code = ""
+
                         audio_file = ""
                         video_file = ""
                         explanation = ""
@@ -3143,14 +3133,28 @@ async def handle_all(message: types.Message):
                         grade = data.get("GRADE", "")
                         quarter = data.get("QUARTER", "")
 
-                        steam = data.get("STEAM", "")
+                        steam_code = data.get("STEAM", "")
                         future_skill = data.get("FUTURE_SKILL", "")
 
                         age_group = data.get("AGE_GROUP", "")
                         exam_type = data.get("EXAM_TYPE", "")
 
                         # YANGI STANDART
-                        topic_code = data.get("TOPIC", "")
+
+                        level = data.get("LEVEL", "D1").upper()
+
+                        topic_code = (
+                            data.get("TOPIC", "")
+                            .strip()
+                            .upper()
+                        )
+
+                        track = ""
+                        bob_code = ""
+                        bolim_code = ""
+                        mavzu_code = ""
+                        kichik_mavzu_code = ""
+
                         cur.execute("""
                         SELECT
                         grade,
@@ -3167,7 +3171,6 @@ async def handle_all(message: types.Message):
                         FROM dts_tree
                         WHERE topic_code=%s
                         """, (topic_code,))
-
                         dts_row = cur.fetchone()
 
                         if not dts_row:
@@ -3188,7 +3191,8 @@ async def handle_all(message: types.Message):
                         bolim_code = dts_row[8]
                         mavzu_code = dts_row[9]
                         kichik_mavzu_code = dts_row[10]
-                        topic = topic_code
+
+                        level = data.get("LEVEL", "D1").upper() 
 
                         bloom = data.get("BLOOM", "")
                         timss = data.get("TIMSS", "")
@@ -3386,6 +3390,15 @@ async def handle_all(message: types.Message):
                         if correct not in VALID_ANSWERS:
                             correct = "a"
 
+                        if not topic_code:
+                            raise Exception("TOPIC yo'q")
+
+                        if not a or not b or not c or not d:
+                            raise Exception("A B C D variantlar to'liq emas")
+
+                        if correct not in ["a", "b", "c", "d"]:
+                            raise Exception("ANSWER xato")
+
                         # IMAGE
                         if img:
                             img = img.strip()
@@ -3529,7 +3542,13 @@ async def handle_all(message: types.Message):
                             audio_file,
                             video_file,
                             explanation,
-                            answer_explanation
+                            answer_explanation,
+
+                            track,
+                            bob_code,
+                            bolim_code,
+                            mavzu_code,
+                            kichik_mavzu_code
                         )
                         VALUES (
                             %s,%s,%s,%s,%s,
@@ -3545,7 +3564,9 @@ async def handle_all(message: types.Message):
 
                             %s,%s,%s,%s,
 
-                            %s,%s,%s,%s
+                            %s,%s,%s,%s,
+
+                            %s,%s,%s,%s,%s
                         )
                         """, (
                             role,
@@ -3553,26 +3574,31 @@ async def handle_all(message: types.Message):
                             level,
                             subject,
                             question,
+
                             a,
                             b,
                             c,
                             d,
                             correct,
+
                             test_type,
                             difficulty,
                             q_type,
                             img,
                             voice_type,
+
                             school_type,
                             topic,
                             category,
                             subtopic,
                             framework,
+
                             skill,
                             grade,
                             quarter,
                             steam,
                             future_skill,
+
                             age_group,
                             exam_type,
 
@@ -3581,11 +3607,13 @@ async def handle_all(message: types.Message):
                             timss,
                             pisa,
                             four_k,
+
                             comp,
                             goal,
                             qtype_new,
                             src,
                             sch,
+
                             lang,
 
                             time_limit,
@@ -3596,7 +3624,13 @@ async def handle_all(message: types.Message):
                             audio_file,
                             video_file,
                             explanation,
-                            answer_explanation
+                            answer_explanation,
+
+                            track,
+                            bob_code,
+                            bolim_code,
+                            mavzu_code,
+                            kichik_mavzu_code
                         ))
                         count += 1
 
