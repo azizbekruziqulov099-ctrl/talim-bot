@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
 from aiogram import F
+from handlers.imports import start_dts_import
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -360,15 +361,16 @@ def get_main_keyboard(role=None):
 
         keyboard = [
             [KeyboardButton(text="🇺🇿 Respublika statistikasi"),
-            KeyboardButton(text="🌍 Viloyat statistikasi")],
-            [KeyboardButton(text="🏫 Maktab statistikasi"),
-            KeyboardButton(text="🎓 Sinf statistikasi")],
-            [KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
+            KeyboardButton(text="🌍 Viloyat statistikasi"),
+            KeyboardButton(text="🏫 Maktab statistikasi")],
+            [KeyboardButton(text="🎓 Sinf statistikasi"),
+            KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
             KeyboardButton(text="👨‍🏫 TOP o‘qituvchilar")],
             [KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
-            KeyboardButton(text="📋 So‘rovnoma natijalari")],
-            [KeyboardButton(text="📚 BILIMNI SINASH bazasi"),
-             KeyboardButton(text="👥 Foydalanuvchilar statistikasi")]
+            KeyboardButton(text="📋 So‘rovnoma natijalari"),
+            KeyboardButton(text="📚 BILIMNI SINASH bazasi")],
+            [KeyboardButton(text="👥 Foydalanuvchilar statistikasi"),
+            KeyboardButton(text="📥 DTS import")]
         ]
     
 
@@ -652,6 +654,27 @@ async def handle_all(message: types.Message):
             f"👥 Jami foydalanuvchilar: {total}\n\n"
             f"📅 Bugun kirganlar: {today}\n"
             f"🗓 Oxirgi 30 kun: {month}"
+        )
+
+        return
+    
+    elif message.text == "📥 DTS import":
+
+        admin_state[user_id] = "dts_import"
+
+        await message.answer(
+            "📄 DTS TXT faylini yuboring"
+        )
+
+        return
+
+    elif (
+        admin_state.get(user_id) == "dts_import"
+        and message.document
+    ):
+
+        await message.answer(
+            "✅ Fayl qabul qilindi"
         )
 
         return
