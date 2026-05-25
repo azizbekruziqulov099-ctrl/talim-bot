@@ -4,7 +4,6 @@ from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
 from aiogram import F
-from handlers.imports import start_dts_import
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
