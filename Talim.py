@@ -39,14 +39,6 @@ admin_state = {}
 state_history = {}
 
 
-def set_state(user_id, state):
-
-    user_state[user_id] = state
-
-    if user_id not in state_history:
-        state_history[user_id] = []
-
-    state_history[user_id].append(state)
 
 # BUTTON ID (faqat shu bilan ishlaymiz)
 BTN_SURVEY = "survey"
@@ -66,6 +58,14 @@ SCHOOL_TYPES = [
 BACK = "🔙 Ortga"
 HOME = "🏠 Bosh menyu"
 FINISH = "❌ Testni tugatish"
+
+LEVELS = [
+    (0, "🌱", "Nihol"),
+    (500, "🌿", "O'smoqda"),
+    (1500, "🌳", "Bilimli"),
+    (3000, "🥈", "Ekspert"),
+    (5000, "🥇", "Usta")
+]
 
 TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
@@ -168,6 +168,12 @@ SUBJECTS_BY_LEVEL = {
     ]
 }
 
+LEVELS = [
+    (0, "🥚", "Boshlanish"),
+    (500, "🐣", "O'rganuvchi"),
+    (1500, "🦅", "Usta")
+]
+
 SUBJECTS_BY_CLASS = {
 
     "0-sinf": [
@@ -258,6 +264,29 @@ TEST_TYPES = [
     "📘 Yillik",
     "📝 DTS"
 ]
+
+def set_state(user_id, state):
+
+    user_state[user_id] = state
+
+    if user_id not in state_history:
+        state_history[user_id] = []
+
+    state_history[user_id].append(state)
+
+def get_level(xp):
+
+    current_icon = "🌱"
+    current_name = "Nihol"
+
+    for need_xp, icon, name in LEVELS:
+
+        if xp >= need_xp:
+
+            current_icon = icon
+            current_name = name
+
+    return current_icon, current_name
 
 def base_keyboard(extra=[]):
 
@@ -3104,11 +3133,22 @@ async def handle_all(message: types.Message):
                         q_type = "single"
                         difficulty = "easy"
                         voice_type = "none"
+
                         topic = ""
                         category = ""
                         subtopic = ""
+
                         framework = ""
                         skill = ""
+
+                        grade = ""
+                        quarter = ""
+
+                        steam = ""
+                        future_skill = ""
+
+                        age_group = ""
+                        exam_type = ""
 
                         step = 7
 
@@ -3129,11 +3169,23 @@ async def handle_all(message: types.Message):
 
                         q_type = data.get("TYPE", "text")
                         img = data.get("IMG") or data.get("IMAGE")
+
                         category = data.get("CATEGORY", "")
                         topic = data.get("TOPIC", "")
                         subtopic = data.get("SUBTOPIC", "")
+
                         framework = data.get("FRAMEWORK", "")
                         skill = data.get("SKILL", "")
+
+                        grade = data.get("GRADE", "")
+                        quarter = data.get("QUARTER", "")
+
+                        steam = data.get("STEAM", "")
+                        future_skill = data.get("FUTURE_SKILL", "")
+
+                        age_group = data.get("AGE_GROUP", "")
+                        exam_type = data.get("EXAM_TYPE", "")
+
                         voice_type = data.get("VOICE", "none")
                         difficulty = data.get("DIFFICULTY", "easy")
                         school_type = data.get("SCHOOL", "all")
@@ -3169,9 +3221,22 @@ async def handle_all(message: types.Message):
                             category,
                             subtopic,
                             framework,
-                            skill
+                            skill,
+                            grade,
+                            quarter,
+                            steam,
+                            future_skill,
+                            age_group,
+                            exam_type
                         )
-                        VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s
+                        )
                         """, (
                             role,
                             cls,
@@ -3193,7 +3258,13 @@ async def handle_all(message: types.Message):
                             category,
                             subtopic,
                             framework,
-                            skill
+                            skill,
+                            grade,
+                            quarter,
+                            steam,
+                            future_skill,
+                            age_group,
+                            exam_type
                         ))
 
                         count += 1
@@ -3218,29 +3289,143 @@ async def handle_all(message: types.Message):
 
         # ===== MY STATS =====
         elif action == BTN_MY:
+
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
+
             cur.execute("""
-            SELECT subject, AVG(score*1.0/total) FROM results
+            SELECT
+                topic,
+                SUM(correct),
+                SUM(wrong)
+            FROM student_progress
             WHERE user_id=%s
-            GROUP BY subject
+            GROUP BY topic
+            ORDER BY topic
             """, (message.from_user.id,))
 
             rows = cur.fetchall()
+
             conn.close()
 
             if not rows:
-                await message.answer("Sizda natija yo‘q ❌")
+                await message.answer(
+                    "🧠 Bilim pasportingiz hali shakllanmagan."
+                )
                 return
 
-            text = "📊 Sizning natijalaringiz:\n\n"
+            total_correct = 0
+            total_wrong = 0
 
-            for subject, avg in rows:
-                percent = round(avg*100, 1)
-                text += f"{subject}: {percent}%\n"
+            strong = []
+            weak = []
 
-            await message.answer(text)
-        # ===== GLOBAL =====
+            for topic, correct, wrong in rows:
+                total_correct += correct
+                total_wrong += wrong
+
+            total = total_correct + total_wrong
+
+            overall = 0
+
+            if total > 0:
+                overall = round(
+                    total_correct * 100 / total
+                )
+
+            xp = total_correct * 10
+
+            if xp >= 5000:
+                level_icon = "🥇"
+                level_name = "Usta"
+
+            elif xp >= 3000:
+                level_icon = "🥈"
+                level_name = "Ekspert"
+
+            elif xp >= 1500:
+                level_icon = "🌳"
+                level_name = "Bilimli"
+
+            elif xp >= 500:
+                level_icon = "🌿"
+                level_name = "O'smoqda"
+
+            else:
+                level_icon = "🌱"
+                level_name = "Nihol"
+
+            text = (
+                "🧠 Bilim Pasportim\n\n"
+                f"🎯 Umumiy o'zlashtirish: {overall}%\n"
+                f"⭐ XP: {xp}\n"
+                f"{level_icon} Daraja: {level_name}\n\n"
+            )
+
+            text += "📚 Mavzular\n\n"
+
+            for topic, correct, wrong in rows:
+
+                total = correct + wrong
+
+                if total == 0:
+                    percent = 0
+                else:
+                    percent = round(
+                        correct * 100 / total
+                    )
+
+                if percent >= 80:
+                    icon = "🌳"
+                    strong.append(topic)
+
+                elif percent >= 50:
+                    icon = "🌿"
+
+                else:
+                    icon = "🌱"
+                    weak.append(topic)
+
+                filled = percent // 10
+                empty = 10 - filled
+
+                bar = (
+                    "█" * filled +
+                    "░" * empty
+                )
+
+                text += (
+                    f"{icon} {topic}\n"
+                    f"{bar} {percent}%\n\n"
+                )
+
+            if strong:
+
+                text += "🏆 Kuchli tomonlar\n"
+
+                for t in strong[:3]:
+                    text += f"⚡ {t}\n"
+
+                text += "\n"
+
+            if weak:
+
+                text += "⚠️ E'tibor kerak\n"
+
+                for t in weak[:3]:
+                    text += f"📌 {t}\n"
+
+                text += "\n"
+
+            if weak:
+
+                text += (
+                    "🤖 AI tavsiya\n"
+                    f"'{weak[0]}' mavzusini "
+                    "mustahkamlash tavsiya etiladi."
+                )
+
+            await message.answer(text)        # ===== GLOBAL =====
         elif action == BTN_GLOBAL:
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
