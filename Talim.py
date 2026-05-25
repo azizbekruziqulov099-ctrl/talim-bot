@@ -689,6 +689,8 @@ async def handle_all(message: types.Message):
             encoding="utf-8"
         ) as f:
 
+            text = f.read()
+
         lines = [
             l.strip()
             for l in text.split("\n")
@@ -699,14 +701,11 @@ async def handle_all(message: types.Message):
             f"Qatorlar soni: {len(lines)}"
         )
 
-            text = f.read()
-
         await message.answer(
             f"✅ Saqlandi: {filename}\n\n{text[:3500]}"
         )
 
-        return
-    # parallel message bloklash
+        return    # parallel message bloklash
     async with user_locks[user_id]:
 
         action = TEXT_TO_ID.get(message.text)
