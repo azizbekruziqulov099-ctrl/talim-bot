@@ -1622,14 +1622,6 @@ async def handle_all(message: types.Message):
 
             conn.close()
 
-            if not check_survey(message.from_user.id):
-
-                await message.answer(
-                    "❌ Avval so‘rovnomadan o‘ting."
-                )
-
-                return
-
             if not rows:
 
                 await message.answer(
