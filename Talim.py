@@ -3151,6 +3151,43 @@ async def handle_all(message: types.Message):
 
                         # YANGI STANDART
                         topic_code = data.get("TOPIC", "")
+                        cur.execute("""
+                        SELECT
+                        grade,
+                        quarter,
+                        subject,
+                        category,
+                        topic,
+                        subtopic,
+                        track,
+                        bob_code,
+                        bolim_code,
+                        mavzu_code,
+                        kichik_mavzu_code
+                        FROM dts_tree
+                        WHERE topic_code=%s
+                        """, (topic_code,))
+
+                        dts_row = cur.fetchone()
+
+                        if not dts_row:
+                            raise Exception(
+                                f"DTS topilmadi: {topic_code}"
+                            )
+
+                        grade = dts_row[0]
+                        quarter = dts_row[1]
+                        subject = dts_row[2]
+                        category = dts_row[3]
+                        topic = dts_row[4]
+                        subtopic = dts_row[5]
+
+                        track = dts_row[6]
+
+                        bob_code = dts_row[7]
+                        bolim_code = dts_row[8]
+                        mavzu_code = dts_row[9]
+                        kichik_mavzu_code = dts_row[10]
                         topic = topic_code
 
                         bloom = data.get("BLOOM", "")
@@ -4000,6 +4037,22 @@ async def test_buttons(call: types.CallbackQuery):
     category = old_q[18]
     subtopic = old_q[19]
     topic_code = old_q[28]
+    cur.execute("""
+    SELECT
+    quarter,
+    track
+    FROM dts_tree
+    WHERE topic_code=%s
+    """, (topic_code,))
+
+    dts_row = cur.fetchone()
+
+    quarter_code = None
+    track_code = None
+
+    if dts_row:
+        quarter_code = dts_row[0]
+        track_code = dts_row[1]
 
     bloom = old_q[29]
     timss = old_q[30]
