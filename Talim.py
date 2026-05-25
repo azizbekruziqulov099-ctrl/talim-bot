@@ -689,6 +689,16 @@ async def handle_all(message: types.Message):
             encoding="utf-8"
         ) as f:
 
+        lines = [
+            l.strip()
+            for l in text.split("\n")
+            if l.strip()
+        ]
+
+        await message.answer(
+            f"Qatorlar soni: {len(lines)}"
+        )
+
             text = f.read()
 
         await message.answer(
