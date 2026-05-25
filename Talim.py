@@ -694,11 +694,18 @@ async def handle_all(message: types.Message):
 
             if cell.value is None:
                 headers.append("")
-
             else:
                 headers.append(
                     str(cell.value)
                 )
+
+        rows = []
+
+        for row in ws.iter_rows(
+            min_row=2,
+            values_only=True
+        ):
+            rows.append(row)
 
         await message.answer(
             f"✅ Excel saqlandi: {filename}\n\n"
@@ -710,6 +717,17 @@ async def handle_all(message: types.Message):
             "Sarlavhalar:\n\n" +
             "\n".join(headers)
         )
+
+        await message.answer(
+            f"Ma'lumot qatorlari: {len(rows)}"
+        )
+
+        if rows:
+
+            await message.answer(
+                "Birinchi qator:\n\n" +
+                str(rows[0])
+            )
 
         return
     # parallel message bloklash
