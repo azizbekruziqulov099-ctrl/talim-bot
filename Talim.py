@@ -4006,6 +4006,56 @@ async def test_buttons(call: types.CallbackQuery):
         await dts_grade(call)
 
         return
+
+    if call.data.startswith("dts_subject_"):
+
+        await dts_subject(call)
+
+        return    
+
+    if call.data.startswith("dts_quarter_"):
+
+        await dts_quarter(call)
+
+        return
+    
+    if call.data.startswith("dts_bob_"):
+
+        await dts_bob(call)
+
+        return
+
+    if call.data.startswith("dts_bolim_"):
+
+        await dts_bolim(call)
+
+        return
+
+    if call.data.startswith("dts_mavzu_"):
+
+        await dts_mavzu(call)
+
+        return
+
+    if call.data.startswith("dts_small_"):
+
+        await dts_small(call)
+
+        return
+
+    if call.data.startswith("dts_test_"):
+
+        topic_code = call.data.replace(
+            "dts_test_",
+            ""
+        )
+
+        await call.message.answer(
+            f"Test boshlanadi\n\n{topic_code}"
+        )
+
+        return
+
     if user_id not in user_test:
         await call.answer(
             "♻️ Bot yangilangan. Testni qayta boshlang.",
@@ -4819,3 +4869,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
