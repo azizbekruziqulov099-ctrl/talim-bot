@@ -1,3 +1,5 @@
+from openpyxl import load_workbook
+from dts_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -71,7 +73,7 @@ TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
     "📚 BILIMNI SINASH": BTN_TEST,
     "📈 Statistika": BTN_STATS,
-    "🪪 Bilim Pasportim": BTN_MY,
+    "📚 DTS": BTN_MY,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
 CLASSES = [
@@ -339,7 +341,7 @@ def get_main_keyboard(role=None):
     if role == "O‘quvchi":
         keyboard = [
             [KeyboardButton(text="📚 BILIMNI SINASH"),
-            KeyboardButton(text="🪪 Bilim Pasportim")],
+             KeyboardButton(text="📚 DTS")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="📊 So‘rovnoma"),
@@ -360,7 +362,7 @@ def get_main_keyboard(role=None):
 
         keyboard = [
             [KeyboardButton(text="🇺🇿 Respublika statistikasi"),
-            KeyboardButton(text="🌍 Viloyat statistikasi"),
+            KeyboardButton(text="📚 DTS"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
@@ -381,7 +383,7 @@ def get_main_keyboard(role=None):
 def get_stats_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🪪 Bilim Pasportim")],
+            [KeyboardButton(text="📚 DTS")],
             [KeyboardButton(text="📈 Umumiy statistika")],
             [KeyboardButton(text=BACK)],
             [KeyboardButton(text=HOME)]
@@ -670,9 +672,6 @@ async def handle_all(message: types.Message):
         admin_state.get(user_id) == "dts_import"
         and message.document
     ):
-
-        import psycopg2
-        from openpyxl import load_workbook
 
         conn = psycopg2.connect(
             DATABASE_URL
