@@ -657,7 +657,19 @@ async def handle_all(message: types.Message):
         )
 
         return
-    
+
+    elif message.text == "📚 DTS":
+
+        await message.answer(
+            "TEST"
+        )
+
+        await dts_menu(
+            message
+        )
+
+        return
+
     elif message.text == "📥 DTS import":
 
         admin_state[user_id] = "dts_import"
