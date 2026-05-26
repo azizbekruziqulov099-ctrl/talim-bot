@@ -4001,6 +4001,11 @@ async def handle_all(message: types.Message):
 async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
+    if call.data.startswith("dts_grade_"):
+
+        await dts_grade(call)
+
+        return
     if user_id not in user_test:
         await call.answer(
             "♻️ Bot yangilangan. Testni qayta boshlang.",
