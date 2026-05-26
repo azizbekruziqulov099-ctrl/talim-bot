@@ -47,16 +47,3 @@ async def dts_menu(message):
 
     cur.close()
     conn.close()
-@dp.message()
-async def menu_handler(message: Message):
-
-    if message.text == "🏠 Bosh menu":
-        ...
-
-    elif message.text == "📚 DTS":
-
-        await message.answer("TEST")
-
-        await dts_menu(message)
-
-        return
