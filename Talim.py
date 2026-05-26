@@ -844,9 +844,52 @@ async def handle_all(message: types.Message):
                     f"S{kichik_no:03d}"
                 )
 
-                await message.answer(
-                    topic_code
+                cur.execute(
+                    """
+                    INSERT INTO dts_tree (
+                        topic_code,
+                        grade,
+                        quarter,
+                        subject,
+                        track,
+                        bob_code,
+                        bolim_code,
+                        mavzu_code,
+                        kichik_mavzu_code,
+                        bob_name,
+                        bolim_name,
+                        mavzu_name,
+                        kichik_mavzu_name
+                    )
+                    VALUES (
+                        %s,%s,%s,%s,
+                        'DTS',
+                        %s,%s,%s,%s,
+                        %s,%s,%s,%s
+                    )
+                    ON CONFLICT (topic_code)
+                    DO NOTHING
+                    """,
+                    (
+                        topic_code,
+                        str(row[0]),
+                        str(row[2]),
+                        subject,
+                        f"B{bob_no:02d}",
+                        f"BL{bolim_no:02d}",
+                        f"M{mavzu_no:02d}",
+                        f"S{kichik_no:03d}",
+                        bob,
+                        bolim,
+                        mavzu,
+                        kichik
+                    )
                 )
+                conn.commit()
+
+            await message.answer(
+                f"✅ {len(rows)} ta DTS bazaga yozildi"
+            )
 
         return
     # parallel message bloklash
