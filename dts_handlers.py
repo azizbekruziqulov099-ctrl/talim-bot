@@ -6,7 +6,9 @@ from aiogram.types import (
 )
 import psycopg2
 
-from config import DATABASE_URL
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 async def dts_menu(message):
