@@ -10,7 +10,6 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-
 async def dts_menu(message):
 
     conn = psycopg2.connect(
@@ -48,3 +47,13 @@ async def dts_menu(message):
 
     cur.close()
     conn.close()
+
+    elif message.text == "📚 DTS":
+
+        await message.answer(
+            "TEST"
+        )
+
+        await dts_menu(message)
+
+        return
