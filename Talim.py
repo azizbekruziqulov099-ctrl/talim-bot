@@ -1,8 +1,11 @@
+from openpyxl import load_workbook
+from dts_handlers import *
 import asyncio
-import sqlite3
+from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
+from aiogram import F
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -14,14 +17,18 @@ import random
 import time
 import edge_tts
 from aiogram.types import FSInputFile
+import psycopg2
 import os
-
-API_TOKEN = "8673749392:AAFCVC86jOhSKh4w4JUe3ZhCmLPbe16kbEg"
-
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
-ADMINS = [401251407]  
+ADMINS = [401251407]
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+API_TOKEN = os.getenv("BOT_TOKEN")
+
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -33,14 +40,7 @@ user_locks = {}
 admin_state = {}
 state_history = {}
 
-def set_state(user_id, state):
 
-    user_state[user_id] = state
-
-    if user_id not in state_history:
-        state_history[user_id] = []
-
-    state_history[user_id].append(state)
 
 # BUTTON ID (faqat shu bilan ishlaymiz)
 BTN_SURVEY = "survey"
@@ -61,27 +61,82 @@ BACK = "🔙 Ortga"
 HOME = "🏠 Bosh menyu"
 FINISH = "❌ Testni tugatish"
 
+LEVELS = [
+    (0, "🌱", "Nihol"),
+    (500, "🌿", "O'smoqda"),
+    (1500, "🌳", "Bilimli"),
+    (3000, "🥈", "Ekspert"),
+    (5000, "🥇", "Usta")
+]
+
 TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
     "📚 BILIMNI SINASH": BTN_TEST,
     "📈 Statistika": BTN_STATS,
-    "📊 Mening natijam": BTN_MY,
+    "📚 DTS": BTN_MY,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
-
 CLASSES = [
-    "0-sinf",
-    "1-sinf",
-    "2-sinf",
-    "3-sinf",
-    "4-sinf",
-    "5-sinf",
-    "6-sinf",
-    "7-sinf",
-    "8-sinf",
-    "9-sinf",
-    "10-sinf",
-    "11-sinf"
+    "🏫 Oddiy 0-sinf",
+    "⭐ IDUM 0-sinf",
+    "🏆 Prezident 0-sinf",
+    "🏢 Xususiy 0-sinf",
+
+    "🏫 Oddiy 1-sinf",
+    "⭐ IDUM 1-sinf",
+    "🏆 Prezident 1-sinf",
+    "🏢 Xususiy 1-sinf",
+
+   "🏫 Oddiy 2-sinf",
+    "⭐ IDUM 2-sinf",
+    "🏆 Prezident 2-sinf",
+    "🏢 Xususiy 2-sinf",
+
+   "🏫 Oddiy 3-sinf",
+    "⭐ IDUM 3-sinf",
+    "🏆 Prezident 3-sinf",
+    "🏢 Xususiy 3-sinf",
+
+   "🏫 Oddiy 4-sinf",
+    "⭐ IDUM 4-sinf",
+    "🏆 Prezident 4-sinf",
+    "🏢 Xususiy 4-sinf",
+
+   "🏫 Oddiy 5-sinf",
+    "⭐ IDUM 5-sinf",
+    "🏆 Prezident 5-sinf",
+    "🏢 Xususiy 5-sinf",
+
+   "🏫 Oddiy 6-sinf",
+    "⭐ IDUM 6-sinf",
+    "🏆 Prezident 6-sinf",
+    "🏢 Xususiy 6-sinf",
+
+   "🏫 Oddiy 7-sinf",
+    "⭐ IDUM 7-sinf",
+    "🏆 Prezident 7-sinf",
+    "🏢 Xususiy 7-sinf",
+
+   "🏫 Oddiy 8-sinf",
+    "⭐ IDUM 8-sinf",
+    "🏆 Prezident 8-sinf",
+    "🏢 Xususiy 8-sinf",
+
+   "🏫 Oddiy 9-sinf",
+    "⭐ IDUM 9-sinf",
+    "🏆 Prezident 9-sinf",
+    "🏢 Xususiy 9-sinf",
+
+   "🏫 Oddiy 10-sinf",
+    "⭐ IDUM 10-sinf",
+    "🏆 Prezident 10-sinf",
+    "🏢 Xususiy 10-sinf",
+
+   "🏫 Oddiy 11-sinf",
+    "⭐ IDUM 11-sinf",
+    "🏆 Prezident 11-sinf",
+    "🏢 Xususiy 11-sinf",
+
 ]
 
 SUBJECTS_BY_LEVEL = {
@@ -115,89 +170,93 @@ SUBJECTS_BY_LEVEL = {
     ]
 }
 
+LEVELS = [
+    (0, "🥚", "Boshlanish"),
+    (500, "🐣", "O'rganuvchi"),
+    (1500, "🦅", "Usta")
+]
+
 SUBJECTS_BY_CLASS = {
 
     "0-sinf": [
-        ["🟢 Oson o‘yinlar","🟡 Qiziqarli topshiriqlar"],
-        ["🟠 Diqqat sinovi","🔵 Mantiqiy o‘yinlar"],
-        ["🟣 Rasmli jumboqlar"]
-    ],
-
-    "1-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "2-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "3-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "4-sinf": [
-        ["Matematika", "Ona tili", "O‘qish"],
-        ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-        ["Musiqa", "Rasm"]
-    ],
-
-    "5-sinf": [
-        ["Matematika", "Ona tili", "Adabiyot"],
-        ["Ingliz tili", "Rus tili", "Tarix"],
-        ["Biologiya", "Geografiya", "Informatika"],
-        ["Texnologiya"]
-    ],
-
-    "6-sinf": [
-        ["Matematika", "Ona tili", "Adabiyot"],
-        ["Ingliz tili", "Rus tili", "Tarix"],
-        ["Biologiya", "Geografiya", "Informatika"],
-        ["Texnologiya"]
-    ],
-
-    "7-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "8-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "9-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Geografiya", "Informatika", "Ingliz tili"],
-        ["Ona tili", "Adabiyot"]
-    ],
-
-    "10-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Huquq", "Iqtisod", "Geografiya"],
-        ["Informatika", "Ingliz tili", "Ona tili"],
-        ["Adabiyot"]
-    ],
-
-    "11-sinf": [
-        ["Algebra", "Geometriya", "Fizika"],
-        ["Kimyo", "Biologiya", "Tarix"],
-        ["Huquq", "Iqtisod", "Geografiya"],
-        ["Informatika", "Ingliz tili", "Ona tili"],
-        ["Adabiyot"]
+        ["🔤 O‘zbekcha so‘zlar","🇬🇧 English Kids"],
+        ["🇷🇺 Русский детям","🔢 Sonlar olami"],
+        ["🎨 Ranglar","🐶 Hayvonlar"],
+        ["🧩 Jumboqlar","👀 Diqqat"],
+        ["🎯 Mantiqiy o‘yinlar"]
     ]
 }
+
+# 1-4 sinf
+PRIMARY_SUBJECTS = [
+    ["Matematika", "Ona tili", "O‘qish"],
+    ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
+    ["Musiqa", "Rasm"]
+]
+
+# 5-6 sinf
+MIDDLE_SUBJECTS = [
+    ["Matematika", "Ona tili", "Adabiyot"],
+    ["Ingliz tili", "Rus tili", "Tarix"],
+    ["Biologiya", "Geografiya", "Informatika"],
+    ["Texnologiya"]
+]
+
+# 7-9 sinf
+UPPER_SUBJECTS = [
+    ["Algebra", "Geometriya", "Fizika"],
+    ["Kimyo", "Biologiya", "Tarix"],
+    ["Geografiya", "Informatika", "Ingliz tili"],
+    ["Ona tili", "Adabiyot"]
+]
+
+# 10-11 sinf
+HIGH_SUBJECTS = [
+    ["Algebra", "Geometriya", "Fizika"],
+    ["Kimyo", "Biologiya", "Tarix"],
+    ["Huquq", "Iqtisod", "Geografiya"],
+    ["Informatika", "Ingliz tili", "Ona tili"],
+    ["Adabiyot"]
+]
+
+for school in [
+    "🏫 Oddiy",
+    "⭐ IDUM",
+    "🏆 Prezident",
+    "🏢 Xususiy"
+]:
+    # 0
+    SUBJECTS_BY_CLASS["🏫 Oddiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["⭐ IDUM 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["🏆 Prezident 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+    SUBJECTS_BY_CLASS["🏢 Xususiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
+
+    # 1-4
+    SUBJECTS_BY_CLASS[f"{school} 1-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 2-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 3-sinf"] = PRIMARY_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 4-sinf"] = PRIMARY_SUBJECTS
+
+    # 5-6
+    SUBJECTS_BY_CLASS[f"{school} 5-sinf"] = MIDDLE_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 6-sinf"] = MIDDLE_SUBJECTS
+
+    # 7-9
+    SUBJECTS_BY_CLASS[f"{school} 7-sinf"] = UPPER_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 8-sinf"] = UPPER_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 9-sinf"] = UPPER_SUBJECTS
+
+    # 10-11
+    SUBJECTS_BY_CLASS[f"{school} 10-sinf"] = HIGH_SUBJECTS
+    SUBJECTS_BY_CLASS[f"{school} 11-sinf"] = HIGH_SUBJECTS
+
+ZERO_TEST_TYPES = [
+    "🔤 Harflar",
+    "📖 So‘zlar",
+    "🖼 Rasmli o‘yin",
+    "🎵 Eshit va top",
+    "🎁 Aralash"
+]
 
 TEST_TYPES = [
     "1-chorak",
@@ -207,6 +266,29 @@ TEST_TYPES = [
     "📘 Yillik",
     "📝 DTS"
 ]
+
+def set_state(user_id, state):
+
+    user_state[user_id] = state
+
+    if user_id not in state_history:
+        state_history[user_id] = []
+
+    state_history[user_id].append(state)
+
+def get_level(xp):
+
+    current_icon = "🌱"
+    current_name = "Nihol"
+
+    for need_xp, icon, name in LEVELS:
+
+        if xp >= need_xp:
+
+            current_icon = icon
+            current_name = name
+
+    return current_icon, current_name
 
 def base_keyboard(extra=[]):
 
@@ -259,7 +341,7 @@ def get_main_keyboard(role=None):
     if role == "O‘quvchi":
         keyboard = [
             [KeyboardButton(text="📚 BILIMNI SINASH"),
-            KeyboardButton(text="📊 Mening natijam")],
+             KeyboardButton(text="📚 DTS")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="📊 So‘rovnoma"),
@@ -280,14 +362,16 @@ def get_main_keyboard(role=None):
 
         keyboard = [
             [KeyboardButton(text="🇺🇿 Respublika statistikasi"),
-            KeyboardButton(text="🌍 Viloyat statistikasi")],
-            [KeyboardButton(text="🏫 Maktab statistikasi"),
-            KeyboardButton(text="🎓 Sinf statistikasi")],
-            [KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
+            KeyboardButton(text="📚 DTS"),
+            KeyboardButton(text="🏫 Maktab statistikasi")],
+            [KeyboardButton(text="🎓 Sinf statistikasi"),
+            KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
             KeyboardButton(text="👨‍🏫 TOP o‘qituvchilar")],
             [KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
-            KeyboardButton(text="📋 So‘rovnoma natijalari")],
-            [KeyboardButton(text="📚 BILIMNI SINASH bazasi")]
+            KeyboardButton(text="📋 So‘rovnoma natijalari"),
+            KeyboardButton(text="📚 BILIMNI SINASH bazasi")],
+            [KeyboardButton(text="👥 Foydalanuvchilar statistikasi"),
+            KeyboardButton(text="📥 DTS import")]
         ]
     
 
@@ -296,18 +380,10 @@ def get_main_keyboard(role=None):
         resize_keyboard=True
     )
 
-def test_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="⬅️ Orqaga"), KeyboardButton(text="➡️ Keyingi")]
-        ],
-        resize_keyboard=True
-    )
-
 def get_stats_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Mening natijam")],
+            [KeyboardButton(text="📚 DTS")],
             [KeyboardButton(text="📈 Umumiy statistika")],
             [KeyboardButton(text=BACK)],
             [KeyboardButton(text=HOME)]
@@ -317,16 +393,16 @@ def get_stats_keyboard():
 
 def check_survey(user_id):
 
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
     SELECT survey_done
     FROM users
-    WHERE user_id=?
+    WHERE user_id=%s
     """, (user_id,))
 
-    row = cursor.fetchone()
+    row = cur.fetchone()
 
     conn.close()
 
@@ -337,22 +413,32 @@ def check_survey(user_id):
 
 
 def init_db():
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-    cursor.execute("""
+
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS survey_answers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         survey_id INTEGER,
         answer TEXT
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS images(
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE,
+        file_id TEXT
+    )
+    """)
+
     # USERS
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         full_name TEXT,
         role TEXT,
@@ -365,9 +451,9 @@ def init_db():
     """)
 
     # SURVEY
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS surveys (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         role TEXT,
         question TEXT,
         q_type TEXT,
@@ -378,9 +464,9 @@ def init_db():
     )
     """)
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS results (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER,
         class TEXT,
         subject TEXT,
@@ -395,9 +481,9 @@ def init_db():
 
     # QUESTIONS
 
-    cursor.execute("""
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS questions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         role TEXT,
         class TEXT,
         level TEXT,
@@ -412,12 +498,49 @@ def init_db():
         difficulty TEXT,
         type TEXT,
         img TEXT,
-        voice_type TEXT
+        voice_type TEXT,
+        school_type TEXT           
     )
     """)
 
     conn.commit()
     conn.close()
+
+@dp.message(F.photo)
+async def save_image(message: types.Message):
+
+    if message.from_user.id not in ADMINS:
+        return
+
+    if not message.caption:
+        await message.answer(
+            "Rasm nomini captionga yozing"
+        )
+        return
+
+    name = message.caption.strip()
+
+    file_id = message.photo[-1].file_id
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO images(
+        name,
+        file_id
+    )
+    VALUES(%s,%s)
+    ON CONFLICT (name)
+    DO UPDATE SET
+    file_id = EXCLUDED.file_id
+    """, (name, file_id))
+    conn.commit()
+    conn.close()
+
+    await message.answer(
+        f"✅ Saqlandi: {name}"
+    )
 
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
@@ -437,15 +560,15 @@ async def test_ovoz(message: types.Message):
 @dp.message(CommandStart())
 async def start(message: types.Message):
 
-    conn = sqlite3.connect("data.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-    cursor.execute(
-        "SELECT role FROM users WHERE user_id=?",
+    cur.execute(
+        "SELECT role FROM users WHERE user_id=%s",
         (message.from_user.id,)
     )
 
-    user = cursor.fetchone()
+    user = cur.fetchone()
     conn.close()
 
     # AGAR OLDIN RO‘YXATDAN O‘TGAN BO‘LSA
@@ -473,11 +596,273 @@ async def start(message: types.Message):
 @dp.message()
 async def handle_all(message: types.Message):
     user_id = message.from_user.id
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        UPDATE users
+        SET last_seen=NOW()
+        WHERE user_id=%s
+        """, (user_id,))
+
+        conn.commit()
+        conn.close()
+
+    except:
+        pass
+
+
+
+    if user_id not in temp_user:
+        temp_user[user_id] = {}
+
+    if user_id not in user_state:
+        user_state[user_id] = None
 
     # lock yaratish
     if user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
 
+    elif message.text == "👥 Foydalanuvchilar statistikasi":
+
+        if message.from_user.id not in ADMINS:
+            return
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM users")
+        total = cur.fetchone()[0]
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM users
+        WHERE DATE(last_seen)=CURRENT_DATE
+        """)
+        today = cur.fetchone()[0]
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM users
+        WHERE last_seen >= NOW() - INTERVAL '30 day'
+        """)
+        month = cur.fetchone()[0]
+
+        conn.close()
+
+        await message.answer(
+            f"👥 Jami foydalanuvchilar: {total}\n\n"
+            f"📅 Bugun kirganlar: {today}\n"
+            f"🗓 Oxirgi 30 kun: {month}"
+        )
+
+        return
+    
+    elif message.text == "📥 DTS import":
+
+        admin_state[user_id] = "dts_import"
+
+        await message.answer(
+            "📄 DTS TXT faylini yuboring"
+        )
+
+        return
+    elif (
+        admin_state.get(user_id) == "dts_import"
+        and message.document
+    ):
+
+        conn = psycopg2.connect(
+            DATABASE_URL
+        )
+
+        cur = conn.cursor()
+
+        file = await bot.get_file(
+            message.document.file_id
+        )
+
+        filename = f"dts_{user_id}.xlsx"
+
+        await bot.download_file(
+            file.file_path,
+            filename
+        )
+
+        wb = load_workbook(filename)
+
+        ws = wb.active
+
+        rows = []
+
+        for row in ws.iter_rows(
+            min_row=2,
+            values_only=True
+        ):
+            rows.append(row)
+
+        bob_map = {}
+        bolim_map = {}
+        mavzu_map = {}
+        kichik_map = {}
+
+        for row in rows:
+
+            subject = str(
+                row[1]
+            ).upper()
+
+            quarter = f"Q{row[2]}"
+
+            bob = str(
+                row[3]
+            ).strip()
+
+            bolim = str(
+                row[4]
+            ).strip()
+
+            mavzu = str(
+                row[5]
+            ).strip()
+
+            kichik = str(
+                row[6]
+            ).strip()
+
+            if bob not in bob_map:
+                bob_map[bob] = (
+                    len(bob_map) + 1
+                )
+
+            bob_no = bob_map[bob]
+
+            bolim_key = (
+                f"{bob}|{bolim}"
+            )
+
+            if bolim_key not in bolim_map:
+                bolim_map[
+                    bolim_key
+                ] = (
+                    len([
+                        x
+                        for x in bolim_map
+                        if x.startswith(
+                            f"{bob}|"
+                        )
+                    ]) + 1
+                )
+
+            bolim_no = bolim_map[
+                bolim_key
+            ]
+
+            mavzu_key = (
+                f"{bolim_key}|{mavzu}"
+            )
+
+            if mavzu_key not in mavzu_map:
+                mavzu_map[
+                    mavzu_key
+                ] = (
+                    len([
+                        x
+                        for x in mavzu_map
+                        if x.startswith(
+                            f"{bolim_key}|"
+                        )
+                    ]) + 1
+                )
+
+            mavzu_no = mavzu_map[
+                mavzu_key
+            ]
+
+            kichik_key = (
+                f"{mavzu_key}|{kichik}"
+            )
+
+            if kichik_key not in kichik_map:
+                kichik_map[
+                    kichik_key
+                ] = (
+                    len([
+                        x
+                        for x in kichik_map
+                        if x.startswith(
+                            f"{mavzu_key}|"
+                        )
+                    ]) + 1
+                )
+
+            kichik_no = kichik_map[
+                kichik_key
+            ]
+
+            topic_code = (
+                f"{subject}-"
+                f"{quarter}-"
+                f"B{bob_no:02d}-"
+                f"BL{bolim_no:02d}-"
+                f"M{mavzu_no:02d}-"
+                f"S{kichik_no:03d}"
+            )
+
+            cur.execute(
+                """
+                INSERT INTO dts_tree (
+                    topic_code,
+                    grade,
+                    quarter,
+                    subject,
+                    track,
+                    bob_code,
+                    bolim_code,
+                    mavzu_code,
+                    kichik_mavzu_code,
+                    bob_name,
+                    bolim_name,
+                    mavzu_name,
+                    kichik_mavzu_name
+                )
+                VALUES (
+                    %s,%s,%s,%s,
+                    'DTS',
+                    %s,%s,%s,%s,
+                    %s,%s,%s,%s
+                )
+                ON CONFLICT (topic_code)
+                DO NOTHING
+                """,
+                (
+                    topic_code,
+                    str(row[0]),
+                    str(row[2]),
+                    subject,
+                    f"B{bob_no:02d}",
+                    f"BL{bolim_no:02d}",
+                    f"M{mavzu_no:02d}",
+                    f"S{kichik_no:03d}",
+                    bob,
+                    bolim,
+                    mavzu,
+                    kichik
+                )
+            )
+
+        conn.commit()
+
+        cur.close()
+
+        conn.close()
+
+        await message.answer(
+            f"✅ {len(rows)} ta DTS bazaga yozildi"
+        )
+
+        return
     # parallel message bloklash
     async with user_locks[user_id]:
 
@@ -526,16 +911,123 @@ async def handle_all(message: types.Message):
                     )
                     return
 
-            # history yo‘q bo‘lsa
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+                elif prev_state == "db_school":
 
-            cursor.execute("""
+                    await message.answer(
+                        "🏫 Maktab turini tanlang:",
+                        reply_markup=base_keyboard([
+                            "all",
+                            "🏫 Oddiy",
+                            "⭐ IDUM",
+                            "🏆 Prezident",
+                            "🏢 Xususiy"
+                        ])
+                    )
+                    return
+
+                elif prev_state == "db_class":
+
+                    school = temp_user[user_id].get("db_school")
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT class, COUNT(*)
+                    FROM questions
+                    WHERE role='O‘quvchi'
+                    AND school_type=%s
+                    GROUP BY class
+                    ORDER BY class
+                    """, (school,))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    classes = [
+                        f"{cls} ({cnt})"
+                        for cls, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "🎓 Sinfni tanlang:",
+                        reply_markup=base_keyboard(classes)
+                    )
+                    return
+
+                elif prev_state == "db_subject":
+
+                    selected_class = temp_user[user_id]["db_class"]
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT subject, COUNT(*)
+                    FROM questions
+                    WHERE class=%s
+                    GROUP BY subject
+                    ORDER BY subject
+                    """, (selected_class,))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    subjects = [
+                        f"{subject} ({cnt})"
+                        for subject, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "📘 Fan tanlang:",
+                        reply_markup=base_keyboard(subjects)
+                    )
+                    return
+
+                elif prev_state == "db_test":
+
+                    selected_class = temp_user[user_id]["db_class"]
+                    subject = temp_user[user_id]["db_subject"]
+
+                    conn = psycopg2.connect(DATABASE_URL)
+                    cur = conn.cursor()
+
+                    cur.execute("""
+                    SELECT test_type, COUNT(*)
+                    FROM questions
+                    WHERE class=%s
+                    AND subject=%s
+                    GROUP BY test_type
+                    ORDER BY test_type
+                    """, (selected_class, subject))
+
+                    rows = cur.fetchall()
+
+                    conn.close()
+
+                    tests = [
+                        f"{test_type} ({cnt})"
+                        for test_type, cnt in rows
+                    ]
+
+                    await message.answer(
+                        "📝 Test turini tanlang:",
+                        reply_markup=base_keyboard(tests)
+                    )
+                    return
+
+            # history yo‘q bo‘lsa
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (user_id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
@@ -548,6 +1040,7 @@ async def handle_all(message: types.Message):
             )
 
             return
+
 
         # ===== TEACHER TEST =====
         elif message.text == "🧠 Bilimni sinash":
@@ -569,181 +1062,385 @@ async def handle_all(message: types.Message):
 
             return
 
-        # ===== TEST BAZASI =====
         elif message.text == "📚 BILIMNI SINASH bazasi":
 
-            if message.from_user.id not in ADMINS:
+            if user_id not in ADMINS:
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            await message.answer(
+                "📚 Savollar boshqaruvi",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="👨‍🎓 O‘quvchi bazasi")],
+                        [KeyboardButton(text="👨‍🏫 O‘qituvchi bazasi")],
+                        [KeyboardButton(text="📋 So‘rovnoma bazasi")],
+                        [KeyboardButton(text=BACK)]
+                    ],
+                    resize_keyboard=True
+                )
+            )
 
-            text = "📚 BILIMNI SINASH bazasi\n"
+            return
 
-            # ===== O'QUVCHI =====
-            for cls in CLASSES:
+        elif message.text == "👨‍🎓 O‘quvchi bazasi":
 
-                subjects = SUBJECTS_BY_CLASS.get(cls, [])
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-                flat_subjects = []
-
-                for row in subjects:
-                    flat_subjects.extend(row)
-
-                row_text = []
-
-                for subject in flat_subjects:
-
-                    cursor.execute("""
-                    SELECT COUNT(*)
-                    FROM questions
-                    WHERE class=? AND subject=?
-                    """, (cls, subject))
-
-                    count = cursor.fetchone()[0]
-
-                    short = subject[:4]
-
-                    row_text.append(f"{short}:{count}")
-
-                text += f"\n\n🎓 {cls}\n"
-                text += " ".join(row_text)
-
-            # ===== O'QITUVCHI =====
-            text += "\n\n━━━━━━━━━━\n"
-            text += "👨‍🏫 O‘QITUVCHI\n"
-
-            for level, subjects in SUBJECTS_BY_LEVEL.items():
-
-                row_text = []
-
-                for subject in subjects:
-
-                    cursor.execute("""
-                    SELECT COUNT(*)
-                    FROM questions
-                    WHERE level=? AND subject=?
-                    """, (level, subject))
-
-                    count = cursor.fetchone()[0]
-
-                    short = subject[:4]
-
-                    row_text.append(f"{short}:{count}")
-
-                text += f"\n\n{level}\n"
-                text += " ".join(row_text)
-
-            # ===== SO'ROVNOMA =====
-            cursor.execute("""
-            SELECT COUNT(*)
-            FROM surveys
+            cur.execute("""
+            SELECT DISTINCT school_type
+            FROM questions
+            WHERE role='O‘quvchi'
+            ORDER BY school_type
             """)
 
-            survey_count = cursor.fetchone()[0]
-
-            text += (
-                f"\n\n━━━━━━━━━━\n"
-                f"📋 So‘rovnoma: {survey_count} ta"
-            )
+            rows = cur.fetchall()
 
             conn.close()
 
-            await message.answer(text)
+            schools = [r[0] for r in rows if r[0]]
 
-            return
-
-        elif message.text == "/addsurvey" and message.from_user.id in ADMINS:
-
-            admin_state[message.from_user.id] = "survey_add"
+            set_state(user_id, "db_school")
 
             await message.answer(
-                "Survey yuboring"
+                "🏫 Maktab turini tanlang:",
+                reply_markup=base_keyboard(schools)
             )
 
             return
 
-        elif admin_state.get(message.from_user.id) == "survey_add":
+        elif user_state.get(user_id) == "db_school":
 
-            text = message.text.strip()
+            temp_user[user_id]["db_school"] = message.text
 
-            blocks = text.replace("\r", "").split("\n\n")
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            cur.execute("""
+            SELECT class, COUNT(*)
+            FROM questions
+            WHERE role='O‘quvchi'
+            AND school_type=%s
+            GROUP BY class
+            ORDER BY class
+            """, (message.text,))
 
-            count = 0
+            rows = cur.fetchall()
 
-            for block in blocks:
+            conn.close()
 
-                lines = [
-                    l.strip().replace("\r", "")
-                    for l in block.split("\n")
-                    if l.strip()
-                ]
+            classes = []
 
-                if len(lines) < 7:
-                    continue
+            for cls, cnt in rows:
+                classes.append(f"{cls} ({cnt})")
 
-                try:
+            set_state(user_id, "db_class")
 
-                    role = lines[0].replace("ROLE:", "").strip()
-                    question = lines[1].replace("QUESTION:", "").strip()
-                    q_type = lines[2].replace("TYPE:", "").strip()
+            await message.answer(
+                "🎓 Sinfni tanlang:",
+                reply_markup=base_keyboard(classes)
+            )
 
-                    a = lines[3].replace("A:", "").strip()
-                    b = lines[4].replace("B:", "").strip()
-                    c = lines[5].replace("C:", "").strip()
-                    d = lines[6].replace("D:", "").strip()
+            return
 
-                    cursor.execute("""
-                    INSERT INTO surveys (
-                        role,
-                        question,
-                        q_type,
-                        a,
-                        b,
-                        c,
-                        d
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        role,
-                        question,
-                        q_type,
-                        a,
-                        b,
-                        c,
-                        d
-                    ))
+        elif user_state.get(user_id) == "db_class":
 
-                    count += 1
+            selected_class = message.text.split(" (")[0]
 
-                except Exception as e:
-                    print(e)
+            temp_user[user_id]["db_class"] = selected_class
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT subject, COUNT(*)
+            FROM questions
+            WHERE class=%s
+            GROUP BY subject
+            ORDER BY subject
+            """, (selected_class,))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            subjects = []
+
+            for subject, cnt in rows:
+                subjects.append(f"{subject} ({cnt})")
+
+            set_state(user_id, "db_subject")
+
+            await message.answer(
+                "📘 Fan tanlang:",
+                reply_markup=base_keyboard(subjects)
+            )
+
+            return
+
+        elif user_state.get(user_id) == "db_subject":
+
+            subject = message.text.split(" (")[0]
+
+            temp_user[user_id]["db_subject"] = subject
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT test_type, COUNT(*)
+            FROM questions
+            WHERE class=%s
+            AND subject=%s
+            GROUP BY test_type
+            ORDER BY test_type
+            """, (
+                temp_user[user_id]["db_class"],
+                subject
+            ))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            tests = []
+
+            for test_type, cnt in rows:
+                tests.append(f"{test_type} ({cnt})")
+
+            set_state(user_id, "db_test")
+
+            await message.answer(
+                "📝 Test turini tanlang:",
+                reply_markup=base_keyboard(tests)
+            )
+
+            return
+
+        elif user_state.get(user_id) == "db_test":
+
+            test_type = message.text.split(" (")[0]
+
+            temp_user[user_id]["db_test"] = test_type
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT id, question
+            FROM questions
+            WHERE class=%s
+            AND subject=%s
+            AND test_type=%s
+            ORDER BY id
+            """, (
+                temp_user[user_id]["db_class"],
+                temp_user[user_id]["db_subject"],
+                test_type
+            ))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            if not rows:
+
+                await message.answer("Savollar topilmadi ❌")
+                return
+
+            text = (
+                f"📚 {temp_user[user_id]['db_class']}\n"
+                f"📘 {temp_user[user_id]['db_subject']}\n"
+                f"📝 {test_type}\n\n"
+            )
+
+            temp_user[user_id]["current_questions"] = rows
+
+            set_state(user_id, "question_list")
+
+            for i, (qid, question) in enumerate(rows, start=1):
+                text += f"{i}. {question}\n"
+
+            await message.answer(
+                text[:4000],
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="🗑 Savol(lar)ni o‘chirish")],
+                        [KeyboardButton(text="🗑 Shu blokni o‘chirish")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+            return
+
+        elif (
+            user_state.get(user_id) == "question_list"
+            and message.text == "🗑 Savol(lar)ni o‘chirish"
+        ):
+
+            set_state(user_id, "delete_questions")
+
+            await message.answer(
+                "Qaysi savollarni o‘chirasiz?\n\n"
+                "Misollar:\n"
+                "2\n"
+                "2,5,8\n"
+                "2-7"
+            )
+
+            return
+
+        elif user_state.get(user_id) == "delete_questions":
+
+            rows = temp_user[user_id].get("current_questions", [])
+
+            selected = set()
+
+            try:
+
+                for part in message.text.split(","):
+
+                    part = part.strip()
+
+                    if "-" in part:
+
+                        start, end = part.split("-")
+
+                        start = int(start.strip())
+                        end = int(end.strip())
+
+                        if start > end:
+                            start, end = end, start
+
+                        for x in range(start, end + 1):
+                            selected.add(x)
+
+                    else:
+
+                        selected.add(int(part))
+
+            except:
+
+                await message.answer(
+                    "Format xato ❌\n\n"
+                    "Misollar:\n"
+                    "2\n"
+                    "2,5,8\n"
+                    "2-7"
+                )
+                return
+
+            ids = []
+
+            for num in selected:
+
+                if 1 <= num <= len(rows):
+
+                    ids.append(rows[num - 1][0])
+
+            if not ids:
+
+                await message.answer("Savol topilmadi ❌")
+                return
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            DELETE FROM questions
+            WHERE id = ANY(%s)
+            """, (ids,))
+
+            deleted = cur.rowcount
 
             conn.commit()
             conn.close()
 
-            admin_state[message.from_user.id] = None
+            await message.answer(
+                f"✅ {deleted} ta savol o‘chirildi"
+            )
+            set_state(user_id, "question_list")
+
+            return
+
+        elif (
+            user_state.get(user_id) == "question_list"
+            and message.text == "🗑 Shu blokni o‘chirish"
+        ):
+
+            rows = temp_user[user_id].get("current_questions", [])
+
+            temp_user[user_id]["block_delete_count"] = len(rows)
+
+            set_state(user_id, "confirm_block_delete")
 
             await message.answer(
-                f"✅ {count} ta survey qo‘shildi"
+                f"⚠️ Shu blokdagi {len(rows)} ta savol o‘chirilsinmi?\n\n"
+                f"📚 {temp_user[user_id]['db_class']}\n"
+                f"📘 {temp_user[user_id]['db_subject']}\n"
+                f"📝 {temp_user[user_id]['db_test']}",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="✅ Ha")],
+                        [KeyboardButton(text="❌ Yo‘q")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
             )
 
             return
 
-    # ===== ADMIN MAKTAB =====
-        elif message.text == "🏫 Maktab statistikasi":
+        elif (
+            user_state.get(user_id) == "confirm_block_delete"
+            and message.text == "✅ Ha"
+        ):
 
-            if message.from_user.id not in ADMINS:
-                return
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            user_state[message.from_user.id] = "admin_region"
+            cur.execute("""
+            DELETE FROM questions
+            WHERE class=%s
+            AND subject=%s
+            AND test_type=%s
+            """, (
+                temp_user[user_id]["db_class"],
+                temp_user[user_id]["db_subject"],
+                temp_user[user_id]["db_test"]
+            ))
+
+            deleted = cur.rowcount
+
+            conn.commit()
+            conn.close()
 
             await message.answer(
-                "Viloyat tanlang:",
-                reply_markup=base_keyboard(REGIONS.keys())
+                f"✅ {deleted} ta savol o‘chirildi"
+            )
+
+            set_state(user_id, "db_test")
+
+            return
+
+        elif (
+            user_state.get(user_id) == "confirm_block_delete"
+            and message.text == "❌ Yo‘q"
+        ):
+
+            set_state(user_id, "question_list")
+
+            await message.answer(
+                "Bekor qilindi ✅",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="🗑 Savol(lar)ni o‘chirish")],
+                        [KeyboardButton(text="🗑 Shu blokni o‘chirish")],
+                        [KeyboardButton(text="🔙 Ortga")]
+                    ],
+                    resize_keyboard=True
+                )
             )
 
             return
@@ -754,10 +1451,10 @@ async def handle_all(message: types.Message):
             if message.from_user.id not in ADMINS:
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT surveys.question,
             survey_answers.answer,
             COUNT(*)
@@ -767,7 +1464,7 @@ async def handle_all(message: types.Message):
             GROUP BY surveys.question, survey_answers.answer
             """)
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -820,16 +1517,16 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["admin_district"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT DISTINCT school
             FROM users
-            WHERE district=?
+            WHERE district=%s
             """, (message.text,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -848,16 +1545,16 @@ async def handle_all(message: types.Message):
 
             school = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE school=?
+            WHERE school=%s
             """, (school,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -916,15 +1613,15 @@ async def handle_all(message: types.Message):
         # 🏠 HOME
         elif message.text == HOME:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
@@ -940,18 +1637,18 @@ async def handle_all(message: types.Message):
         # ===== O'QITUVCHI BILIM DARAJASI =====
         elif message.text == "📊 Bilim darajam":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject,
             AVG(score * 100.0 / total)
             FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -991,16 +1688,16 @@ async def handle_all(message: types.Message):
         # ===== O'QUVCHILAR NATIJASI =====
         elif message.text == "👨‍🎓 O‘quvchilar natijasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
             WHERE role='O‘quvchi'
             """)
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1029,15 +1726,15 @@ async def handle_all(message: types.Message):
         # ===== VILOYAT =====
         elif message.text == "🌍 Viloyat statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
-            SELECT region FROM users
-            WHERE user_id=?
+            cur.execute("""
+            SELECT region users
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             if not row:
                 conn.close()
@@ -1045,13 +1742,13 @@ async def handle_all(message: types.Message):
 
             region = row[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE region=?
+            WHERE region=%s
             """, (region,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1080,15 +1777,15 @@ async def handle_all(message: types.Message):
         # ===== RESPUBLIKA =====
         elif message.text == "🇺🇿 Respublika statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
             """)
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1114,77 +1811,18 @@ async def handle_all(message: types.Message):
 
             return
 
-        # ===== MENING NATIJAM =====
-        elif message.text == "📊 Mening natijam":
-
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
-
-            cursor.execute("""
-            SELECT subject,
-            AVG(score * 100.0 / total)
-            FROM results
-            WHERE user_id=?
-            GROUP BY subject
-            """, (message.from_user.id,))
-
-            rows = cursor.fetchall()
-
-            conn.close()
-
-            if not check_survey(message.from_user.id):
-
-                await message.answer(
-                    "❌ Avval so‘rovnomadan o‘ting."
-                )
-
-                return
-
-            if not rows:
-
-                await message.answer(
-                    "❌ Hali natija yo‘q"
-                )
-                return
-
-            text = "📊 Sizning natijalaringiz\n\n"
-
-            total_avg = 0
-
-            for subject, avg in rows:
-
-                avg = round(avg, 1)
-
-                total_avg += avg
-
-                bar = "█" * int(avg // 10)
-                empty = "░" * (10 - int(avg // 10))
-
-                text += (
-                    f"📘 {subject}\n"
-                    f"{bar}{empty} {avg}%\n\n"
-                )
-
-            overall = round(total_avg / len(rows), 1)
-
-            text += f"🎯 Umumiy o‘zlashtirish: {overall}%"
-
-            await message.answer(text)
-
-            return
-
-        # ===== MAKTAB STATISTIKASI =====
+       # ===== MAKTAB STATISTIKASI =====
         elif message.text == "🏫 Maktab statistikasi":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT school FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             if not row:
                 await message.answer("❌ Maktab topilmadi")
@@ -1193,13 +1831,13 @@ async def handle_all(message: types.Message):
 
             school = row[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT AVG(score * 100.0 / total)
             FROM results
-            WHERE school=?
+            WHERE school=%s
             """, (school,))
 
-            avg = cursor.fetchone()[0]
+            avg = cur.fetchone()[0]
 
             conn.close()
 
@@ -1250,13 +1888,13 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(message.from_user.id) == "change_role":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET role=?
-            WHERE user_id=?
+            SET role=%s
+            WHERE user_id=%s
             """, (
                 message.text,
                 message.from_user.id
@@ -1309,13 +1947,13 @@ async def handle_all(message: types.Message):
 
         elif user_state.get(message.from_user.id) == "change_district":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET region=?, district=?
-            WHERE user_id=?
+            SET region=%s, district=%s
+            WHERE user_id=%s
             """, (
                 temp_user[message.from_user.id]["new_region"],
                 message.text,
@@ -1324,12 +1962,12 @@ async def handle_all(message: types.Message):
 
             conn.commit()
 
-            cursor.execute(
-                "SELECT role FROM users WHERE user_id=?",
+            cur.execute(
+                "SELECT role FROM users WHERE user_id=%s",
                 (message.from_user.id,)
             )
 
-            role = cursor.fetchone()[0]
+            role = cur.fetchone()[0]
 
             conn.close()
 
@@ -1341,67 +1979,152 @@ async def handle_all(message: types.Message):
             )
 
             return
-        # ===== MAKTABNI ALMASHTIRISH =====
+
+# ===== MAKTABNI ALMASHTIRISH =====
 
         elif message.text == "🏫 Maktabni almashtirish":
 
-            user_state[message.from_user.id] = "change_school"
+            user_state[user_id] = "change_school_type"
 
             await message.answer(
-                "Yangi maktab nomi yoki raqamini kiriting:"
+                "Maktab turini tanlang:",
+                reply_markup=make_keyboard(SCHOOL_TYPES)
             )
 
             return
 
-        elif user_state.get(message.from_user.id) == "change_school":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+        elif user_state.get(user_id) == "change_school_type":
 
-            cursor.execute("""
+            temp_user[user_id]["new_school_type"] = message.text
+
+            user_state[user_id] = "change_school"
+
+            await message.answer(
+                "Maktab raqami kiriting:"
+            )
+
+            return
+
+
+        elif user_state.get(user_id) == "change_school":
+
+            temp_user[user_id]["new_school"] = (
+                f"{temp_user[user_id]['new_school_type']} - {message.text}"
+            )
+
+            school_type = temp_user[user_id]["new_school_type"]
+
+            if school_type == "🏫 Oddiy davlat maktabi":
+                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
+
+            elif school_type == "⭐ Ixtisoslashgan (IDUM)":
+                classes = [c for c in CLASSES if "⭐ IDUM" in c]
+
+            elif school_type == "🏆 Prezident maktabi":
+                classes = [c for c in CLASSES if "🏆 Prezident" in c]
+
+            else:
+                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
+
+            user_state[user_id] = "change_school_class"
+
+            await message.answer(
+                "Sinfni tanlang:",
+                reply_markup=base_keyboard(classes)
+            )
+
+            return
+
+
+        elif user_state.get(user_id) == "change_school_class":
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
             UPDATE users
-            SET school=?
-            WHERE user_id=?
+            SET school=%s, class=%s
+            WHERE user_id=%s
             """, (
+                temp_user[user_id]["new_school"],
                 message.text,
-                message.from_user.id
+                user_id
             ))
 
             conn.commit()
+
+            cur.execute("""
+            SELECT role
+            FROM users
+            WHERE user_id=%s
+            """, (user_id,))
+
+            row = cur.fetchone()
+
             conn.close()
 
-            user_state[message.from_user.id] = None
+            role = row[0] if row else "O‘quvchi"
+
+            user_state[user_id] = None
 
             await message.answer(
-                f"✅ Maktab o‘zgartirildi: {message.text}",
-                reply_markup=get_main_keyboard(
-                    temp_user[message.from_user.id]["role"]
-                )
+                "✅ Maktab va sinf o‘zgartirildi",
+                reply_markup=get_main_keyboard(role)
             )
 
             return
 
+
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT school
+            FROM users
+            WHERE user_id=%s
+            """, (message.from_user.id,))
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            school = row[0] if row else ""
+
+            if "🏫 Oddiy" in school:
+                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
+
+            elif "⭐ IDUM" in school:
+                classes = [c for c in CLASSES if "⭐ IDUM" in c]
+
+            elif "🏆 Prezident" in school:
+                classes = [c for c in CLASSES if "🏆 Prezident" in c]
+
+            else:
+                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
 
             user_state[message.from_user.id] = "change_class"
 
             await message.answer(
                 "Yangi sinfni tanlang:",
-                reply_markup=base_keyboard(CLASSES)
+                reply_markup=base_keyboard(classes)
             )
 
             return
 
+
         elif user_state.get(message.from_user.id) == "change_class":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             UPDATE users
-            SET class=?
-            WHERE user_id=?
+            SET class=%s
+            WHERE user_id=%s
             """, (
                 message.text,
                 message.from_user.id
@@ -1409,12 +2132,12 @@ async def handle_all(message: types.Message):
 
             conn.commit()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            row = cursor.fetchone()
+            row = cur.fetchone()
 
             conn.close()
 
@@ -1480,7 +2203,7 @@ async def handle_all(message: types.Message):
                 await message.answer("Fan topilmadi ❌")
                 return
 
-            # nested list -> oddiy list
+            # nested list -> 🏫 Oddiy list
             flat_subjects = []
 
             for row in subjects:
@@ -1497,270 +2220,37 @@ async def handle_all(message: types.Message):
         # ===== SUBJECT =====
         elif user_state.get(message.from_user.id) == "subject":
 
-            # fan saqlash
             temp_user[message.from_user.id]["subject"] = message.text
 
-            # keyingi state
             set_state(message.from_user.id, "test_type")
 
-            # test turi tanlash
-            await message.answer(
-                "Test turini tanlang:",
-                reply_markup=base_keyboard(TEST_TYPES)
-            )
+            selected_class = temp_user[message.from_user.id].get("class", "")
+
+            if "0-sinf" in selected_class:
+
+                await message.answer(
+                    "O‘yin turini tanlang:",
+                    reply_markup=base_keyboard(ZERO_TEST_TYPES)
+                )
+
+            else:
+
+                await message.answer(
+                    "Test turini tanlang:",
+                    reply_markup=base_keyboard(TEST_TYPES)
+                )
 
             return
 
         elif user_state.get(message.from_user.id) == "test":
 
-            if message.text not in ["➡️", "❌ Testni tugatish"]:
+            if message.text not in ["❌ Testni tugatish"]:
                 await message.answer(
                     "👇 Javobni faqat tugmalar orqali tanlang."
                 )
                 return
 
             test = user_test[message.from_user.id]
-
-            # TESTNI TUGATISH
-            if message.text == FINISH:
-
-                score = test["score"]
-                total = len(test["questions"])
-
-                await message.answer(
-                    f"🏁 Test tugatildi\n\n"
-                    f"📊 Natija: {score}/{total}",
-                    reply_markup=get_main_keyboard(
-                        temp_user[message.from_user.id]["role"]
-                    )
-                )
-
-                user_state[message.from_user.id] = None
-                user_test.pop(message.from_user.id, None)
-
-                return
-
-            # KEYINGI SAVOL
-            if message.text == "➡️":
-
-                # oxirgi savol bo‘lmasa
-                if test["index"] < len(test["questions"]) - 1:
-
-                    test["index"] += 1
-
-                else:
-
-                    await message.answer(
-                        "❌ Oxirgi savol"
-                    )
-
-                    return
-
-                test["question_start"] = time.time()
-                test["question_uid"] = random.randint(100000,999999)
-                test["expired"] = False
-                test["answered"] = False
-
-                q = test["questions"][test["index"]]
-
-                difficulty = q[12]
-
-                limit = 60
-
-                if difficulty == "medium":
-                    limit = 90
-
-                elif difficulty == "hard":
-                    limit = 120
-                if q[14]:
-
-                    await bot.send_photo(
-                        message.chat.id,
-                        photo=FSInputFile(
-                            f"images/{q[14]}"
-                        )
-                    )
-                # LATEX
-                if q[13] and "latex" in str(q[13]).lower():
-
-                    latex = q[5]
-
-                    encoded = quote(f"\\dpi{{300}} \\huge {latex}")
-
-                    url = f"https://latex.codecogs.com/png.image?{encoded}"
-
-                    await bot.send_photo(
-                        message.chat.id,
-                        photo=url
-                    )
-                    markup = InlineKeyboardMarkup(
-                        inline_keyboard=[
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 Savol",
-                                    callback_data="listen_q"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 A",
-                                    callback_data="listen_a"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[6],
-                                    callback_data="a"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 B",
-                                    callback_data="listen_b"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[7],
-                                    callback_data="b"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 C",
-                                    callback_data="listen_c"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[8],
-                                    callback_data="c"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 D",
-                                    callback_data="listen_d"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[9],
-                                    callback_data="d"
-                                )
-                            ]
-                        ]
-                    )
-
-                    text = "⬆️ Savol yuqoridagi rasmda"
-                else:
-                    text = q[5]
-
-                    markup = InlineKeyboardMarkup(
-                        inline_keyboard=[
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 Savol",
-                                    callback_data="listen_q"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 A",
-                                    callback_data="listen_a"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[6],
-                                    callback_data="a"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 B",
-                                    callback_data="listen_b"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[7],
-                                    callback_data="b"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 C",
-                                    callback_data="listen_c"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[8],
-                                    callback_data="c"
-                                )
-                            ],
-
-                            [
-                                InlineKeyboardButton(
-                                    text="🔊 D",
-                                    callback_data="listen_d"
-                                ),
-                                InlineKeyboardButton(
-                                    text=q[9],
-                                    callback_data="d"
-                                )
-                            ]
-                        ]
-                    )
-                msg = await bot.send_message(
-                    message.chat.id,
-                    text,
-                    reply_markup=markup
-                )
-
-            
-                if q[15] in ["uz", "ru", "en"]:
-
-                    voice = "uz-UZ-SardorNeural"
-
-                    if q[15] == "ru":
-                        voice = "ru-RU-DmitryNeural"
-
-                    elif q[15] == "en":
-                        voice = "en-US-GuyNeural"
-
-                    communicate = edge_tts.Communicate(
-                        text=q[5],
-                        voice=voice
-                    )
-
-                    await communicate.save("temp.mp3")
-
-                #    await bot.send_voice(
-                  #      message.chat.id,
-                  #      voice=FSInputFile("temp.mp3")
-                 #   )
-
-                    
-
-                # eski countdownni o‘chirish
-                if test.get("countdown_task"):
-                    test["countdown_task"].cancel()
-
-                # eski timerni o‘chirish
-                if test.get("timer_task"):
-                    test["timer_task"].cancel()
-                test["expired"] = False
-                test["answered"] = False
-
-                # eski timerni o‘chirish
-                old_task = test.get("timer_task")
-
-                if old_task:
-                    old_task.cancel()
-
-                test["timer_task"] = asyncio.create_task(
-                    question_timer(message.from_user.id, limit)
-                )
-                test["msg_id"] = msg.message_id
-
-                return
 
             user_id = message.from_user.id
 
@@ -1819,10 +2309,10 @@ async def handle_all(message: types.Message):
                 score = test["score"]
                 total = len(test["questions"])
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute("""
+                cur.execute("""
                 INSERT INTO results (
                     user_id,
                     class,
@@ -1834,7 +2324,7 @@ async def handle_all(message: types.Message):
                     school,
                     role
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     user_id,
                     temp_user[user_id].get("class"),
@@ -1862,9 +2352,9 @@ async def handle_all(message: types.Message):
                         temp_user[user_id]["role"]
                     )
                 )
-
-                user_state[user_id] = None
+                
                 user_test.pop(user_id, None)
+                user_state[user_id] = None
 
                 return
 
@@ -1874,17 +2364,31 @@ async def handle_all(message: types.Message):
             test["question_start"] = time.time()
             test["question_uid"] = random.randint(100000,999999)
             test["expired"] = False
+            test["processing"] = False
             test["answered"] = False
 
             q = test["questions"][test["index"]]
 
             if q[14]:
-                await bot.send_photo(
-                    message.chat.id,
-                    photo=FSInputFile(
-                        f"images/{q[14]}"
-                    )
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+
+                cur.execute(
+                    "SELECT file_id FROM images WHERE name=%s",
+                    (q[14],)
                 )
+
+                row = cur.fetchone()
+
+                conn.close()
+
+                if row:
+
+                    await bot.send_photo(
+                        message.chat.id,
+                        photo=row[0]
+                    )
 
             difficulty = q[12]
 
@@ -1896,19 +2400,22 @@ async def handle_all(message: types.Message):
             elif difficulty == "hard":
                 limit = 120
 
-                # LATEX
+           # LATEX
             if q[13] and "latex" in str(q[13]).lower():
 
                 latex = q[5]
 
-                encoded = quote(f"\\dpi{{300}} \\huge {latex}")
-
-                url = f"https://latex.codecogs.com/png.image?{encoded}"
+                encoded = quote(
+                    f"\\dpi{{300}} \\huge {latex}"
+                )
 
                 await bot.send_photo(
                     message.chat.id,
                     photo=url
                 )
+
+                text = "Savol rasmi yuqorida ⬆️"
+
                 markup = InlineKeyboardMarkup(
                     inline_keyboard=[
 
@@ -1961,7 +2468,12 @@ async def handle_all(message: types.Message):
                                 text=q[9],
                                 callback_data="d"
                             )
-                        ]
+                        ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                     ]
                 )
 
@@ -2021,9 +2533,22 @@ async def handle_all(message: types.Message):
                                 text=q[9],
                                 callback_data="d"
                             )
-                        ]
+                        ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
+                    ]
                     ]
                 )
+
+            
+            await bot.send_message(
+                message.chat.id,
+                "📚 Test boshlandi",
+                reply_markup=ReplyKeyboardRemove()
+            )
+
             msg = await bot.send_message(
                 message.chat.id,
                 f"{result_text}\n\n{text}",
@@ -2085,8 +2610,8 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["test_type"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
             # O‘qituvchi
             if temp_user[message.from_user.id]["role"] == "O‘qituvchi":
@@ -2098,12 +2623,12 @@ async def handle_all(message: types.Message):
                 test_type = temp_user[message.from_user.id]["test_type"]
 
                 # EASY
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='easy'
                 ORDER BY RANDOM()
                 LIMIT 10
@@ -2113,15 +2638,15 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
 
                 # MEDIUM
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='medium'
                 ORDER BY RANDOM()
                 LIMIT 7
@@ -2131,15 +2656,15 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
 
                 # HARD
-                cursor.execute("""
+                cur.execute("""
                 SELECT * FROM questions
                 WHERE role='O‘qituvchi'
-                AND level=?
-                AND subject=?
-                AND test_type=?
+                AND level=%s
+                AND subject=%s
+                AND test_type=%s
                 AND difficulty='hard'
                 ORDER BY RANDOM()
                 LIMIT 3
@@ -2149,25 +2674,46 @@ async def handle_all(message: types.Message):
                     test_type
                 ))
 
-                questions.extend(cursor.fetchall())
+                questions.extend(cur.fetchall())
+
+            if user_id not in temp_user:
+                await message.answer(
+                    "♻️ Bot yangilangan. Testni qayta boshlang."
+                )
+                return
+
             # O‘quvchi
             else:
 
-                cursor.execute("""
-                SELECT * FROM questions
+                if "🏫 Oddiy" in temp_user[user_id]["class"]:
+                    school_type = "🏫 Oddiy"
+                elif "⭐ IDUM" in temp_user[user_id]["class"]:
+                    school_type = "⭐ IDUM"
+                elif "🏆 Prezident" in temp_user[user_id]["class"]:
+                    school_type = "🏆 Prezident"
+                elif "🏢 Xususiy" in temp_user[user_id]["class"]:
+                    school_type = "🏢 Xususiy"
+                else:
+                    school_type = "all"
+
+                cur.execute("""
+                SELECT *
+                FROM questions
                 WHERE role='O‘quvchi'
-                AND class=?
-                AND subject=?
-                AND test_type=?
+                AND class=%s
+                AND subject=%s
+                AND test_type=%s
+                AND school_type IN (%s, 'all')
                 ORDER BY RANDOM()
                 LIMIT 20
                 """, (
-                    temp_user[message.from_user.id]["class"],
-                    temp_user[message.from_user.id]["subject"],
-                    temp_user[message.from_user.id]["test_type"]
+                    temp_user[user_id]["class"],
+                    temp_user[user_id]["subject"],
+                    temp_user[user_id]["test_type"],
+                    school_type
                 ))
 
-                questions = cursor.fetchall()
+                questions = cur.fetchall()
 
             conn.close()
 
@@ -2204,13 +2750,30 @@ async def handle_all(message: types.Message):
             elif difficulty == "hard":
                 limit = 120
 
+
+            
             # LATEX SAVOL
             # RASM
             if q[14]:
-                await bot.send_photo(
-                    message.chat.id,
-                    photo=FSInputFile(f"images/{q[14]}")
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+
+                cur.execute(
+                    "SELECT file_id FROM images WHERE name=%s",
+                    (q[14],)
                 )
+
+                row = cur.fetchone()
+
+                conn.close()
+
+                if row:
+
+                    await bot.send_photo(
+                        message.chat.id,
+                        photo=row[0]
+                    )
 
             # LATEX
             if q[13] and "latex" in str(q[13]).lower():
@@ -2285,6 +2848,11 @@ async def handle_all(message: types.Message):
                             text=q[9],
                             callback_data="d"
                         )
+                    ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
                     ]
                 ]
             )
@@ -2350,23 +2918,35 @@ async def handle_all(message: types.Message):
 
                 user_state[message.from_user.id] = "class_register"
 
+                school_type = temp_user[message.from_user.id]["school_type"]
+
+                if school_type == "🏫 Oddiy davlat maktabi":
+                    classes = [c for c in CLASSES if "🏫 Oddiy" in c]
+                elif school_type == "⭐ Ixtisoslashgan (IDUM)":
+                    classes = [c for c in CLASSES if "⭐ IDUM" in c]
+
+                elif school_type == "🏆 Prezident maktabi":
+                    classes = [c for c in CLASSES if "🏆 Prezident" in c]
+
+                else:
+                    classes = [c for c in CLASSES if "🏢 Xususiy" in c]
+
                 await message.answer(
                     "Sinf tanlang:",
-                    reply_markup=base_keyboard(CLASSES)
+                    reply_markup=base_keyboard(classes)
                 )
 
                 return
-
             # o‘qituvchi bo‘lsa save
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             INSERT INTO users (
                 user_id, role, region,
                 district, school, class
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 message.from_user.id,
                 temp_user[message.from_user.id]["role"],
@@ -2402,16 +2982,16 @@ async def handle_all(message: types.Message):
         # ===== SURVEY =====
         elif action == BTN_SURVEY:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role
             FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
 
             if not user:
                 conn.close()
@@ -2419,15 +2999,15 @@ async def handle_all(message: types.Message):
 
             role = user[0]
 
-            cursor.execute("""
+            cur.execute("""
             SELECT *
             FROM surveys
-            WHERE role=?
+            WHERE role=%s
             ORDER BY RANDOM()
             LIMIT 20
             """, (role,))
 
-            surveys = cursor.fetchall()
+            surveys = cur.fetchall()
 
             conn.close()
 
@@ -2464,15 +3044,15 @@ async def handle_all(message: types.Message):
             # ===== TEST =====
         elif action == BTN_TEST:
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT role FROM users
-            WHERE user_id=?
+            WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cursor.fetchone()
+            user = cur.fetchone()
             conn.close()
 
             if not user:
@@ -2492,16 +3072,15 @@ async def handle_all(message: types.Message):
 
             # O‘quvchi
             if role == "O‘quvchi":
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
-
-                cursor.execute("""
+                cur.execute("""
                 SELECT class FROM users
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
-                row = cursor.fetchone()
+                row = cur.fetchone()
 
                 conn.close()
 
@@ -2550,15 +3129,15 @@ async def handle_all(message: types.Message):
 
             temp_user[message.from_user.id]["class"] = message.text
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             INSERT INTO users (
                 user_id, role, region,
                 district, school, class
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 message.from_user.id,
                 temp_user[message.from_user.id]["role"],
@@ -2589,13 +3168,13 @@ async def handle_all(message: types.Message):
             # oxiri
             if data["index"] >= len(data["surveys"]) - 1:
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute("""
+                cur.execute("""
                 UPDATE users
                 SET survey_done=1
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
                 conn.commit()
@@ -2653,41 +3232,25 @@ async def handle_all(message: types.Message):
             # ===== O‘QUVCHI =====
             if role == "O‘quvchi":
 
-                if (
-                    not lines[1].startswith("CLASS") or
-                    not lines[2].startswith("SUBJECT") or
-                    not lines[3].startswith("TEST_TYPE")
-                ):
-                    await message.answer("Format noto‘g‘ri ❌")
-                    return
-
-                cls = lines[1].split(":",1)[1].strip()
-                subject = lines[2].split(":",1)[1].strip()
-                test_type = lines[3].split(":",1)[1].strip()
+                cls = ""
+                subject = ""
+                test_type = "DTS"
 
             # ===== O‘QITUVCHI =====
             elif role == "O‘qituvchi":
 
-                if (
-                    not lines[1].startswith("LEVEL") or
-                    not lines[2].startswith("SUBJECT") or
-                    not lines[3].startswith("TEST_TYPE")
-                ):
-                    await message.answer("Format noto‘g‘ri ❌")
-                    return
-
-                level = lines[1].split(":",1)[1].strip()
-                subject = lines[2].split(":",1)[1].strip()
-                test_type = lines[3].split(":",1)[1].strip()
+                level = "D1"
+                subject = ""
+                test_type = "DTS"
 
             else:
                 await message.answer("ROLE xato ❌")
                 return
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            i = 4
+            i = 1
             count = 0
 
             while i < len(lines):
@@ -2703,54 +3266,440 @@ async def handle_all(message: types.Message):
                         difficulty = "easy"
                         voice_type = "none"
 
-                        step = 7
+                        topic = ""
+                        category = ""
+                        subtopic = ""
 
-                        # IMG
-                        if i+1 < len(lines) and lines[i+1].startswith("IMG:"):
+                        framework = ""
+                        skill = ""
 
-                            img = lines[i+1].split(":",1)[1].strip()
+                        grade = ""
+                        quarter = ""
 
-                            i += 1
-                            step += 1
+                        steam = ""
+                        future_skill = ""
 
-                        # TYPE
-                        if i+1 < len(lines) and lines[i+1].startswith("TYPE:"):
+                        age_group = ""
+                        exam_type = ""
 
-                            q_type = lines[i+1].split(":",1)[1].strip()
+                        # YANGI MAYDONLAR
+                        topic_code = ""
+                        bloom = ""
+                        timss = ""
+                        pisa = ""
+                        four_k = ""
+                        comp = ""
+                        goal = ""
+                        qtype_new = "Q1"
+                        src = ""
+                        lang = "UZ"
+                        author = ""
+                        sch = ""
 
-                            i += 1
-                            step += 1
+                        time_limit = 60
+                        weight = 1
+                        is_latex = False
 
-                        # DIFFICULTY
-                        if i+1 < len(lines) and lines[i+1].startswith("DIFFICULTY:"):
+                        track = ""
+                        bob_code = ""
+                        bolim_code = ""
+                        mavzu_code = ""
+                        kichik_mavzu_code = ""
 
-                            difficulty = lines[i+1].split(":",1)[1].strip()
+                        audio_file = ""
+                        video_file = ""
+                        explanation = ""
+                        answer_explanation = ""
 
-                            i += 1
-                            step += 1
+                        data = {}
 
-                            #ovoz
-                        if i+1 < len(lines) and lines[i+1].startswith("VOICE:"):
+                        j = i + 1
 
-                            voice_type = lines[i+1].split(":",1)[1].strip()
+                        while j < len(lines):
 
-                            i += 1
-                        if i+1 < len(lines) and lines[i+1].startswith("TYPE:"):
+                            if lines[j].startswith("Q:"):
+                                break
 
-                            q_type = (
-                                lines[i+1]
-                                .split(":",1)[1]
-                                .strip()
-                                .lower()
+                            if ":" in lines[j]:
+                                key, value = lines[j].split(":", 1)
+                                data[key.strip().upper()] = value.strip()
+
+                            j += 1
+
+                        # ESKI MAYDONLAR
+                        q_type = data.get("TYPE", "text")
+
+                        img = data.get("IMG") or data.get("IMAGE")
+
+                        category = data.get("CATEGORY", "")
+                        subtopic = data.get("SUBTOPIC", "")
+
+                        framework = data.get("FRAMEWORK", "")
+                        skill = data.get("SKILL", "")
+
+                        grade = data.get("GRADE", "")
+                        quarter = data.get("QUARTER", "")
+
+                        steam_code = data.get("STEAM", "")
+                        future_skill = data.get("FUTURE_SKILL", "")
+
+                        age_group = data.get("AGE_GROUP", "")
+                        exam_type = data.get("EXAM_TYPE", "")
+
+                        # YANGI STANDART
+
+                        level = data.get("LEVEL", "D1").upper()
+
+                        topic_code = (
+                            data.get("TOPIC", "")
+                            .strip()
+                            .upper()
+                        )
+
+                        track = ""
+                        bob_code = ""
+                        bolim_code = ""
+                        mavzu_code = ""
+                        kichik_mavzu_code = ""
+
+                        cur.execute("""
+                        SELECT
+                        grade,
+                        quarter,
+                        subject,
+                        category,
+                        topic,
+                        subtopic,
+                        track,
+                        bob_code,
+                        bolim_code,
+                        mavzu_code,
+                        kichik_mavzu_code
+                        FROM dts_tree
+                        WHERE topic_code=%s
+                        """, (topic_code,))
+                        dts_row = cur.fetchone()
+
+                        if not dts_row:
+                            raise Exception(
+                                f"DTS topilmadi: {topic_code}"
                             )
-                        a = lines[i+1].split(":",1)[1].strip()
-                        b = lines[i+2].split(":",1)[1].strip()
-                        c = lines[i+3].split(":",1)[1].strip()
-                        d = lines[i+4].split(":",1)[1].strip()
 
-                        correct = lines[i+5].split(":",1)[1].strip().lower()
+                        grade = dts_row[0]
+                        quarter = dts_row[1]
+                        subject = dts_row[2]
+                        category = dts_row[3]
+                        topic = dts_row[4]
+                        subtopic = dts_row[5]
 
-                        cursor.execute("""
+                        track = dts_row[6]
+
+                        bob_code = dts_row[7]
+                        bolim_code = dts_row[8]
+                        mavzu_code = dts_row[9]
+                        kichik_mavzu_code = dts_row[10]
+
+                        level = data.get("LEVEL", "D1").upper() 
+
+                        bloom = data.get("BLOOM", "")
+                        timss = data.get("TIMSS", "")
+                        pisa = data.get("PISA", "")
+                        four_k = data.get("4K", "")
+                        comp = data.get("COMP", "")
+                        goal = data.get("GOAL", "")
+
+                        qtype_new = data.get("QTYPE", "Q1")
+
+                        src = data.get("SRC", "")
+                        lang = data.get("LANG", "UZ")
+                        author = data.get("AUTHOR", "")
+                        sch = data.get("SCH", "")
+
+                        audio_file = data.get("AUDIO", "")
+                        video_file = data.get("VIDEO", "")
+
+                        explanation = data.get("EXPLANATION", "")
+                        answer_explanation = data.get(
+                            "ANSWER_EXPLANATION",
+                            ""
+                        )
+
+                        try:
+                            time_limit = int(
+                                data.get("TIME", "60")
+                            )
+                        except:
+                            time_limit = 60
+
+                        try:
+                            weight = int(
+                                data.get("WEIGHT", "1")
+                            )
+                        except:
+                            weight = 1
+
+                        is_latex = (
+                            data.get("LATEX", "0").upper()
+                            in ["1", "YES", "TRUE"]
+                        )
+
+                        voice_type = data.get("VOICE", "none")
+                        difficulty = data.get(
+                            "DIFFICULTY",
+                            "easy"
+                        )
+
+                        school_type = data.get(
+                            "SCHOOL",
+                            "all"
+                        )
+
+                        a = data.get("A")
+                        b = data.get("B")
+                        c = data.get("C")
+                        d = data.get("D")
+
+                        correct = (
+                            data.get("ANSWER", "")
+                            .strip()
+                            .lower()
+                        )
+
+                        i = j - 1
+                        # =========================
+                        # VALIDATION
+                        # =========================
+
+                        VALID_LEVELS = {
+                            "D1", "D2", "D3", "D4", "D5"
+                        }
+
+                        VALID_BLOOM = {
+                            "B1", "B2", "B3",
+                            "B4", "B5", "B6"
+                        }
+
+                        VALID_TIMSS = {
+                            "T1", "T2", "T3"
+                        }
+
+                        VALID_PISA = {
+                            "P1", "P2", "P3"
+                        }
+
+                        VALID_4K = {
+                            "K1", "K2", "K3", "K4"
+                        }
+
+                        VALID_STEAM = {
+                            "S1", "S2", "S3", "S4", "S5"
+                        }
+
+                        VALID_COMP = {
+                            "C1", "C2", "C3", "C4", "C5"
+                        }
+
+                        VALID_GOAL = {
+                            "G1", "G2", "G3", "G4", "G5"
+                        }
+
+                        VALID_QTYPE = {
+                            "Q1", "Q2", "Q3", "Q4",
+                            "Q5", "Q6", "Q7", "Q8",
+                            "Q9", "Q10", "Q11"
+                        }
+
+                        VALID_SRC = {
+                            "SRC1", "SRC2", "SRC3",
+                            "SRC4", "SRC5", "SRC6",
+                            "SRC7", "SRC8", "SRC9"
+                        }
+
+                        VALID_SCH = {
+                            "SCH1", "SCH2", "SCH3",
+                            "SCH4", "SCH5", "SCH6",
+                            "SCH7"
+                        }
+
+                        VALID_LANG = {
+                            "UZ", "RU", "EN", "KK"
+                        }
+
+                        VALID_ANSWERS = {
+                            "a", "b", "c", "d"
+                        }
+
+                        # LEVEL
+                        if level not in VALID_LEVELS:
+                            level = "D1"
+
+                        # BLOOM
+                        if bloom not in VALID_BLOOM:
+                            bloom = ""
+
+                        # TIMSS
+                        if timss not in VALID_TIMSS:
+                            timss = ""
+
+                        # PISA
+                        if pisa not in VALID_PISA:
+                            pisa = ""
+
+                        # 4K
+                        if four_k not in VALID_4K:
+                            four_k = ""
+
+                        # STEAM
+                        if steam not in VALID_STEAM:
+                            steam = ""
+
+                        # COMP
+                        if comp not in VALID_COMP:
+                            comp = ""
+
+                        # GOAL
+                        if goal not in VALID_GOAL:
+                            goal = ""
+
+                        # QTYPE
+                        if qtype_new not in VALID_QTYPE:
+                            qtype_new = "Q1"
+
+                        # SRC
+                        if src not in VALID_SRC:
+                            src = ""
+
+                        # SCH
+                        if sch not in VALID_SCH:
+                            sch = ""
+
+                        # LANG
+                        lang = lang.upper()
+
+                        if lang not in VALID_LANG:
+                            lang = "UZ"
+
+                        # TIME LIMIT
+                        if time_limit < 10:
+                            time_limit = 10
+
+                        if time_limit > 3600:
+                            time_limit = 3600
+
+                        # WEIGHT
+                        if weight < 1:
+                            weight = 1
+
+                        if weight > 10:
+                            weight = 10
+
+                        # ANSWER
+                        if correct not in VALID_ANSWERS:
+                            correct = "a"
+
+                        if not topic_code:
+                            raise Exception("TOPIC yo'q")
+
+                        if not a or not b or not c or not d:
+                            raise Exception("A B C D variantlar to'liq emas")
+
+                        if correct not in ["a", "b", "c", "d"]:
+                            raise Exception("ANSWER xato")
+
+                        # IMAGE
+                        if img:
+                            img = img.strip()
+
+                        # AUDIO
+                        if audio_file:
+                            audio_file = audio_file.strip()
+
+                        # VIDEO
+                        if video_file:
+                            video_file = video_file.strip()
+
+                        # AUTHOR
+                        if author:
+                            author = author[:100]
+
+                        # TOPIC CODE
+                        if topic_code:
+                            topic_code = topic_code.strip().upper()
+
+                        # QUESTION
+                        question = question.strip()
+
+                        if not question:
+                            continue
+
+                        # OPTIONS
+
+                        if a:
+                            a = a.strip()
+
+                        if b:
+                            b = b.strip()
+
+                        if c:
+                            c = c.strip()
+
+                        if d:
+                            d = d.strip()
+
+                        # EXPLANATIONS
+
+                        if explanation:
+                            explanation = explanation.strip()
+
+                        if answer_explanation:
+                            answer_explanation = answer_explanation.strip()
+
+                        # LATEX AUTO
+
+                        if "\\frac" in question:
+                            is_latex = True
+
+                        if "\\sqrt" in question:
+                            is_latex = True
+
+                        if "\\sum" in question:
+                            is_latex = True
+
+                        if "\\int" in question:
+                            is_latex = True
+
+                        # AUDIO AUTO
+
+                        if audio_file:
+                            qtype_new = "Q6"
+
+                        # IMAGE AUTO
+
+                        if img and qtype_new == "Q1":
+                            qtype_new = "Q5"
+
+                        # VIDEO AUTO
+
+                        if video_file:
+                            qtype_new = "Q5"
+
+                        # XP / DIFFICULTY
+
+                        if level == "D1" and weight == 1:
+                            weight = 1
+
+                        elif level == "D2" and weight == 1:
+                            weight = 2
+
+                        elif level == "D3" and weight == 1:
+                            weight = 3
+
+                        elif level == "D4" and weight == 1:
+                            weight = 4
+
+                        elif level == "D5" and weight == 1:
+                            weight = 5
+                        cur.execute("""
                         INSERT INTO questions (
                             role,
                             class,
@@ -2766,30 +3715,131 @@ async def handle_all(message: types.Message):
                             difficulty,
                             type,
                             img,
-                            voice_type
+                            voice_type,
+                            school_type,
+                            topic,
+                            category,
+                            subtopic,
+                            framework,
+                            skill,
+                            grade,
+                            quarter,
+                            steam,
+                            future_skill,
+                            age_group,
+                            exam_type,
+
+                            topic_code,
+                            bloom,
+                            timss,
+                            pisa,
+                            four_k,
+                            comp,
+                            goal,
+                            qtype,
+                            src,
+                            sch,
+                            lang,
+
+                            time_limit,
+                            weight,
+                            author,
+                            is_latex,
+
+                            audio_file,
+                            video_file,
+                            explanation,
+                            answer_explanation,
+
+                            track,
+                            bob_code,
+                            bolim_code,
+                            mavzu_code,
+                            kichik_mavzu_code
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,%s,
+
+                            %s,%s,%s,%s,%s,
+                            %s,%s,%s,%s,%s,
+                            %s,
+
+                            %s,%s,%s,%s,
+
+                            %s,%s,%s,%s,
+
+                            %s,%s,%s,%s,%s
+                        )
                         """, (
                             role,
                             cls,
                             level,
                             subject,
                             question,
+
                             a,
                             b,
                             c,
                             d,
                             correct,
+
                             test_type,
                             difficulty,
                             q_type,
                             img,
-                            voice_type
+                            voice_type,
+
+                            school_type,
+                            topic,
+                            category,
+                            subtopic,
+                            framework,
+
+                            skill,
+                            grade,
+                            quarter,
+                            steam,
+                            future_skill,
+
+                            age_group,
+                            exam_type,
+
+                            topic_code,
+                            bloom,
+                            timss,
+                            pisa,
+                            four_k,
+
+                            comp,
+                            goal,
+                            qtype_new,
+                            src,
+                            sch,
+
+                            lang,
+
+                            time_limit,
+                            weight,
+                            author,
+                            is_latex,
+
+                            audio_file,
+                            video_file,
+                            explanation,
+                            answer_explanation,
+
+                            track,
+                            bob_code,
+                            bolim_code,
+                            mavzu_code,
+                            kichik_mavzu_code
                         ))
-
                         count += 1
-
-                        i += 6
 
                     except Exception as e:
 
@@ -2811,40 +3861,155 @@ async def handle_all(message: types.Message):
 
         # ===== MY STATS =====
         elif action == BTN_MY:
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
 
-            cursor.execute("""
-            SELECT subject, AVG(score*1.0/total) FROM results
-            WHERE user_id=?
-            GROUP BY subject
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute("""
+            SELECT
+                topic,
+                SUM(correct),
+                SUM(wrong)
+            FROM student_progress
+            WHERE user_id=%s
+            GROUP BY topic
+            ORDER BY topic
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
+
             conn.close()
 
             if not rows:
-                await message.answer("Sizda natija yo‘q ❌")
+                await message.answer(
+                    "🧠 Bilim pasportingiz hali shakllanmagan."
+                )
                 return
 
-            text = "📊 Sizning natijalaringiz:\n\n"
+            total_correct = 0
+            total_wrong = 0
 
-            for subject, avg in rows:
-                percent = round(avg*100, 1)
-                text += f"{subject}: {percent}%\n"
+            strong = []
+            weak = []
 
-            await message.answer(text)
-        # ===== GLOBAL =====
+            for topic, correct, wrong in rows:
+                total_correct += correct
+                total_wrong += wrong
+
+            total = total_correct + total_wrong
+
+            overall = 0
+
+            if total > 0:
+                overall = round(
+                    total_correct * 100 / total
+                )
+
+            xp = total_correct * 10
+
+            if xp >= 5000:
+                level_icon = "🥇"
+                level_name = "Usta"
+
+            elif xp >= 3000:
+                level_icon = "🥈"
+                level_name = "Ekspert"
+
+            elif xp >= 1500:
+                level_icon = "🌳"
+                level_name = "Bilimli"
+
+            elif xp >= 500:
+                level_icon = "🌿"
+                level_name = "O'smoqda"
+
+            else:
+                level_icon = "🌱"
+                level_name = "Nihol"
+
+            text = (
+                "🧠 Bilim Pasportim\n\n"
+                f"🎯 Umumiy o'zlashtirish: {overall}%\n"
+                f"⭐ XP: {xp}\n"
+                f"{level_icon} Daraja: {level_name}\n\n"
+            )
+
+            text += "📚 Mavzular\n\n"
+
+            for topic, correct, wrong in rows:
+
+                total = correct + wrong
+
+                if total == 0:
+                    percent = 0
+                else:
+                    percent = round(
+                        correct * 100 / total
+                    )
+
+                if percent >= 80:
+                    icon = "🌳"
+                    strong.append(topic)
+
+                elif percent >= 50:
+                    icon = "🌿"
+
+                else:
+                    icon = "🌱"
+                    weak.append(topic)
+
+                filled = percent // 10
+                empty = 10 - filled
+
+                bar = (
+                    "█" * filled +
+                    "░" * empty
+                )
+
+                text += (
+                    f"{icon} {topic}\n"
+                    f"{bar} {percent}%\n\n"
+                )
+
+            if strong:
+
+                text += "🏆 Kuchli tomonlar\n"
+
+                for t in strong[:3]:
+                    text += f"⚡ {t}\n"
+
+                text += "\n"
+
+            if weak:
+
+                text += "⚠️ E'tibor kerak\n"
+
+                for t in weak[:3]:
+                    text += f"📌 {t}\n"
+
+                text += "\n"
+
+            if weak:
+
+                text += (
+                    "🤖 AI tavsiya\n"
+                    f"'{weak[0]}' mavzusini "
+                    "mustahkamlash tavsiya etiladi."
+                )
+
+            await message.answer(text)      
+        
+          # ===== GLOBAL =====
         elif action == BTN_GLOBAL:
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject, AVG(score*1.0/total) FROM results
             GROUP BY subject
             """)
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
             conn.close()
 
             if not rows:
@@ -2865,19 +4030,19 @@ async def handle_all(message: types.Message):
 
                 value = int(message.text)
 
-                conn = sqlite3.connect("data.db")
-                cursor = conn.cursor()
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
 
-                cursor.execute(
-                    "INSERT INTO survey (user_id, pressure) VALUES (?, ?)",
+                cur.execute(
+                    "INSERT INTO survey (user_id, pressure) VALUES (%s, %s)",
                     (message.from_user.id, value)
                 )
 
                 # ✅ survey bajarildi
-                cursor.execute("""
+                cur.execute("""
                 UPDATE users
                 SET survey_done=1
-                WHERE user_id=?
+                WHERE user_id=%s
                 """, (message.from_user.id,))
 
                 conn.commit()
@@ -2899,11 +4064,11 @@ async def handle_all(message: types.Message):
             if message.text == "🏫 Oddiy davlat maktabi":
                 await message.answer("Maktab raqamini kiriting (masalan: 23)")
             elif message.text == "⭐ Ixtisoslashgan (IDUM)":
-                await message.answer("IDUM maktab raqamini kiriting (masalan: 1, 2, ...)")
+                await message.answer("⭐ IDUM maktab raqamini kiriting (masalan: 1, 2, ...)")
             elif message.text == "🏆 Prezident maktabi":
-                await message.answer("Prezident maktabi nomini yozing (masalan: Toshkent PM)")
+                await message.answer("🏆 Prezident maktabi nomini yozing (masalan: Toshkent PM)")
             else:
-                await message.answer("Xususiy maktab nomini yozing")
+                await message.answer("🏢 Xususiy maktab nomini yozing")
             return
             
 
@@ -2913,18 +4078,18 @@ async def handle_all(message: types.Message):
         # ===== O'ZLASHTIRISH =====
         elif message.text == "📈 O‘zlashtirish":
 
-            conn = sqlite3.connect("data.db")
-            cursor = conn.cursor()
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
 
-            cursor.execute("""
+            cur.execute("""
             SELECT subject,
             AVG(score * 100.0 / total)
             FROM results
-            WHERE user_id=?
+            WHERE user_id=%s
             GROUP BY subject
             """, (message.from_user.id,))
 
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
 
             conn.close()
 
@@ -2964,7 +4129,67 @@ async def handle_all(message: types.Message):
 async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
+    if user_id not in user_test:
+        await call.answer(
+            "♻️ Bot yangilangan. Testni qayta boshlang.",
+            show_alert=True
+        )
+        return
     await call.answer()
+
+    test = user_test[user_id]
+
+    if call.data == "finish":
+
+        await call.message.answer(
+            "Testni tugatmoqchimisiz?",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Ha",
+                            callback_data="finish_yes"
+                        ),
+                        InlineKeyboardButton(
+                            text="❌ Yo‘q",
+                            callback_data="finish_no"
+                        )
+                    ]
+                ]
+            )
+        )
+        return
+
+    if call.data == "finish_no":
+
+        await call.message.delete()
+
+        return
+  
+    if call.data == "finish_yes":
+
+        try:
+            if test.get("timer_task"):
+                test["timer_task"].cancel()
+        except:
+            pass
+
+        score = test["score"]
+        total = len(test["questions"])
+
+        await call.message.answer(
+            f"🏁 Test tugadi\n\n📊 Natija: {score}/{total}"
+        )
+
+        user_test.pop(user_id, None)
+        user_state[user_id] = None
+
+        return
+    if test.get("expired", False):
+        await call.answer(
+            "⏰ Vaqt tugagan"
+        )
+        return
 
     if call.data.startswith("listen_"):
 
@@ -3017,10 +4242,12 @@ async def test_buttons(call: types.CallbackQuery):
     test = user_test[user_id]
 
     if test.get("answered"):
+        await call.answer(
+            "Bu savolga javob berilgan ✅"
+        )
         return
 
     test["answered"] = True
-
     try:
         if test.get("timer_task"):
             test["timer_task"].cancel()
@@ -3030,16 +4257,245 @@ async def test_buttons(call: types.CallbackQuery):
     q = test["questions"][test["index"]]
     old_q = q
 
-    user_ans = call.data
+    if ":" in call.data:
+
+        user_ans, uid = call.data.split(":")
+
+        if str(test["question_uid"]) != uid:
+            await call.answer(
+                "Bu eski savol ⏳"
+            )
+            return
+
+    else:
+        user_ans = call.data
+
     correct = old_q[10].lower()
 
+    subject = old_q[4]
+
+    topic = old_q[17]
+    category = old_q[18]
+    subtopic = old_q[19]
+    topic_code = old_q[28]
+    cur.execute("""
+    SELECT
+    quarter,
+    track
+    FROM dts_tree
+    WHERE topic_code=%s
+    """, (topic_code,))
+
+    dts_row = cur.fetchone()
+
+    quarter_code = None
+    track_code = None
+
+    if dts_row:
+        quarter_code = dts_row[0]
+        track_code = dts_row[1]
+
+    bloom = old_q[29]
+    timss = old_q[30]
+    pisa = old_q[31]
+    four_k = old_q[32]
+    comp = old_q[33]
+    goal = old_q[34]
+
+    level = old_q[3]
+
     if user_ans == correct:
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        # student_progress
+        cur.execute("""
+        INSERT INTO student_progress
+        (user_id, subject, category, topic, subtopic,
+        correct, wrong)
+        VALUES (%s,%s,%s,%s,%s,1,0)
+        ON CONFLICT (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        )
+        DO UPDATE SET
+        correct = student_progress.correct + 1,
+        last_update = NOW()
+        """, (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        ))
+
+        # topic_progress
+        cur.execute("""
+        INSERT INTO topic_progress
+        (user_id, topic_code, correct, wrong)
+        VALUES (%s,%s,1,0)
+        ON CONFLICT (user_id, topic_code)
+        DO UPDATE SET
+        correct = topic_progress.correct + 1
+        """, (
+            user_id,
+            topic_code
+        ))
+
+        # level_progress
+        cur.execute("""
+        INSERT INTO level_progress
+        (user_id, level_code, correct, wrong)
+        VALUES (%s,%s,1,0)
+        ON CONFLICT (user_id, level_code)
+        DO UPDATE SET
+        correct = level_progress.correct + 1
+        """, (
+            user_id,
+            level
+        ))
+
+        # bloom
+        cur.execute("""
+        INSERT INTO framework_progress
+        (
+            user_id,
+            framework_type,
+            framework_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,'BLOOM',%s,1,0)
+        ON CONFLICT (
+            user_id,
+            framework_type,
+            framework_code
+        )
+        DO UPDATE SET
+        correct = framework_progress.correct + 1
+        """, (
+            user_id,
+            bloom
+        ))
+
+        conn.commit()
+        conn.close()
 
         test["score"] += 1
 
         result_text = "🎉 ✅ To‘g‘ri"
 
     else:
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        # student_progress
+
+        cur.execute("""
+        INSERT INTO student_progress
+        (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic,
+            correct,
+            wrong
+        )
+        VALUES (%s,%s,%s,%s,%s,0,1)
+        ON CONFLICT (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        )
+        DO UPDATE SET
+        wrong = student_progress.wrong + 1,
+        last_update = NOW()
+        """, (
+            user_id,
+            subject,
+            category,
+            topic,
+            subtopic
+        ))
+
+        # topic_progress
+
+        cur.execute("""
+        INSERT INTO topic_progress
+        (
+            user_id,
+            topic_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,%s,0,1)
+        ON CONFLICT (
+            user_id,
+            topic_code
+        )
+        DO UPDATE SET
+        wrong = topic_progress.wrong + 1
+        """, (
+            user_id,
+            topic_code
+        ))
+
+        # level_progress
+
+        cur.execute("""
+        INSERT INTO level_progress
+        (
+            user_id,
+            level_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,%s,0,1)
+        ON CONFLICT (
+            user_id,
+            level_code
+        )
+        DO UPDATE SET
+        wrong = level_progress.wrong + 1
+        """, (
+            user_id,
+            level
+        ))
+
+        # BLOOM
+
+        cur.execute("""
+        INSERT INTO framework_progress
+        (
+            user_id,
+            framework_type,
+            framework_code,
+            correct,
+            wrong
+        )
+        VALUES (%s,'BLOOM',%s,0,1)
+        ON CONFLICT (
+            user_id,
+            framework_type,
+            framework_code
+        )
+        DO UPDATE SET
+        wrong = framework_progress.wrong + 1
+        """, (
+            user_id,
+            bloom
+        ))
+
+        conn.commit()
+        conn.close()
 
         correct_text = ""
 
@@ -3054,6 +4510,7 @@ async def test_buttons(call: types.CallbackQuery):
 
         elif correct == "d":
             correct_text = old_q[9]
+
         result_text = (
             f"❌ Noto‘g‘ri\n\n"
             f"✅ To‘g‘ri javob: {correct_text}"
@@ -3082,12 +4539,23 @@ async def test_buttons(call: types.CallbackQuery):
         test["expired"] = False
         if q[14]:
 
-            await bot.send_photo(
-                call.message.chat.id,
-                photo=FSInputFile(
-                    f"images/{q[14]}"
-                )
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT file_id FROM images WHERE name=%s",
+                (q[14],)
             )
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            if row:
+                await bot.send_photo(
+                    call.message.chat.id,
+                    photo=row[0]
+                )
         if q[13] and "latex" in str(q[13]).lower():
 
             latex = q[5]
@@ -3102,6 +4570,7 @@ async def test_buttons(call: types.CallbackQuery):
             )
 
             text = "Savol rasmi yuqorida ⬆️"
+
 
         else:
 
@@ -3159,14 +4628,26 @@ async def test_buttons(call: types.CallbackQuery):
                             text=q[9],
                             callback_data="d"
                         )
+                    ],[
+                        InlineKeyboardButton(
+                            text="❌ Testni tugatish",
+                            callback_data="finish"
+                        ) 
                     ]
                 ]
             )
+        await call.message.answer(
+            "keyingi savol",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
         msg = await call.message.answer(
             f"{result_text}\n\n{text}",
             reply_markup=markup
         )  
-        if q[15] in ["uz", "ru", "en"]:
+       
+        if q[15] in ["uz", "ru", 
+        "en"]:
 
             voice = "uz-UZ-SardorNeural"
 
@@ -3215,16 +4696,16 @@ async def test_buttons(call: types.CallbackQuery):
 
         user_state[user_id] = None
 
-        conn = sqlite3.connect("data.db")
-        cursor = conn.cursor()
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
 
-        cursor.execute("""
+        cur.execute("""
         SELECT role
         FROM users
-        WHERE user_id=?
+        WHERE user_id=%s
         """, (user_id,))
 
-        row = cursor.fetchone()
+        row = cur.fetchone()
 
         conn.close()
 
@@ -3236,6 +4717,9 @@ async def test_buttons(call: types.CallbackQuery):
         )
 
 async def question_timer(user_id, limit):
+
+    if user_id not in user_test:
+        return
 
     try:
 
@@ -3337,17 +4821,31 @@ async def question_timer(user_id, limit):
         test["expired"] = False
         if q[14]:
 
-            await bot.send_photo(
-                user_id,
-                photo=FSInputFile(
-                    f"images/{q[14]}"
-                )
-            )        # LATEX
-        if q[13] == "latex":
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT file_id FROM images WHERE name=%s",
+                (q[14],)
+            )
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            if row:
+                await bot.send_photo(
+                    user_id,
+                    photo=row[0]
+                )      
+             # LATEX
+        if q[13] and "latex" in str(q[13]).lower():
 
             latex = q[5]
 
-            encoded = quote(f"\\dpi{{300}} \\huge {latex}")
+            encoded = quote(
+                f"\\dpi{{300}} \\huge {latex}"
+            )
 
             url = f"https://latex.codecogs.com/png.image?{encoded}"
 
@@ -3356,71 +4854,73 @@ async def question_timer(user_id, limit):
                 photo=url
             )
 
-            text = (
-                f"{test['index']+1}/{len(test['questions'])}-savol\n\n"
-                f"A) {q[6]}\n"
-                f"B) {q[7]}\n"
-                f"C) {q[8]}\n"
-                f"D) {q[9]}"
-            )
-            markup = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text=q[6],
-                            callback_data="a"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text=q[7],
-                            callback_data="b"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text=q[8],
-                            callback_data="c"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text=q[9],
-                            callback_data="d"
-                        )
-                    ]
-                ]
-            )
-        text = f"{q[5]}"
+            text = "Savol rasmi yuqorida ⬆️"
+            
+        if q[13] and "latex" in str(q[13]).lower():
+            text = "Savol rasmi yuqorida ⬆️"
+        else:
+            text = q[5]
 
         markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=q[6],
-                        callback_data="a"
+                        inline_keyboard=[
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 Savol",
+                                    callback_data="listen_q"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 A",
+                                    callback_data="listen_a"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[6],
+                                    callback_data="a"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 B",
+                                    callback_data="listen_b"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[7],
+                                    callback_data="b"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 C",
+                                    callback_data="listen_c"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[8],
+                                    callback_data="c"
+                                )
+                            ],
+
+                            [
+                                InlineKeyboardButton(
+                                    text="🔊 D",
+                                    callback_data="listen_d"
+                                ),
+                                InlineKeyboardButton(
+                                    text=q[9],
+                                    callback_data="d"
+                                )
+                            ],[
+                                InlineKeyboardButton(
+                                    text="❌ Testni tugatish",
+                                    callback_data="finish"
+                                ) 
+                            ]
+                        ]
                     )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[7],
-                        callback_data="b"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[8],
-                        callback_data="c"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=q[9],
-                        callback_data="d"
-                    )
-                ]
-            ]
-        )
 
         await bot.send_message(
             user_id,
