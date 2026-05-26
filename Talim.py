@@ -863,6 +863,13 @@ async def handle_all(message: types.Message):
                 )
             )
 
+            cur.execute("""
+            SELECT COUNT(*)
+            FROM dts_tree
+            """)
+
+            total_topics = cur.fetchone()[0]
+
         conn.commit()
 
         cur.close()
@@ -870,7 +877,8 @@ async def handle_all(message: types.Message):
         conn.close()
 
         await message.answer(
-            f"✅ {len(rows)} ta DTS bazaga yozildi"
+            f"✅ {len(rows)} ta DTS bazaga yozildi\n\n"
+            f"📚 Jami mavzular: {total_topics}"
         )
 
         return
@@ -4883,3 +4891,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
