@@ -172,12 +172,19 @@ async def dts_subject(call):
         kb.inline_keyboard.append([
             InlineKeyboardButton(
                 text=f"{q[0]}-chorak",
-                callback_data=f"dts_quarter_{grade}_{subject}_{q[0]}"
+                callback_data=f"dts_quarter_{grade}_{subject}_{q[0]}")
+                ])
+
+    kb.inline_keyboard.append([
+            InlineKeyboardButton(
+                text="⬅️ Ortga",
+                callback_data=f"dts_grade_{grade}"
             )
         ])
+        
 
     await call.message.edit_text(
-        f"{subject} fani",
+        f"📚 {subject} fani choragini tanlang:",
         reply_markup=kb
     )
 
@@ -218,10 +225,16 @@ async def dts_quarter(call):
         kb.inline_keyboard.append([
             InlineKeyboardButton(
                 text=row[1],
-                callback_data=
-                f"dts_bob_{grade}_{subject}_{quarter}_{row[0]}"
+                callback_data=f"dts_bob_{grade}_{subject}_{quarter}_{row[0]}"
             )
         ])
+
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_subject_{grade}_{subject}"
+        )
+    ])
 
     await call.message.edit_text(
         f"{quarter}-chorak boblari",
@@ -271,7 +284,12 @@ async def dts_bob(call):
                 f"dts_bolim_{grade}_{subject}_{quarter}_{bob_code}_{row[0]}"
             )
         ])
-
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_quarter_{grade}_{subject}_{quarter}"
+        )
+    ])
     await call.message.edit_text(
         "Bo'limni tanlang:",
         reply_markup=kb
@@ -322,7 +340,12 @@ async def dts_bolim(call):
                 f"dts_mavzu_{grade}_{subject}_{quarter}_{bob_code}_{bolim_code}_{row[0]}"
             )
         ])
-
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_bob_{grade}_{subject}_{quarter}_{bob_code}"
+        )
+    ])
     await call.message.edit_text(
         "Mavzuni tanlang:",
         reply_markup=kb
@@ -375,7 +398,12 @@ async def dts_mavzu(call):
                 f"dts_small_{grade}_{subject}_{quarter}_{bob_code}_{bolim_code}_{mavzu_code}_{row[0]}"
             )
         ])
-
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_bolim_{grade}_{subject}_{quarter}_{bob_code}_{bolim_code}"
+        )
+    ])
     await call.message.edit_text(
         "Kichik mavzuni tanlang:",
         reply_markup=kb
@@ -437,7 +465,12 @@ async def dts_small(call):
             ]
         ]
     )
-
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_mavzu_{grade}_{subject}_{quarter}_{bob_code}_{bolim_code}_{mavzu_code}"
+        )
+    ])
     await call.message.edit_text(
         f"📚 {name}",
         reply_markup=kb
