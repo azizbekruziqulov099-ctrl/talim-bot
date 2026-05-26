@@ -19,6 +19,8 @@ import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
 import os
+from dts_import_handlers import *
+
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
@@ -679,8 +681,22 @@ async def handle_all(message: types.Message):
         )
 
         return
+
     elif (
         admin_state.get(user_id) == "dts_import"
+        and message.document
+    ):
+
+        await dts_import_file(
+            message,
+            bot,
+            user_id
+        )
+
+        return
+
+    elif (
+        admin_state.get(user_id) == "ts_import"
         and message.document
     ):
 
@@ -4891,4 +4907,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
