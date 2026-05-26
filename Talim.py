@@ -4050,9 +4050,23 @@ async def test_buttons(call: types.CallbackQuery):
             ""
         )
 
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM questions
+        WHERE topic_code=%s
+        """, (topic_code,))
+
+        cnt = cur.fetchone()[0]
+
         await call.message.answer(
-            f"Test boshlanadi\n\n{topic_code}"
+            f"Topildi: {cnt} ta savol"
         )
+
+        cur.close()
+        conn.close()
 
         return
 
@@ -4869,4 +4883,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
