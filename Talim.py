@@ -671,7 +671,14 @@ async def handle_all(message: types.Message):
         and message.document
     ):
 
+        import psycopg2
         from openpyxl import load_workbook
+
+        conn = psycopg2.connect(
+            DATABASE_URL
+        )
+
+        cur = conn.cursor()
 
         file = await bot.get_file(
             message.document.file_id
@@ -688,18 +695,6 @@ async def handle_all(message: types.Message):
 
         ws = wb.active
 
-        headers = []
-
-        for cell in ws[1]:
-
-            if cell.value is None:
-                headers.append("")
-
-            else:
-                headers.append(
-                    str(cell.value)
-                )
-
         rows = []
 
         for row in ws.iter_rows(
@@ -708,188 +703,165 @@ async def handle_all(message: types.Message):
         ):
             rows.append(row)
 
-        await message.answer(
-            f"✅ Excel saqlandi: {filename}\n\n"
-            f"Qatorlar: {ws.max_row}\n"
-            f"Ustunlar: {ws.max_column}"
-        )
+        bob_map = {}
+        bolim_map = {}
+        mavzu_map = {}
+        kichik_map = {}
 
-        await message.answer(
-            "Sarlavhalar:\n\n" +
-            "\n".join(headers)
-        )
+        for row in rows:
 
-        await message.answer(
-            f"Ma'lumot qatorlari: {len(rows)}"
-        )
+            subject = str(
+                row[1]
+            ).upper()
 
-        if rows:
+            quarter = f"Q{row[2]}"
 
-            await message.answer(
-                "Topilgan kodlar:"
-            )
+            bob = str(
+                row[3]
+            ).strip()
 
-            bob_map = {}
-            bolim_map = {}
-            mavzu_map = {}
-            kichik_map = {}
+            bolim = str(
+                row[4]
+            ).strip()
 
-            for row in rows:
+            mavzu = str(
+                row[5]
+            ).strip()
 
-                subject = str(
-                    row[1]
-                ).upper()
+            kichik = str(
+                row[6]
+            ).strip()
 
-                quarter = f"Q{row[2]}"
-
-                bob = str(
-                    row[3]
-                ).strip()
-
-                bolim = str(
-                    row[4]
-                ).strip()
-
-                mavzu = str(
-                    row[5]
-                ).strip()
-
-                kichik = str(
-                    row[6]
-                ).strip()
-
-                if bob not in bob_map:
-
-                    bob_map[bob] = (
-                        len(bob_map) + 1
-                    )
-
-                bob_no = bob_map[bob]
-
-                bolim_key = (
-                    f"{bob}|{bolim}"
+            if bob not in bob_map:
+                bob_map[bob] = (
+                    len(bob_map) + 1
                 )
 
-                if bolim_key not in bolim_map:
+            bob_no = bob_map[bob]
 
-                    bolim_map[
-                        bolim_key
-                    ] = (
-                        len([
-                            x
-                            for x in bolim_map
-                            if x.startswith(
-                                f"{bob}|"
-                            )
-                        ]) + 1
-                    )
+            bolim_key = (
+                f"{bob}|{bolim}"
+            )
 
-                bolim_no = bolim_map[
+            if bolim_key not in bolim_map:
+                bolim_map[
                     bolim_key
-                ]
-
-                mavzu_key = (
-                    f"{bolim_key}|{mavzu}"
+                ] = (
+                    len([
+                        x
+                        for x in bolim_map
+                        if x.startswith(
+                            f"{bob}|"
+                        )
+                    ]) + 1
                 )
 
-                if mavzu_key not in mavzu_map:
+            bolim_no = bolim_map[
+                bolim_key
+            ]
 
-                    mavzu_map[
-                        mavzu_key
-                    ] = (
-                        len([
-                            x
-                            for x in mavzu_map
-                            if x.startswith(
-                                f"{bolim_key}|"
-                            )
-                        ]) + 1
-                    )
-
-                mavzu_no = mavzu_map[
-                    mavzu_key
-                ]
-
-                kichik_key = (
-                    f"{mavzu_key}|{kichik}"
-                )
-
-                if (
-                    kichik_key
-                    not in kichik_map
-                ):
-
-                    kichik_map[
-                        kichik_key
-                    ] = (
-                        len([
-                            x
-                            for x in kichik_map
-                            if x.startswith(
-                                f"{mavzu_key}|"
-                            )
-                        ]) + 1
-                    )
-
-                kichik_no = kichik_map[
-                    kichik_key
-                ]
-
-                topic_code = (
-                    f"{subject}-"
-                    f"{quarter}-"
-                    f"B{bob_no:02d}-"
-                    f"BL{bolim_no:02d}-"
-                    f"M{mavzu_no:02d}-"
-                    f"S{kichik_no:03d}"
-                )
-
-                cur.execute(
-                    """
-                    INSERT INTO dts_tree (
-                        topic_code,
-                        grade,
-                        quarter,
-                        subject,
-                        track,
-                        bob_code,
-                        bolim_code,
-                        mavzu_code,
-                        kichik_mavzu_code,
-                        bob_name,
-                        bolim_name,
-                        mavzu_name,
-                        kichik_mavzu_name
-                    )
-                    VALUES (
-                        %s,%s,%s,%s,
-                        'DTS',
-                        %s,%s,%s,%s,
-                        %s,%s,%s,%s
-                    )
-                    ON CONFLICT (topic_code)
-                    DO NOTHING
-                    """,
-                    (
-                        topic_code,
-                        str(row[0]),
-                        str(row[2]),
-                        subject,
-                        f"B{bob_no:02d}",
-                        f"BL{bolim_no:02d}",
-                        f"M{mavzu_no:02d}",
-                        f"S{kichik_no:03d}",
-                        bob,
-                        bolim,
-                        mavzu,
-                        kichik
-                    )
-                )
-                conn.commit()
-
-            await message.answer(
-                f"✅ {len(rows)} ta DTS bazaga yozildi"
+            mavzu_key = (
+                f"{bolim_key}|{mavzu}"
             )
+
+            if mavzu_key not in mavzu_map:
+                mavzu_map[
+                    mavzu_key
+                ] = (
+                    len([
+                        x
+                        for x in mavzu_map
+                        if x.startswith(
+                            f"{bolim_key}|"
+                        )
+                    ]) + 1
+                )
+
+            mavzu_no = mavzu_map[
+                mavzu_key
+            ]
+
+            kichik_key = (
+                f"{mavzu_key}|{kichik}"
+            )
+
+            if kichik_key not in kichik_map:
+                kichik_map[
+                    kichik_key
+                ] = (
+                    len([
+                        x
+                        for x in kichik_map
+                        if x.startswith(
+                            f"{mavzu_key}|"
+                        )
+                    ]) + 1
+                )
+
+            kichik_no = kichik_map[
+                kichik_key
+            ]
+
+            topic_code = (
+                f"{subject}-"
+                f"{quarter}-"
+                f"B{bob_no:02d}-"
+                f"BL{bolim_no:02d}-"
+                f"M{mavzu_no:02d}-"
+                f"S{kichik_no:03d}"
+            )
+
+            cur.execute(
+                """
+                INSERT INTO dts_tree (
+                    topic_code,
+                    grade,
+                    quarter,
+                    subject,
+                    track,
+                    bob_code,
+                    bolim_code,
+                    mavzu_code,
+                    kichik_mavzu_code,
+                    bob_name,
+                    bolim_name,
+                    mavzu_name,
+                    kichik_mavzu_name
+                )
+                VALUES (
+                    %s,%s,%s,%s,
+                    'DTS',
+                    %s,%s,%s,%s,
+                    %s,%s,%s,%s
+                )
+                ON CONFLICT (topic_code)
+                DO NOTHING
+                """,
+                (
+                    topic_code,
+                    str(row[0]),
+                    str(row[2]),
+                    subject,
+                    f"B{bob_no:02d}",
+                    f"BL{bolim_no:02d}",
+                    f"M{mavzu_no:02d}",
+                    f"S{kichik_no:03d}",
+                    bob,
+                    bolim,
+                    mavzu,
+                    kichik
+                )
+            )
+
+        conn.commit()
+
+        cur.close()
+
+        conn.close()
+
+        await message.answer(
+            f"✅ {len(rows)} ta DTS bazaga yozildi"
+        )
 
         return
     # parallel message bloklash
