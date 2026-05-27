@@ -456,6 +456,7 @@ async def dts_import_file(
                 "row": row,
                 "reason": "Bazada bor"
             })
+            continue
 
         else:
 
