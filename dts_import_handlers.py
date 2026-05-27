@@ -360,8 +360,14 @@ async def dts_import_file(
             row[1]
         ).upper().strip()
 
-        quarter = str(
+        quarter = normalize_text(
             row[2]
+        ).replace(
+            "chorak",
+            ""
+        ).replace(
+            "-",
+            ""
         ).strip()
 
         bob = str(
