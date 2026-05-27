@@ -126,6 +126,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+        
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
 
         if not row[0]:
 
@@ -212,6 +218,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+        
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
 
         grade = normalize_text(row[0])
 
@@ -246,6 +258,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+        
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
 
         quarter = normalize_text(row[2])
 
@@ -297,6 +315,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+        
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
 
         subject = normalize_text(
             row[1]
@@ -322,6 +346,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
 
         row_key = (
             str(row[0]).strip(),
@@ -349,6 +379,12 @@ async def dts_import_file(
         rows,
         start=2
     ):
+
+        if any(
+            x["row_no"] == i
+            for x in error_rows
+        ):
+            continue
         
         similar_found = False
 
