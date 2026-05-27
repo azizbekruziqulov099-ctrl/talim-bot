@@ -436,19 +436,19 @@ async def dts_import_file(
             kichik
         ))
 
-    if cur.fetchone():
+        if cur.fetchone():
 
-        existing_rows.append({
-            "row_no": i,
-            "row": row,
-            "reason": "Bazada bor"
-        })
+            existing_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Bazada bor"
+            })
 
-    else:
+        else:
 
-        if not similar_found:
+            if not similar_found:
 
-            valid_rows.append(row)
+                valid_rows.append(row)
 
     dts_import_cache[user_id] = {
         "valid_rows": valid_rows,
@@ -1007,3 +1007,4 @@ async def dts_problems_export(
     )
 
     os.remove(file_name)
+    
