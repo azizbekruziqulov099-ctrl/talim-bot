@@ -32,12 +32,6 @@ def is_similar(text1, text2):
 
     return ratio >= 0.85
 
-async def dts_import_file(
-    message,
-    bot,
-    user_id
-):
-    pass
 
 async def dts_import_file(
     message,
@@ -772,4 +766,3 @@ async def dts_import_confirm(
         user_id,
         None
     )
-
