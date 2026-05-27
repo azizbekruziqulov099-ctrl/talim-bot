@@ -1,6 +1,7 @@
 from aiogram.types import Message
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
+from openpyxl import Workbook
 import psycopg2
 import os
 
@@ -12,25 +13,21 @@ def normalize_text(text):
 
     text = str(text).lower().strip()
 
-    text = text.replace("ʻ", "'")
-    text = text.replace("`", "'")
-    text = text.replace("’", "'")
-    text = text.replace("‘", "'")
+    text = text.replace("ʻ", "")
+    text = text.replace("'", "")
+    text = text.replace("`", "")
+    text = text.replace("’", "")
+    text = text.replace("‘", "")
+
+    text = text.replace(".", "")
+    text = text.replace(",", "")
 
     while "  " in text:
         text = text.replace("  ", " ")
 
-    return text
+    return ratio >= 0.80
 
-def is_similar(text1, text2):
 
-    ratio = SequenceMatcher(
-        None,
-        normalize_text(text1),
-        normalize_text(text2)
-    ).ratio()
-
-    return ratio >= 0.85
 
 
 async def dts_import_file(
@@ -105,54 +102,73 @@ async def dts_import_file(
 
         if not row[0]:
 
-            errors.append(
-                f"{i}-qator: Sinf bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Sinf bo'sh"
+            })
+
+            continue
 
         if not row[1]:
 
-            errors.append(
-                f"{i}-qator: Fan bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Fan bo'sh"
+            })
+
+            continue
 
         if not row[2]:
 
-            errors.append(
-                f"{i}-qator: Chorak bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Chorak bo'sh"
+            })
+
+            continue
 
         if not row[3]:
 
-            errors.append(
-                f"{i}-qator: Bob bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Bob bo'sh"
+            })
+
+            continue
 
         if not row[4]:
 
-            errors.append(
-                f"{i}-qator: Bo'lim bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Bo'lim bo'sh"
+            })
+
+            continue
 
         if not row[5]:
 
-            errors.append(
-                f"{i}-qator: Mavzu bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Mavzu bo'sh"
+            })
+
+            continue
 
         if not row[6]:
 
-            errors.append(
-                f"{i}-qator: Kichik mavzu bo'sh"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Kichik mavzu bo'sh"
+            })
 
-    if errors:
-
-        await message.answer(
-            f"❌ {len(errors)} ta xato topildi\n\n"
-            + "\n".join(errors[:20])
-        )
-
-        return
+            continue
 
     await message.answer(
         f"✅ Excel formati to'g'ri\n\n"
@@ -165,8 +181,6 @@ async def dts_import_file(
         "7","8","9","10","11"
     ]
 
-    grade_errors = []
-
     for i, row in enumerate(
         rows,
         start=2
@@ -178,20 +192,13 @@ async def dts_import_file(
 
         if grade not in valid_grades:
 
-            grade_errors.append(
-                f"{i}-qator: Sinf noto'g'ri ({grade})"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": f"Sinf noto'g'ri ({grade})"
+            })
 
-    if grade_errors:
-
-        await message.answer(
-            f"❌ {len(grade_errors)} ta sinf xatosi\n\n"
-            + "\n".join(
-                grade_errors[:20]
-            )
-        )
-
-        return
+            continue
 
     await message.answer(
         "✅ Sinflar tekshirildi"
@@ -204,8 +211,6 @@ async def dts_import_file(
         "4"
     ]
 
-    quarter_errors = []
-
     for i, row in enumerate(
         rows,
         start=2
@@ -217,20 +222,12 @@ async def dts_import_file(
 
         if quarter not in valid_quarters:
 
-            quarter_errors.append(
-                f"{i}-qator: Chorak noto'g'ri ({quarter})"
-            )
-
-    if quarter_errors:
-
-        await message.answer(
-            f"❌ {len(quarter_errors)} ta chorak xatosi\n\n"
-            + "\n".join(
-                quarter_errors[:20]
-            )
-        )
-
-        return
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": f"Chorak noto'g'ri ({quarter})"
+            })
+            continue
 
     await message.answer(
         "✅ Choraklar tekshirildi"
@@ -259,26 +256,17 @@ async def dts_import_file(
 
         if subject not in subjects:
 
-            subject_errors.append(
-                f"{i}-qator: Fan topilmadi ({subject})"
-            )
+            error_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": f"Fan topilmadi ({subject})"
+            })
 
-    if subject_errors:
-
-        await message.answer(
-            f"❌ {len(subject_errors)} ta fan xatosi\n\n"
-            + "\n".join(
-                subject_errors[:20]
-            )
-        )
-
-        return
+            continue
 
     await message.answer(
         "✅ Fanlar tekshirildi"
     )
-
-    duplicates = []
 
     seen = set()
 
@@ -299,33 +287,22 @@ async def dts_import_file(
 
         if row_key in seen:
 
-            duplicates.append(
-                f"{i}-qator: Takroriy mavzu"
-            )
+            duplicate_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Takroriy qator"
+            })
 
         else:
 
             seen.add(row_key)
 
-    if duplicates:
 
-        await message.answer(
-            f"⚠️ {len(duplicates)} ta takroriy qator topildi\n\n"
-            + "\n".join(
-                duplicates[:20]
-            )
-        )
-
-    else:
-
-        await message.answer(
-            "✅ Takroriy qator topilmadi"
-        )
-
-    existing = []
+    valid_rows = []
+    error_rows = []
+    duplicate_rows = []
+    existing_rows = []
     similar_rows = []
-    new_rows = 0
-    import_rows = []
 
     for i, row in enumerate(
         rows,
@@ -394,11 +371,11 @@ async def dts_import_file(
                 db_kichik
             ):
 
-                similar_rows.append(
-                    f"{i}-qator\n"
-                    f"Excel: {kichik}\n"
-                    f"Baza : {db_kichik}"
-                )
+                similar_rows.append({
+                    "row_no": i,
+                    "row": row,
+                    "reason": f"O'xshash mavzu: {db_kichik}"
+                })
 
                 similar_found = True
 
@@ -427,38 +404,41 @@ async def dts_import_file(
 
     if cur.fetchone():
 
-        existing.append(
-            f"{i}-qator: Bazada bor"
-        )
+        existing_rows.append({
+            "row_no": i,
+            "row": row,
+            "reason": "Bazada bor"
+        })
 
     else:
 
         if not similar_found:
 
-            new_rows += 1
-
-            import_rows.append(row)
+            valid_rows.append(row)
 
     dts_import_cache[user_id] = {
-        "rows": rows,
-        "import_rows": import_rows,
-        "existing": existing,
-        "similar": similar_rows
+        "valid_rows": valid_rows,
+        "error_rows": error_rows,
+        "duplicate_rows": duplicate_rows,
+        "existing_rows": existing_rows,
+        "similar_rows": similar_rows
     }
 
     text = (
         f"📊 DTS tahlili\n\n"
         f"Jami: {len(rows)}\n"
-        f"✅ Yangi: {new_rows}\n"
-        f"⚠️ Bazada bor: {len(existing)}\n"
-        f"⚠️ O'xshash: {len(similar_rows)}"
+        f"✅ Qo'shiladi: {len(valid_rows)}\n"
+        f"⚠️ Bazada bor: {len(existing_rows)}\n"
+        f"⚠️ O'xshash: {len(similar_rows)}\n"
+        f"⚠️ Takroriy: {len(duplicate_rows)}\n"
+        f"❌ Xato: {len(error_rows)}"
     )
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[]
     )
 
-    if existing:
+    if existing_rows:
 
         kb.inline_keyboard.append([
             InlineKeyboardButton(
@@ -476,6 +456,24 @@ async def dts_import_file(
             )
         ])
 
+    if duplicate_rows:
+
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(
+                text="👀 Takroriylarni ko'rish",
+                callback_data="dts_duplicates"
+            )
+        ])
+
+    if error_rows:
+
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(
+                text="👀 Xatolarni ko'rish",
+                callback_data="dts_errors"
+            )
+        ])
+
     kb.inline_keyboard.append([
         InlineKeyboardButton(
             text="✅ Import qilish",
@@ -487,10 +485,18 @@ async def dts_import_file(
         )
     ])
 
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="📥 Muammolar.xlsx",
+            callback_data="dts_problems"
+        )
+    ])
+
     await message.answer(
         text,
         reply_markup=kb
     )
+
 
 async def dts_existing_show(
     call,
@@ -503,7 +509,7 @@ async def dts_existing_show(
     )
 
     existing = data.get(
-        "existing",
+        "existing_rows",
         []
     )
 
@@ -515,11 +521,18 @@ async def dts_existing_show(
 
         return
 
+    lines = []
+
+    for item in existing[:30]:
+
+        lines.append(
+            f"{item['row_no']}-qator\n"
+            f"Sabab: {item['reason']}"
+        )
+
     text = (
         "⚠️ Bazada bor mavzular\n\n"
-        + "\n\n".join(
-            existing[:30]
-        )
+        + "\n\n".join(lines)
     )
 
     await call.message.answer(
@@ -537,7 +550,7 @@ async def dts_similar_show(
     )
 
     similar = data.get(
-        "similar",
+        "similar_rows",
         []
     )
 
@@ -549,17 +562,23 @@ async def dts_similar_show(
 
         return
 
+    lines = []
+
+    for item in similar[:30]:
+
+        lines.append(
+            f"{item['row_no']}-qator\n"
+            f"Sabab: {item['reason']}"
+        )
+
     text = (
         "⚠️ O'xshash mavzular\n\n"
-        + "\n\n".join(
-            similar[:20]
-        )
+        + "\n\n".join(lines)
     )
 
     await call.message.answer(
         text
     )
-
 async def dts_import_cancel(
     call,
     user_id
@@ -575,10 +594,28 @@ async def dts_import_cancel(
     )
 
 async def dts_import_confirm(
+        
     call,
     user_id
 ):
-        
+
+    data = dts_import_cache.get(
+        user_id,
+        {}
+    )
+
+    rows = data.get(
+        "valid_rows",
+        []
+    )
+
+    if not rows:
+
+        await call.answer(
+            "Import uchun ma'lumot topilmadi"
+        )
+
+        return        
     conn = psycopg2.connect(
         DATABASE_URL
     )
@@ -766,3 +803,149 @@ async def dts_import_confirm(
         user_id,
         None
     )
+
+async def dts_errors_show(
+    call,
+    user_id
+):
+
+    data = dts_import_cache.get(
+        user_id,
+        {}
+    )
+
+    errors = data.get(
+        "error_rows",
+        []
+    )
+
+    if not errors:
+
+        await call.answer(
+            "Ma'lumot yo'q"
+        )
+
+        return
+
+    lines = []
+
+    for item in errors[:30]:
+
+        lines.append(
+            f"{item['row_no']}-qator\n"
+            f"Sabab: {item['reason']}"
+        )
+
+    await call.message.answer(
+        "❌ Xatolar\n\n"
+        + "\n\n".join(lines)
+    )
+
+async def dts_duplicates_show(
+    call,
+    user_id
+):
+
+    data = dts_import_cache.get(
+        user_id,
+        {}
+    )
+
+    duplicates = data.get(
+        "duplicate_rows",
+        []
+    )
+
+    if not duplicates:
+
+        await call.answer(
+            "Ma'lumot yo'q"
+        )
+
+        return
+
+    lines = []
+
+    for item in duplicates[:30]:
+
+        lines.append(
+            f"{item['row_no']}-qator\n"
+            f"Sabab: {item['reason']}"
+        )
+
+    await call.message.answer(
+        "⚠️ Takroriy qatorlar\n\n"
+        + "\n\n".join(lines)
+    )
+
+async def dts_problems_export(
+    call,
+    user_id
+):
+
+    data = dts_import_cache.get(
+        user_id,
+        {}
+    )
+
+    problems = (
+        data.get("error_rows", [])
+        + data.get("duplicate_rows", [])
+        + data.get("existing_rows", [])
+        + data.get("similar_rows", [])
+    )
+
+    if not problems:
+
+        await call.answer(
+            "Muammolar topilmadi"
+        )
+
+        return
+
+    wb = Workbook()
+
+    ws = wb.active
+
+    ws.title = "Muammolar"
+
+    ws.append([
+        "Qator",
+        "Sinf",
+        "Fan",
+        "Chorak",
+        "Bob",
+        "Bo'lim",
+        "Mavzu",
+        "Kichik mavzu",
+        "Sabab"
+    ])
+
+    for item in problems:
+
+        row = item["row"]
+
+        ws.append([
+            item["row_no"],
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            item["reason"]
+        ])
+
+    file_name = (
+        f"dts_muammolar_{user_id}.xlsx"
+    )
+
+    wb.save(file_name)
+
+    await call.message.answer_document(
+        FSInputFile(file_name),
+        caption="📥 DTS muammolar hisoboti"
+    )
+
+    os.remove(file_name)
