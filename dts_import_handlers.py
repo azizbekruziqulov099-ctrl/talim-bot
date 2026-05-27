@@ -415,26 +415,26 @@ async def dts_import_file(
 
                     break
 
-    cur.execute("""
-    SELECT 1
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject=%s
-    AND quarter=%s
-    AND bob_name=%s
-    AND bolim_name=%s
-    AND mavzu_name=%s
-    AND kichik_mavzu_name=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject,
-        quarter,
-        bob,
-        bolim,
-        mavzu,
-        kichik
-    ))
+        cur.execute("""
+        SELECT 1
+        FROM dts_tree
+        WHERE grade=%s
+        AND subject=%s
+        AND quarter=%s
+        AND bob_name=%s
+        AND bolim_name=%s
+        AND mavzu_name=%s
+        AND kichik_mavzu_name=%s
+        LIMIT 1
+        """, (
+            grade,
+            subject,
+            quarter,
+            bob,
+            bolim,
+            mavzu,
+            kichik
+        ))
 
     if cur.fetchone():
 
