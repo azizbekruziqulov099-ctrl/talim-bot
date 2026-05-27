@@ -757,9 +757,35 @@ async def dts_import_confirm(
 
         if bob not in bob_map:
 
-            bob_map[bob] = (
-                len(bob_map) + 1
-            )
+            cur.execute("""
+            SELECT bob_code
+            FROM dts_tree
+            WHERE grade=%s
+            AND subject=%s
+            AND quarter=%s
+            AND bob_name=%s
+            LIMIT 1
+            """, 
+            (
+                grade,
+                subject,
+                quarter,
+                bob
+            ))
+
+            old_bob = cur.fetchone()
+
+            if old_bob:
+
+                bob_map[bob] = int(
+                    old_bob[0].replace("B", "")
+                )
+
+            else:
+
+                bob_map[bob] = (
+                    len(bob_map) + 1
+                )
 
         bob_no = bob_map[bob]
 
@@ -769,17 +795,48 @@ async def dts_import_confirm(
 
         if bolim_key not in bolim_map:
 
-            bolim_map[
-                bolim_key
-            ] = (
-                len([
-                    x
-                    for x in bolim_map
-                    if x.startswith(
-                        f"{bob}|"
-                    )
-                ]) + 1
-            )
+            cur.execute("""
+           SELECT bolim_code
+            FROM dts_tree
+            WHERE grade=%s
+            AND subject=%s
+            AND quarter=%s
+            AND bob_name=%s
+            AND bolim_name=%s
+            LIMIT 1
+            """,
+            (
+                grade,
+                subject,
+                quarter,
+                bob,
+                bolim,
+                mavzu
+            ))
+
+            old_bolim = cur.fetchone()
+
+            if old_bolim:
+
+                bolim_map[
+                    bolim_key
+                ] = int(
+                    old_bolim[0].replace("BL", "")
+                )
+
+            else:
+
+                bolim_map[
+                    bolim_key
+                ] = (
+                    len([
+                        x
+                        for x in bolim_map
+                        if x.startswith(
+                            f"{bob}|"
+                        )
+                    ]) + 1
+                )
 
         bolim_no = bolim_map[
             bolim_key
@@ -791,22 +848,48 @@ async def dts_import_confirm(
 
         if mavzu_key not in mavzu_map:
 
-            mavzu_map[
-                mavzu_key
-            ] = (
-                len([
-                    x
-                    for x in mavzu_map
-                    if x.startswith(
-                        f"{bolim_key}|"
-                    )
-                ]) + 1
-            )
+            cur.execute("""
+            SELECT mavzu_code
+            FROM dts_tree
+            WHERE grade=%s
+            AND subject=%s
+            AND quarter=%s
+            AND bob_name=%s
+            AND bolim_name=%s
+            AND mavzu_name=%s
+            LIMIT 1
+            """, (
+                grade,
+                subject,
+                quarter,
+                bob,
+                bolim,
+                mavzu
+            ))
 
-        mavzu_no = mavzu_map[
-            mavzu_key
-        ]
+            old_mavzu = cur.fetchone()
 
+            if old_mavzu:
+
+                mavzu_map[
+                    mavzu_key
+                ] = int(
+                    old_mavzu[0].replace("M", "")
+                )
+
+            else:
+
+                mavzu_map[
+                    mavzu_key
+                ] = (
+                    len([
+                        x
+                        for x in mavzu_map
+                        if x.startswith(
+                            f"{bolim_key}|"
+                        )
+                    ]) + 1
+                )
         kichik_key = (
             f"{mavzu_key}|{kichik}"
         )
