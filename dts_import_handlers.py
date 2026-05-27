@@ -371,6 +371,8 @@ async def dts_import_file(
                 "reason": "Takroriy qator"
             })
 
+            continue
+
         else:
 
             seen.add(row_key)
@@ -385,16 +387,22 @@ async def dts_import_file(
             for x in error_rows
         ):
             continue
+
+        if any(
+            x["row_no"] == i
+            for x in duplicate_rows
+        ):
+            continue
         
         similar_found = False
 
-        grade = str(
+        grade = normalize_text(
             row[0]
-        ).strip()
+        )
 
-        subject = str(
+        subject = normalize_text(
             row[1]
-        ).upper().strip()
+        )
 
         quarter = normalize_text(
             row[2]
@@ -404,23 +412,23 @@ async def dts_import_file(
         ).replace(
             "-",
             ""
-        ).strip()
+        )
 
-        bob = str(
+        bob = normalize_text(
             row[3]
-        ).strip()
+        )
 
-        bolim = str(
+        bolim = normalize_text(
             row[4]
-        ).strip()
+        )
 
-        mavzu = str(
+        mavzu = normalize_text(
             row[5]
-        ).strip()
+        )
 
-        kichik = str(
+        kichik = normalize_text(
             row[6]
-        ).strip()
+        )
 
         cur.execute("""
         SELECT
@@ -762,9 +770,19 @@ async def dts_import_confirm(
         f"Import qilinadigan qatorlar: {len(rows)}"
     )
 
-    for row in rows:
+    for i, row in enumerate(
+        rows,
+        start=2
+    ):
 
-        subject = str(
+        grade = normalize_text(
+            row[0]
+        ).replace(
+            "sinf",
+            ""
+        ).strip()
+
+        subject = normalize_text(
             row[1]
         ).upper()
 
@@ -775,21 +793,21 @@ async def dts_import_confirm(
             ""
         ).strip()
 
-        bob = str(
+        bob = normalize_text(
             row[3]
-        ).strip()
+        )
 
-        bolim = str(
+        bolim = normalize_text(
             row[4]
-        ).strip()
+        )
 
-        mavzu = str(
+        mavzu = normalize_text(
             row[5]
-        ).strip()
+        )
 
-        kichik = str(
+        kichik = normalize_text(
             row[6]
-        ).strip()
+        )
 
         if bob not in bob_map:
 
@@ -846,8 +864,7 @@ async def dts_import_confirm(
                 subject,
                 quarter,
                 bob,
-                bolim,
-                mavzu
+                bolim
             ))
 
             old_bolim = cur.fetchone()
@@ -926,9 +943,15 @@ async def dts_import_confirm(
                         )
                     ]) + 1
                 )
+        
+        mavzu_no = mavzu_map[
+            mavzu_key
+        ]
+
         kichik_key = (
             f"{mavzu_key}|{kichik}"
         )
+
 
         cur.execute("""
         SELECT 1
@@ -936,9 +959,9 @@ async def dts_import_confirm(
         WHERE grade=%s
         AND subject=%s
         AND quarter=%s
-        AND bob_code=%s
-        AND bolim_code=%s
-        AND mavzu_code=%s
+        AND bob_name=%s
+        AND bolim_name=%s
+        AND mavzu_name=%s
         AND kichik_mavzu_name=%s
         LIMIT 1
         """, (
@@ -950,23 +973,14 @@ async def dts_import_confirm(
             normalize_text(row[1]).upper(),
 
             quarter,
-
-            f"B{bob_no:02d}",
-            f"BL{bolim_no:02d}",
-            f"M{mavzu_no:02d}",
-
+            bob,
+            bolim,
+            mavzu,
             kichik
         ))
         exists = cur.fetchone()
 
         if exists:
-
-            existing_rows.append({
-                "row_no": i,
-                "row": row,
-                "reason": "Bazada bor"
-            })
-
             continue
 
 
