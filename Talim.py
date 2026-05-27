@@ -1,4 +1,5 @@
 from openpyxl import load_workbook
+from admin_handlers import *
 from dts_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
@@ -372,8 +373,7 @@ def get_main_keyboard(role=None):
             KeyboardButton(text="📋 So‘rovnoma natijalari"),
             KeyboardButton(text="📚 BILIMNI SINASH bazasi")],
             [KeyboardButton(text="👥 Foydalanuvchilar statistikasi"),
-            KeyboardButton(text="📥 DTS import"),
-            KeyboardButton(text="📤 DTS export")]
+            KeyboardButton(text="📚 DTS boshqaruvi")]
         ]
     
 
@@ -661,6 +661,14 @@ async def handle_all(message: types.Message):
 
         return
 
+    elif message.text == "📚 DTS boshqaruvi":
+
+        await dts_admin_menu(
+            message
+        )
+
+        return
+
     elif message.text == "📚 DTS":
 
         await message.answer(
@@ -675,10 +683,10 @@ async def handle_all(message: types.Message):
 
     elif message.text == "📥 DTS import":
 
-        admin_state[user_id] = "dts_import"
-
-        await message.answer(
-            "📄 DTS TXT faylini yuboring"
+        await dts_import_menu(
+            message,
+            admin_state,
+            user_id
         )
 
         return
@@ -695,19 +703,39 @@ async def handle_all(message: types.Message):
         )
 
         return
-    
-    elif message.text == "📤 DTS export":
 
-        admin_state[user_id] = None
+    elif message.text == "⬅ Ortga":
 
-        await message.answer(
-            "Qaysi DTS ni yuklab olmoqchisiz?\n\n"
-            "1-sinf Matematika\n"
-            "2-sinf Ona tili\n"
-            "yoki hammasini export qilish mumkin."
+        await admin_main_menu(
+            message
         )
 
         return
+
+    elif message.text == "📊 DTS statistika":
+
+        await dts_statistics(
+            message
+        )
+
+        return
+
+    elif message.text == "📤 DTS export":
+
+        await dts_export_menu(
+            message
+        )
+
+        return
+
+    elif message.text == "📤 Hammasini export":
+
+        await dts_export_all(
+            message
+        )
+
+        return
+        
     # parallel message bloklash
     async with user_locks[user_id]:
 
