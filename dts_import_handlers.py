@@ -814,20 +814,30 @@ async def dts_import_confirm(
         cur.execute("""
         SELECT 1
         FROM dts_tree
-        WHERE quarter=%s
+        WHERE grade=%s
+        AND subject=%s
+        AND quarter=%s
         AND bob_code=%s
         AND bolim_code=%s
         AND mavzu_code=%s
         AND kichik_mavzu_name=%s
         LIMIT 1
         """, (
+            normalize_text(row[0]).replace(
+                "sinf",
+                ""
+            ).strip(),
+
+            normalize_text(row[1]).upper(),
+
             quarter,
+
             f"B{bob_no:02d}",
             f"BL{bolim_no:02d}",
             f"M{mavzu_no:02d}",
+
             kichik
         ))
-
         exists = cur.fetchone()
 
         if exists:
