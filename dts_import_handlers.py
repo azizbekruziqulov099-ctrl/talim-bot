@@ -755,17 +755,25 @@ async def dts_import_confirm(
 
         if kichik_key not in kichik_map:
 
+            cur.execute("""
+            SELECT COUNT(*)
+            FROM dts_tree
+            WHERE quarter=%s
+            AND bob_code=%s
+            AND bolim_code=%s
+            AND mavzu_code=%s
+            """, (
+                quarter,
+                f"B{bob_no:02d}",
+                f"BL{bolim_no:02d}",
+                f"M{mavzu_no:02d}"
+            ))
+
+            last_count = cur.fetchone()[0]
+
             kichik_map[
                 kichik_key
-            ] = (
-                len([
-                    x
-                    for x in kichik_map
-                    if x.startswith(
-                        f"{mavzu_key}|"
-                    )
-                ]) + 1
-            )
+            ] = last_count + 1
 
         kichik_no = kichik_map[
             kichik_key
@@ -1007,4 +1015,3 @@ async def dts_problems_export(
     )
 
     os.remove(file_name)
-    
