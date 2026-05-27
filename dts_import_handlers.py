@@ -975,6 +975,21 @@ async def dts_import_confirm(
             ))
         exists = cur.fetchone()
 
+        await call.message.answer(
+
+            f"🔍 DEBUG\n\n"
+
+            f"Grade: {grade}\n"
+            f"Subject: {subject}\n"
+            f"Quarter: {quarter}\n"
+            f"Bob: B{bob_no:02d}\n"
+            f"Bo'lim: BL{bolim_no:02d}\n"
+            f"Mavzu: M{mavzu_no:02d}\n"
+            f"Kichik: {kichik}\n\n"
+
+            f"Exists: {exists}"
+        )
+
         if exists:
             continue
 
