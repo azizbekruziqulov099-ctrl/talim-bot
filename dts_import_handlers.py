@@ -532,7 +532,7 @@ async def dts_existing_show(
         text
     )
 
-    async def dts_similar_show(
+async def dts_similar_show(
     call,
     user_id
 ):
@@ -772,4 +772,4 @@ async def dts_import_confirm(
         user_id,
         None
     )
-    
+
