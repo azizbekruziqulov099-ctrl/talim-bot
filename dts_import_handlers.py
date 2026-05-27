@@ -263,7 +263,7 @@ async def dts_import_file(
     """)
 
     subjects = {
-        str(x[0]).upper().strip()
+        normalize_text(x[0]).upper()
         for x in cur.fetchall()
     }
 
