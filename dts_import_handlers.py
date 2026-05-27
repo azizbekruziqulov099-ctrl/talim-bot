@@ -753,6 +753,36 @@ async def dts_import_confirm(
             f"{mavzu_key}|{kichik}"
         )
 
+        cur.execute("""
+        SELECT 1
+        FROM dts_tree
+        WHERE quarter=%s
+        AND bob_code=%s
+        AND bolim_code=%s
+        AND mavzu_code=%s
+        AND kichik_mavzu_name=%s
+        LIMIT 1
+        """, (
+            quarter,
+            f"B{bob_no:02d}",
+            f"BL{bolim_no:02d}",
+            f"M{mavzu_no:02d}",
+            kichik
+        ))
+
+        exists = cur.fetchone()
+
+        if exists:
+
+            existing_rows.append({
+                "row_no": i,
+                "row": row,
+                "reason": "Bazada bor"
+            })
+
+            continue
+
+
         if kichik_key not in kichik_map:
 
             cur.execute("""
