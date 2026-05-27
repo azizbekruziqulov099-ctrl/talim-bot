@@ -4,12 +4,29 @@ from openpyxl import load_workbook
 from openpyxl import Workbook
 import psycopg2
 import os
+from difflib import SequenceMatcher
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 dts_import_cache = {}
 
+def is_similar(a, b):
+
+    a = normalize_text(a)
+    b = normalize_text(b)
+
+    ratio = SequenceMatcher(
+        None,
+        a,
+        b
+    ).ratio()
+
+    return ratio >= 0.80
+
 def normalize_text(text):
+
+    if text is None:
+        return ""
 
     text = str(text).lower().strip()
 
@@ -21,13 +38,12 @@ def normalize_text(text):
 
     text = text.replace(".", "")
     text = text.replace(",", "")
+    text = text.replace("-", " ")
 
     while "  " in text:
         text = text.replace("  ", " ")
 
-    return ratio >= 0.80
-
-
+    return text
 
 
 async def dts_import_file(
@@ -186,9 +202,13 @@ async def dts_import_file(
         start=2
     ):
 
-        grade = str(
-            row[0]
-        ).strip()
+        grade = normalize_text(row[0])
+
+        grade = (
+            grade
+            .replace("sinf", "")
+            .strip()
+        )
 
         if grade not in valid_grades:
 
@@ -216,9 +236,13 @@ async def dts_import_file(
         start=2
     ):
 
-        quarter = str(
-            row[2]
-        ).strip()
+        quarter = normalize_text(row[2])
+
+        quarter = (
+            quarter
+            .replace("chorak", "")
+            .strip()
+        )
 
         if quarter not in valid_quarters:
 
@@ -250,9 +274,9 @@ async def dts_import_file(
         start=2
     ):
 
-        subject = str(
+        subject = normalize_text(
             row[1]
-        ).upper().strip()
+        ).upper()
 
         if subject not in subjects:
 
