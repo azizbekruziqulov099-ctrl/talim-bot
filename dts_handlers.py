@@ -133,7 +133,12 @@ async def dts_grade(call: CallbackQuery):
                 callback_data=f"dts_subject_{grade}_{subject[0]}"
             )
         ])
-
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text="⬅️ Ortga",
+            callback_data=f"dts_subject__{grade}"
+        )
+    ])
     await call.message.edit_text(
         f"{grade}-sinf fanlari",
         reply_markup=kb
@@ -478,5 +483,6 @@ async def dts_small(call):
 
     cur.close()
     conn.close()
+
 
 
