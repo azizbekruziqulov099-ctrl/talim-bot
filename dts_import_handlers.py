@@ -284,6 +284,13 @@ async def dts_import_file(
         for x in cur.fetchall()
     }
 
+    if not subjects:
+
+        subjects = {
+            normalize_text(row[1]).upper()
+            for row in rows
+        }
+
     subject_errors = []
 
     for i, row in enumerate(
@@ -458,9 +465,53 @@ async def dts_import_file(
         "similar_rows": similar_rows
     }
 
+    unique_sinf = len(set(
+        normalize_text(x[0])
+        for x in rows
+    ))
+
+    unique_fan = len(set(
+        normalize_text(x[1])
+        for x in rows
+    ))
+
+    unique_chorak = len(set(
+        normalize_text(x[2])
+        for x in rows
+    ))
+
+    unique_bob = len(set(
+        normalize_text(x[3])
+        for x in rows
+    ))
+
+    unique_bolim = len(set(
+        normalize_text(x[4])
+        for x in rows
+    ))
+
+    unique_mavzu = len(set(
+        normalize_text(x[5])
+        for x in rows
+    ))
+
+    unique_kichik = len(set(
+        normalize_text(x[6])
+        for x in rows
+    ))
+
     text = (
         f"📊 DTS tahlili\n\n"
-        f"Jami: {len(rows)}\n"
+
+        f"🏫 Sinflar: {unique_sinf}\n"
+        f"📚 Fanlar: {unique_fan}\n"
+        f"🗓 Choraklar: {unique_chorak}\n"
+        f"📖 Boblar: {unique_bob}\n"
+        f"📑 Bo'limlar: {unique_bolim}\n"
+        f"📝 Mavzular: {unique_mavzu}\n"
+        f"🔹 Kichik mavzular: {unique_kichik}\n\n"
+
+        f"📄 Jami qator: {len(rows)}\n"
         f"✅ Qo'shiladi: {len(valid_rows)}\n"
         f"⚠️ Bazada bor: {len(existing_rows)}\n"
         f"⚠️ O'xshash: {len(similar_rows)}\n"
