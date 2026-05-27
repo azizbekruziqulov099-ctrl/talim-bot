@@ -3826,43 +3826,43 @@ async def test_buttons(call: types.CallbackQuery):
 
         return
 
-    if call.data.startswith("dts_subject_"):
+    elif call.data.startswith("dts_subject_"):
 
         await dts_subject(call)
 
         return    
 
-    if call.data.startswith("dts_quarter_"):
+    elif call.data.startswith("dts_quarter_"):
 
         await dts_quarter(call)
 
         return
     
-    if call.data.startswith("dts_bob_"):
+    elif call.data.startswith("dts_bob_"):
 
         await dts_bob(call)
 
         return
 
-    if call.data.startswith("dts_bolim_"):
+    elif call.data.startswith("dts_bolim_"):
 
         await dts_bolim(call)
 
         return
 
-    if call.data.startswith("dts_mavzu_"):
+    elif call.data.startswith("dts_mavzu_"):
 
         await dts_mavzu(call)
 
         return
 
-    if call.data.startswith("dts_small_"):
+    elif call.data.startswith("dts_small_"):
 
         await dts_small(call)
 
         return
 
-    if call.data.startswith("dts_test_"):
+    elif call.data.startswith("dts_test_"):
 
         topic_code = call.data.replace(
             "dts_test_",
@@ -3878,7 +3878,7 @@ async def test_buttons(call: types.CallbackQuery):
 
         return
 
-    if call.data == "dts_similar":
+    elif call.data == "dts_similar":
 
         await dts_similar_show(
             call,
@@ -3887,7 +3887,23 @@ async def test_buttons(call: types.CallbackQuery):
 
         return
 
-    if call.data == "dts_import_cancel":
+    elif call.data == "dts_errors":
+
+        await dts_errors_show(
+            call,
+            call.from_user.id
+        )
+        return
+
+    elif call.data == "dts_duplicates":
+
+        await dts_duplicates_show(
+            call,
+            call.from_user.id
+        )
+        return
+
+    elif call.data == "dts_import_cancel":
 
         await dts_import_cancel(
             call,
@@ -3896,22 +3912,20 @@ async def test_buttons(call: types.CallbackQuery):
 
         return
 
-    if call.data == "dts_import_confirm":
+    elif call.data == "dts_import_confirm":
 
         await dts_import_confirm(
             call,
             user_id
         )
 
-        return
-
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT COUNT(*)
-        FROM questions
-        WHERE topic_code=%s
+            SELECT COUNT(*)
+            FROM questions
+            WHERE topic_code=%s
         """, (topic_code,))
 
         cnt = cur.fetchone()[0]
@@ -3925,7 +3939,7 @@ async def test_buttons(call: types.CallbackQuery):
 
         return
 
-    if user_id not in user_test:
+    elif user_id not in user_test:
         await call.answer(
             "♻️ Bot yangilangan. Testni qayta boshlang.",
             show_alert=True
