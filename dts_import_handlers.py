@@ -338,13 +338,6 @@ async def dts_import_file(
 
             seen.add(row_key)
 
-
-    valid_rows = []
-    error_rows = []
-    duplicate_rows = []
-    existing_rows = []
-    similar_rows = []
-
     for i, row in enumerate(
         rows,
         start=2
@@ -412,15 +405,15 @@ async def dts_import_file(
                     db_kichik
                 ):
 
-                similar_rows.append({
-                    "row_no": i,
-                    "row": row,
-                    "reason": f"O'xshash mavzu: {db_kichik}"
-                })
+                    similar_rows.append({
+                        "row_no": i,
+                        "row": row,
+                        "reason": f"O'xshash mavzu: {db_kichik}"
+                    })
 
-                similar_found = True
+                    similar_found = True
 
-                break
+                    break
 
     cur.execute("""
     SELECT 1
@@ -681,7 +674,12 @@ async def dts_import_confirm(
             row[1]
         ).upper()
 
-        quarter = f"Q{row[2]}"
+        quarter = normalize_text(
+            row[2]
+        ).replace(
+            "chorak",
+            ""
+        ).strip()
 
         bob = str(
             row[3]
