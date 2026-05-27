@@ -354,13 +354,13 @@ async def dts_import_file(
             continue
 
         row_key = (
-            str(row[0]).strip(),
-            str(row[1]).upper().strip(),
-            str(row[2]).strip(),
-            str(row[3]).strip(),
-            str(row[4]).strip(),
-            str(row[5]).strip(),
-            str(row[6]).strip()
+            normalize_text(row[0]),
+            normalize_text(row[1]).upper(),
+            normalize_text(row[2]),
+            normalize_text(row[3]),
+            normalize_text(row[4]),
+            normalize_text(row[5]),
+            normalize_text(row[6])
         )
 
         if row_key in seen:
