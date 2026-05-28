@@ -6,6 +6,7 @@ from Talim import dp
 import psycopg2
 import os
 import re
+from aiogram import F
 from aiogram.fsm.context import (
     FSMContext
 )
@@ -1394,7 +1395,8 @@ async def dts_import(
 ):
 
     await state.set_state(
-        DTSImportState.waiting_excel
+        DTSImportState.waiting_excel,
+        F.document
     )
 
     kb = InlineKeyboardMarkup(
@@ -1592,7 +1594,6 @@ async def dts_confirm_import(
         {inserted_count}
         """
     )
-
 
 
 
