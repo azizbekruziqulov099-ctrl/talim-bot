@@ -1,4 +1,4 @@
-from aiogram.types import Message
+bufrom aiogram.types import Message
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from aiogram.types import FSInputFile
 from aiogram.types import (
     Message,
-    FSInputFile,
+    CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
