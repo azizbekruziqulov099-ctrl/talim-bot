@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
 from Talim import dp
+from Talim import bot
 import psycopg2
 import os
 import re
