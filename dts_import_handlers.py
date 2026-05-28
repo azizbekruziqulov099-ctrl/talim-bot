@@ -1015,13 +1015,29 @@ def analyze_import(
 
             )
 
-            if topic_code in seen:
+            tree_key = (
+
+                grade,
+
+                subject_name,
+
+                quarter_code,
+
+                bob_name,
+
+                bolim_name,
+
+                mavzu_name,
+
+                kichik_name
+
+            )
+
+            if tree_key in seen:
 
                 duplicate_rows.append({
 
                     "row_no": i,
-
-                    "topic_code": topic_code,
 
                     "reason": (
                         "Excel ichida takroriy"
@@ -1031,7 +1047,7 @@ def analyze_import(
 
                 continue
 
-            seen.add(topic_code)
+            seen.add(tree_key)
 
             cur.execute("""
             SELECT 1
