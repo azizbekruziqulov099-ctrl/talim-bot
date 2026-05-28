@@ -624,8 +624,7 @@ async def handle_all(message: types.Message):
         await dts_menu(
                 message
             )
-
-            return
+        return
 
     elif message.text == "📚 DTS":
 
