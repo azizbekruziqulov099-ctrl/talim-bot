@@ -1370,7 +1370,7 @@ async def dts_menu(
         ]
     )
 
-    await message.answer(
+    await call.message.edit_text(
 
         "📚 DTS Boshqaruv Paneli",
 
