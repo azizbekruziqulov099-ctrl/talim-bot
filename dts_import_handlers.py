@@ -1437,12 +1437,6 @@ async def dts_excel_import(
 
 ):
 
-    print("EXCEL KELDI")
-
-    await message.answer(
-        "EXCEL KELDI"
-    )
-
     document = message.document
 
     if not document:
@@ -1463,8 +1457,6 @@ async def dts_excel_import(
         f"temp/{document.file_name}"
     )
 
-    print("DOWNLOAD BOSHLANDI")
-
     await bot.download(
         document,
         destination=file_path
@@ -1474,14 +1466,8 @@ async def dts_excel_import(
         "DOWNLOAD BOLDI"
     )
 
-    print("EXCEL OCHILYAPTI")
-
     wb = load_workbook(
         file_path
-    )
-
-    await message.answer(
-        "EXCEL OCHILDI"
     )
 
     ws = wb.active
@@ -1493,25 +1479,13 @@ async def dts_excel_import(
         )
     )
 
-    await message.answer(
-        "ROWS OCHILDI"
-    )
-
     try:
 
         conn = psycopg2.connect(
             DATABASE_URL
         )
 
-        await message.answer(
-            "CONNECT BOLDI"
-        )
-
         cur = conn.cursor()
-
-        await message.answer(
-            "CURSOR BOLDI"
-        )
 
     except Exception as e:
 
@@ -1520,10 +1494,6 @@ async def dts_excel_import(
         )
 
         return
-
-    await message.answer(
-        "ANALYZE BOSHLANDI"
-    )
 
     result = analyze_import(
         cur,
@@ -1550,7 +1520,6 @@ async def dts_excel_import(
 ❌ Xato:
 {len(result["error_rows"])}
 """
-
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
 
@@ -1562,6 +1531,48 @@ async def dts_excel_import(
 
                     callback_data=(
                         "dts_confirm_import"
+                    )
+
+                )
+
+            ],
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="📊 Muammolar tahlili",
+
+                    callback_data=(
+                        "dts_problems"
+                    )
+
+                )
+
+            ],
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="📥 Xatolarni yuklab olish",
+
+                    callback_data=(
+                        "dts_download_errors"
+                    )
+
+                )
+
+            ],
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="❌ Bekor qilish",
+
+                    callback_data=(
+                        "dts_cancel_import"
                     )
 
                 )
@@ -1641,6 +1652,73 @@ async def dts_confirm_import(
         {inserted_count}
         """
     )
+
+@dp.callback_query(
+    lambda c: c.data == "dts_cancel_import"
+)
+async def dts_cancel_import(
+    call: CallbackQuery
+):
+
+    user_id = call.from_user.id
+
+    if user_id in dts_import_cache:
+
+        del dts_import_cache[user_id]
+
+    await call.message.edit_text(
+        "❌ Import bekor qilindi"
+    )
+
+@dp.callback_query(
+    lambda c: c.data == "dts_problems"
+)
+async def dts_problems(
+    call: CallbackQuery
+):
+
+    user_id = call.from_user.id
+
+    cache = dts_import_cache.get(
+        user_id
+    )
+
+    if not cache:
+
+        await call.answer(
+            "Cache topilmadi"
+        )
+
+        return
+
+    text = ""
+
+    for row in cache["duplicate_rows"]:
+
+        text += (
+            f"⚠️ Takroriy:\n{row}\n\n"
+        )
+
+    for row in cache["existing_rows"]:
+
+        text += (
+            f"📦 Bazada bor:\n{row}\n\n"
+        )
+
+    for row in cache["error_rows"]:
+
+        text += (
+            f"❌ Xato:\n{row}\n\n"
+        )
+
+    if not text:
+
+        text = "Muammo yo‘q"
+
+    await call.message.answer(
+        text[:4000]
+    )
+
 
 
 
