@@ -553,7 +553,10 @@ async def start(message: types.Message):
     )
 
 @dp.message()
-async def handle_all(message: types.Message):
+async def handle_all(
+    message: Message,
+    state: FSMContext
+):
     user_id = message.from_user.id
     try:
         conn = psycopg2.connect(DATABASE_URL)
