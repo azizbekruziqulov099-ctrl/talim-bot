@@ -4,13 +4,74 @@ from aiogram.types import (
     KeyboardButton
 )
 
+from loader import dp, bot
+
 import psycopg2
 import os
-from keyboards import get_main_keyboard
+
+from keyboards import (
+    get_main_keyboard
+)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL"
 )
+
+async def dts_menu(
+
+    message
+
+):
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="📥 Import DTS",
+
+                    callback_data="dts_import"
+
+                )
+
+            ],
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="🧭 DTS Navigator",
+
+                    callback_data="dts_navigator"
+
+                )
+
+            ],
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="🔎 DTS Qidiruv",
+
+                    callback_data="dts_search"
+
+                )
+
+            ]
+
+        ]
+    )
+
+    await message.answer(
+
+        "📚 DTS Boshqaruv Paneli",
+
+        reply_markup=kb
+
+    )
 
 async def dts_admin_menu(
     message
