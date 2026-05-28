@@ -1193,8 +1193,7 @@ async def dts_navigator(
 
     cur.execute("""
     SELECT DISTINCT
-        subject_code,
-        subject_name
+        grade
     FROM dts_tree
     WHERE is_deleted=FALSE
     ORDER BY subject_code
