@@ -64,21 +64,92 @@ def normalize_text(text):
 
     return text.strip()
 
-def get_subject_code(
-    cur,
-    subject_name
+def normalize_grade(
+
+    grade
+
 ):
+
+    grade = normalize_text(
+        grade
+    )
+
+    grade = grade.replace(
+        "-sinf",
+        ""
+    )
+
+    grade = grade.replace(
+        "sinf",
+        ""
+    )
+
+    grade = grade.replace(
+        " ",
+        ""
+    )
+
+    return grade
+
+def validate_grade(
+
+    grade
+
+):
+
+    if len(grade) < 1:
+        return False
+
+    return True
+
+def get_grade_code(
+
+    grade
+
+):
+
+    grade = normalize_grade(
+        grade
+    )
+
+    if not validate_grade(
+        grade
+    ):
+
+        raise Exception(
+            "Noto‘g‘ri level"
+        )
+
+    return grade
+
+
+def get_subject_code(
+
+    cur,
+
+    grade,
+
+    subject_name
+
+):
+
+    grade = normalize_text(
+        grade
+    )
 
     subject_name = normalize_text(
         subject_name
     ).upper()
 
     cur.execute("""
-    SELECT code
-    FROM subjects
-    WHERE name=%s
+    SELECT subject_code
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_name=%s
+    LIMIT 1
     """, (
-        subject_name,
+        grade,
+        subject_name
     ))
 
     row = cur.fetchone()
@@ -89,10 +160,13 @@ def get_subject_code(
 
     cur.execute("""
     SELECT MAX(
-        CAST(code AS INTEGER)
+        CAST(subject_code AS INTEGER)
     )
-    FROM subjects
-    """)
+    FROM dts_tree
+    WHERE grade=%s
+    """, (
+        grade,
+    ))
 
     last_code = cur.fetchone()[0]
 
@@ -100,24 +174,75 @@ def get_subject_code(
         (last_code or 0) + 1
     ).zfill(2)
 
-    cur.execute("""
-    INSERT INTO subjects (
-        code,
-        name
-    )
-    VALUES (%s, %s)
-    """, (
-        next_code,
-        subject_name
-    ))
-
     return next_code
+def normalize_quarter(
+
+    quarter
+
+):
+
+    quarter = normalize_text(
+        quarter
+    )
+
+    quarter = quarter.replace(
+        "chorak",
+        ""
+    )
+
+    quarter = quarter.replace(
+        "-",
+        ""
+    )
+
+    quarter = quarter.replace(
+        " ",
+        ""
+    )
+
+    return quarter
+
+def validate_quarter(
+
+    quarter
+
+):
+
+    if len(quarter) < 1:
+        return False
+
+    return True
+
+def get_quarter_code(
+
+    quarter
+
+):
+
+    quarter = normalize_quarter(
+        quarter
+    )
+
+    if not validate_quarter(
+        quarter
+    ):
+
+        raise Exception(
+            "Noto‘g‘ri chorak"
+        )
+
+    return quarter
 
 def get_bob_code(
 
     cur,
+
+    grade,
+
     subject_code,
-    quarter,
+
+    quarter_code,
+
     bob_name
 
 ):
@@ -129,13 +254,15 @@ def get_bob_code(
     cur.execute("""
     SELECT bob_code
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_name=%s
     LIMIT 1
     """, (
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_name
     ))
 
@@ -150,11 +277,13 @@ def get_bob_code(
         CAST(bob_code AS INTEGER)
     )
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     """, (
+        grade,
         subject_code,
-        quarter
+        quarter_code
     ))
 
     last_code = cur.fetchone()[0]
@@ -168,30 +297,50 @@ def get_bob_code(
 def get_bolim_code(
 
     cur,
+
+    grade,
+
     subject_code,
-    quarter,
+
+    quarter_code,
+
     bob_code,
+
     bolim_name
 
 ):
+
+    grade = get_grade_code(
+        grade
+    )
+
+    quarter_code = get_quarter_code(
+        quarter_code
+    )
 
     bolim_name = normalize_text(
         bolim_name
     )
 
     cur.execute("""
+
     SELECT bolim_code
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_name=%s
     LIMIT 1
+
     """, (
+
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code,
         bolim_name
+
     ))
 
     row = cur.fetchone()
@@ -201,37 +350,60 @@ def get_bolim_code(
         return row[0]
 
     cur.execute("""
+
     SELECT MAX(
         CAST(bolim_code AS INTEGER)
     )
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
+
     """, (
+
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code
+
     ))
 
     last_code = cur.fetchone()[0]
 
-    next_code = str(
-        (last_code or 0) + 1
-    ).zfill(2)
+    if last_code is None:
 
-    return next_code
+        return "01"
+
+    new_code = int(last_code) + 1
+
+    return str(new_code).zfill(2)
 
 def get_mavzu_code(
 
     cur,
+
+    grade,
+
     subject_code,
-    quarter,
+
+    quarter_code,
+
     bob_code,
+
     bolim_code,
+
     mavzu_name
 
 ):
+
+    grade = get_grade_code(
+        grade
+    )
+
+    quarter_code = get_quarter_code(
+        quarter_code
+    )
 
     mavzu_name = normalize_text(
         mavzu_name
@@ -240,15 +412,17 @@ def get_mavzu_code(
     cur.execute("""
     SELECT mavzu_code
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
     AND mavzu_name=%s
     LIMIT 1
     """, (
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code,
         bolim_code,
         mavzu_name
@@ -265,13 +439,15 @@ def get_mavzu_code(
         CAST(mavzu_code AS INTEGER)
     )
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
     """, (
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code,
         bolim_code
     ))
@@ -287,14 +463,30 @@ def get_mavzu_code(
 def get_kichik_code(
 
     cur,
+
+    grade,
+
     subject_code,
-    quarter,
+
+    quarter_code,
+
     bob_code,
+
     bolim_code,
+
     mavzu_code,
+
     kichik_name
 
 ):
+
+    grade = get_grade_code(
+        grade
+    )
+
+    quarter_code = get_quarter_code(
+        quarter_code
+    )
 
     kichik_name = normalize_text(
         kichik_name
@@ -303,7 +495,8 @@ def get_kichik_code(
     cur.execute("""
     SELECT kichik_code
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
@@ -311,8 +504,9 @@ def get_kichik_code(
     AND kichik_name=%s
     LIMIT 1
     """, (
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code,
         bolim_code,
         mavzu_code,
@@ -330,14 +524,16 @@ def get_kichik_code(
         CAST(kichik_code AS INTEGER)
     )
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
     AND mavzu_code=%s
     """, (
+        grade,
         subject_code,
-        quarter,
+        quarter_code,
         bob_code,
         bolim_code,
         mavzu_code
@@ -353,22 +549,46 @@ def get_kichik_code(
 
 def build_topic_code(
 
+    grade,
+
     subject_code,
-    quarter,
+
+    quarter_code,
+
     bob_code,
+
     bolim_code,
+
     mavzu_code,
+
     kichik_code
 
 ):
 
+    grade = get_grade_code(
+        grade
+    )
+
+    quarter_code = get_quarter_code(
+        quarter_code
+    )
+
     return (
+
+        f"{grade}-"
+
         f"{subject_code}-"
-        f"{quarter}-"
+
+        f"{quarter_code}-"
+
         f"{bob_code}-"
+
         f"{bolim_code}-"
+
         f"{mavzu_code}-"
+
         f"{kichik_code}"
+
     )
 
 def insert_row(
@@ -378,7 +598,7 @@ def insert_row(
 
 ):
 
-    grade = normalize_text(
+    grade = get_grade_code(
         row[0]
     )
 
@@ -386,7 +606,7 @@ def insert_row(
         row[1]
     ).upper()
 
-    quarter = normalize_text(
+    quarter_code = get_quarter_code(
         row[2]
     )
 
@@ -407,51 +627,97 @@ def insert_row(
     )
 
     subject_code = get_subject_code(
+
         cur,
+
+        grade,
+
         subject_name
+
     )
 
     bob_code = get_bob_code(
+
         cur,
+
+        grade,
+
         subject_code,
-        quarter,
+
+        quarter_code,
+
         bob_name
+
     )
 
     bolim_code = get_bolim_code(
+
         cur,
+
+        grade,
+
         subject_code,
-        quarter,
+
+        quarter_code,
+
         bob_code,
+
         bolim_name
+
     )
 
     mavzu_code = get_mavzu_code(
+
         cur,
+
+        grade,
+
         subject_code,
-        quarter,
+
+        quarter_code,
+
         bob_code,
+
         bolim_code,
+
         mavzu_name
+
     )
 
     kichik_code = get_kichik_code(
+
         cur,
+
+        grade,
+
         subject_code,
-        quarter,
+
+        quarter_code,
+
         bob_code,
+
         bolim_code,
+
         mavzu_code,
+
         kichik_name
+
     )
 
     topic_code = build_topic_code(
 
+        grade,
+
         subject_code,
-        quarter,
+
+        quarter_code,
+
         bob_code,
+
         bolim_code,
+
         mavzu_code,
+
         kichik_code
 
     )
@@ -470,8 +736,11 @@ def insert_row(
     if exists:
 
         return {
+
             "status": "exists",
+
             "topic_code": topic_code
+
         }
 
     cur.execute("""
@@ -532,7 +801,7 @@ def insert_row(
         subject_code,
         subject_name,
 
-        quarter,
+        quarter_code,
 
         bob_code,
         bob_name,
@@ -549,13 +818,17 @@ def insert_row(
     ))
 
     return {
-        "status": "inserted",
-        "topic_code": topic_code
-    }
 
+        "status": "inserted",
+
+        "topic_code": topic_code
+
+    }
 def analyze_import(
+
     cur,
     rows
+
 ):
 
     error_rows = []
@@ -566,8 +839,10 @@ def analyze_import(
     seen = set()
 
     for i, row in enumerate(
+
         rows,
         start=2
+
     ):
 
         try:
@@ -577,24 +852,24 @@ def analyze_import(
                 error_rows.append({
 
                     "row_no": i,
-                    "reason": "Ustunlar soni yetarli emas"
+
+                    "reason": (
+                        "Ustunlar soni yetarli emas"
+                    )
 
                 })
 
                 continue
 
-            grade = normalize_text(
+            grade = get_grade_code(
                 row[0]
             )
 
             subject_name = normalize_text(
                 row[1]
-            )
+            ).upper()
 
-            if subject_name:
-                subject_name = subject_name.upper()
-
-            quarter = normalize_text(
+            quarter_code = get_quarter_code(
                 row[2]
             )
 
@@ -617,11 +892,17 @@ def analyze_import(
             if not all([
 
                 grade,
+
                 subject_name,
-                quarter,
+
+                quarter_code,
+
                 bob_name,
+
                 bolim_name,
+
                 mavzu_name,
+
                 kichik_name
 
             ]):
@@ -629,58 +910,107 @@ def analyze_import(
                 error_rows.append({
 
                     "row_no": i,
-                    "reason": "Bo‘sh ustun bor"
+
+                    "reason": (
+                        "Bo‘sh ustun bor"
+                    )
 
                 })
 
                 continue
 
             subject_code = get_subject_code(
+
                 cur,
+
+                grade,
+
                 subject_name
+
             )
 
             bob_code = get_bob_code(
+
                 cur,
+
+                grade,
+
                 subject_code,
-                quarter,
+
+                quarter_code,
+
                 bob_name
+
             )
 
             bolim_code = get_bolim_code(
+
                 cur,
+
+                grade,
+
                 subject_code,
-                quarter,
+
+                quarter_code,
+
                 bob_code,
+
                 bolim_name
+
             )
 
             mavzu_code = get_mavzu_code(
+
                 cur,
+
+                grade,
+
                 subject_code,
-                quarter,
+
+                quarter_code,
+
                 bob_code,
+
                 bolim_code,
+
                 mavzu_name
+
             )
 
             kichik_code = get_kichik_code(
+
                 cur,
+
+                grade,
+
                 subject_code,
-                quarter,
+
+                quarter_code,
+
                 bob_code,
+
                 bolim_code,
+
                 mavzu_code,
+
                 kichik_name
+
             )
 
             topic_code = build_topic_code(
 
+                grade,
+
                 subject_code,
-                quarter,
+
+                quarter_code,
+
                 bob_code,
+
                 bolim_code,
+
                 mavzu_code,
+
                 kichik_code
 
             )
@@ -690,8 +1020,12 @@ def analyze_import(
                 duplicate_rows.append({
 
                     "row_no": i,
+
                     "topic_code": topic_code,
-                    "reason": "Excel ichida takroriy"
+
+                    "reason": (
+                        "Excel ichida takroriy"
+                    )
 
                 })
 
@@ -699,18 +1033,14 @@ def analyze_import(
 
             seen.add(topic_code)
 
-            cur.execute(
-
-                """
-                SELECT 1
-                FROM dts_tree
-                WHERE topic_code=%s
-                LIMIT 1
-                """,
-
-                (topic_code,)
-
-            )
+            cur.execute("""
+            SELECT 1
+            FROM dts_tree
+            WHERE topic_code=%s
+            LIMIT 1
+            """, (
+                topic_code,
+            ))
 
             exists = cur.fetchone()
 
@@ -719,8 +1049,12 @@ def analyze_import(
                 existing_rows.append({
 
                     "row_no": i,
+
                     "topic_code": topic_code,
-                    "reason": "Bazada mavjud"
+
+                    "reason": (
+                        "Bazada mavjud"
+                    )
 
                 })
 
@@ -729,7 +1063,9 @@ def analyze_import(
             valid_rows.append({
 
                 "row_no": i,
+
                 "row": row,
+
                 "topic_code": topic_code
 
             })
@@ -739,6 +1075,7 @@ def analyze_import(
             error_rows.append({
 
                 "row_no": i,
+
                 "reason": str(e)
 
             })
@@ -746,8 +1083,11 @@ def analyze_import(
     return {
 
         "error_rows": error_rows,
+
         "duplicate_rows": duplicate_rows,
+        
         "existing_rows": existing_rows,
+
         "valid_rows": valid_rows
 
     }
@@ -820,9 +1160,12 @@ def confirm_import(
         "failed_rows": failed_rows
 
     }
+
 async def dts_navigator(
 
-    call: CallbackQuery
+    call: CallbackQuery,
+
+    page=0
 
 ):
 
@@ -843,9 +1186,19 @@ async def dts_navigator(
 
     subjects = cur.fetchall()
 
+    page_size = 10
+
+    start = page * page_size
+
+    end = start + page_size
+
+    page_subjects = subjects[
+        start:end
+    ]
+
     buttons = []
 
-    for code, name in subjects:
+    for code, name in page_subjects:
 
         buttons.append([
 
@@ -861,6 +1214,60 @@ async def dts_navigator(
 
         ])
 
+    nav_buttons = []
+
+    if page > 0:
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="⬅️ Oldingi",
+
+                callback_data=(
+                    f"dts_nav_{page - 1}"
+                )
+
+            )
+
+        )
+
+    total_pages = (
+        len(subjects) - 1
+    ) // page_size + 1
+
+    nav_buttons.append(
+
+        InlineKeyboardButton(
+
+            text=(
+                f"{page + 1}/{total_pages}"
+            ),
+
+            callback_data="ignore"
+
+        )
+
+    )
+
+    if end < len(subjects):
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="Keyingi ➡️",
+
+                callback_data=(
+                    f"dts_nav_{page + 1}"
+                )
+
+            )
+
+        )
+
+    buttons.append(nav_buttons)
+
     kb = InlineKeyboardMarkup(
         inline_keyboard=buttons
     )
@@ -875,7 +1282,9 @@ async def dts_navigator(
 
 async def dts_bob(
 
-    call: CallbackQuery
+    call: CallbackQuery,
+
+    page=0
 
 ):
 
@@ -907,9 +1316,19 @@ async def dts_bob(
 
     bolimlar = cur.fetchall()
 
+    page_size = 10
+
+    start = page * page_size
+
+    end = start + page_size
+
+    current_items = bolimlar[
+        start:end
+    ]
+
     buttons = []
 
-    for code, name in bolimlar:
+    for code, name in current_items:
 
         buttons.append([
 
@@ -918,16 +1337,96 @@ async def dts_bob(
                 text=f"📑 {name} [{code}]",
 
                 callback_data=(
+
                     f"dts_bolim_"
+
                     f"{subject_code}_"
+
                     f"{quarter}_"
+
                     f"{bob_code}_"
+
                     f"{code}"
+
                 )
 
             )
 
         ])
+
+    nav_buttons = []
+
+    if page > 0:
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="⬅️ Oldingi",
+
+                callback_data=(
+
+                    f"dts_bobpage_"
+
+                    f"{subject_code}_"
+
+                    f"{quarter}_"
+
+                    f"{bob_code}_"
+
+                    f"{page - 1}"
+
+                )
+
+            )
+
+        )
+
+    total_pages = (
+        len(bolimlar) - 1
+    ) // page_size + 1
+
+    nav_buttons.append(
+
+        InlineKeyboardButton(
+
+            text=(
+                f"{page + 1}/{total_pages}"
+            ),
+
+            callback_data="ignore"
+
+        )
+
+    )
+
+    if end < len(bolimlar):
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="Keyingi ➡️",
+
+                callback_data=(
+
+                    f"dts_bobpage_"
+
+                    f"{subject_code}_"
+
+                    f"{quarter}_"
+
+                    f"{bob_code}_"
+
+                    f"{page + 1}"
+
+                )
+
+            )
+
+        )
+
+    buttons.append(nav_buttons)
 
     buttons.append([
 
@@ -936,9 +1435,13 @@ async def dts_bob(
             text="⬅️ Orqaga",
 
             callback_data=(
+
                 f"dts_quarter_"
+
                 f"{subject_code}_"
+
                 f"{quarter}"
+
             )
 
         )
@@ -959,7 +1462,9 @@ async def dts_bob(
 
 async def dts_bolim(
 
-    call: CallbackQuery
+    call: CallbackQuery,
+
+    page=0
 
 ):
 
@@ -999,9 +1504,19 @@ async def dts_bolim(
 
     mavzular = cur.fetchall()
 
+    page_size = 10
+
+    start = page * page_size
+
+    end = start + page_size
+
+    current_items = mavzular[
+        start:end
+    ]
+
     buttons = []
 
-    for code, name in mavzular:
+    for code, name in current_items:
 
         buttons.append([
 
@@ -1010,17 +1525,102 @@ async def dts_bolim(
                 text=f"📝 {name} [{code}]",
 
                 callback_data=(
+
                     f"dts_mavzu_"
+
                     f"{subject_code}_"
+
                     f"{quarter}_"
+
                     f"{bob_code}_"
+
                     f"{bolim_code}_"
+
                     f"{code}"
+
                 )
 
             )
 
         ])
+
+    nav_buttons = []
+
+    if page > 0:
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="⬅️ Oldingi",
+
+                callback_data=(
+
+                    f"dts_bolimpage_"
+
+                    f"{subject_code}_"
+
+                    f"{quarter}_"
+
+                    f"{bob_code}_"
+
+                    f"{bolim_code}_"
+
+                    f"{page - 1}"
+
+                )
+
+            )
+
+        )
+
+    total_pages = (
+        len(mavzular) - 1
+    ) // page_size + 1
+
+    nav_buttons.append(
+
+        InlineKeyboardButton(
+
+            text=(
+                f"{page + 1}/{total_pages}"
+            ),
+
+            callback_data="ignore"
+
+        )
+
+    )
+
+    if end < len(mavzular):
+
+        nav_buttons.append(
+
+            InlineKeyboardButton(
+
+                text="Keyingi ➡️",
+
+                callback_data=(
+
+                    f"dts_bolimpage_"
+
+                    f"{subject_code}_"
+
+                    f"{quarter}_"
+
+                    f"{bob_code}_"
+
+                    f"{bolim_code}_"
+
+                    f"{page + 1}"
+
+                )
+
+            )
+
+        )
+
+    buttons.append(nav_buttons)
 
     buttons.append([
 
@@ -1029,10 +1629,15 @@ async def dts_bolim(
             text="⬅️ Orqaga",
 
             callback_data=(
+
                 f"dts_bob_"
+
                 f"{subject_code}_"
+
                 f"{quarter}_"
+
                 f"{bob_code}"
+
             )
 
         )
@@ -1146,10 +1751,35 @@ async def dts_mavzu(
 
     )
 
-async def dts_small(
+@dp.callback_query(
+    lambda c: c.data.startswith(
+        "dts_bolimpage_"
+    )
+)
+async def dts_bolim_page(
 
     call: CallbackQuery
 
+):
+
+    (
+        _,
+        _,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code,
+        page
+
+    ) = call.data.split("_")
+
+    await dts_bolim(
+        call,
+        int(page)
+    )
+
+async def dts_small(
+    call: CallbackQuery
 ):
 
     topic_code = call.data.replace(
@@ -1164,35 +1794,30 @@ async def dts_small(
     cur = conn.cursor()
 
     cur.execute("""
+
     SELECT
-
         topic_code,
-
         grade,
-
         subject_name,
         subject_code,
-
         quarter,
-
         bob_name,
         bob_code,
-
         bolim_name,
         bolim_code,
-
         mavzu_name,
         mavzu_code,
-
         kichik_name,
         kichik_code
-
     FROM dts_tree
     WHERE topic_code=%s
     AND is_deleted=FALSE
     LIMIT 1
+
     """, (
+
         topic_code,
+
     ))
 
     row = cur.fetchone()
@@ -1207,56 +1832,54 @@ async def dts_small(
 
     (
         topic_code,
-
         grade,
-
         subject_name,
         subject_code,
-
         quarter,
-
         bob_name,
         bob_code,
-
         bolim_name,
         bolim_code,
-
         mavzu_name,
         mavzu_code,
-
         kichik_name,
         kichik_code
 
     ) = row
 
     text = f"""
-
-📌 Topic Code:
-{topic_code}
+📚 DTS Ma’lumotlari
+━━━━━━━━━━━━━━━
 
 🏫 Sinf:
 {grade}
 
-📚 Fan:
-{subject_name} [{subject_code}]
+📖 Fan:
+{subject_name}
 
 🗓 Chorak:
 {quarter}
 
-📖 Bob:
-{bob_name} [{bob_code}]
+📘 Bob:
+{bob_name}
 
 📑 Bo‘lim:
-{bolim_name} [{bolim_code}]
+{bolim_name}
 
 📝 Mavzu:
-{mavzu_name} [{mavzu_code}]
+{mavzu_name}
 
 🔹 Kichik mavzu:
-{kichik_name} [{kichik_code}]
+{kichik_name}
+
+━━━━━━━━━━━━━━━
+
+🆔 Topic Code:
+{topic_code}
 """
 
     kb = InlineKeyboardMarkup(
+
         inline_keyboard=[
 
             [
@@ -1266,12 +1889,14 @@ async def dts_small(
                     text="⬅️ Orqaga",
 
                     callback_data=(
+
                         f"dts_mavzu_"
                         f"{subject_code}_"
                         f"{quarter}_"
                         f"{bob_code}_"
                         f"{bolim_code}_"
                         f"{mavzu_code}"
+
                     )
 
                 )
@@ -1279,15 +1904,18 @@ async def dts_small(
             ]
 
         ]
+
     )
 
     await call.message.edit_text(
 
         text,
-
         reply_markup=kb
 
     )
+
+    cur.close()
+    conn.close()
 
 async def dts_menu(
 
@@ -1386,10 +2014,29 @@ async def dts_import(
 
         ]
     )
-
     await call.message.edit_text(
 
-        "📥 DTS excel faylini yuboring",
+        """
+
+    📥 DTS Excel Import
+
+    ━━━━━━━━━━━━━━━
+
+    Excel fayl yuboring.
+
+    Kerakli ustunlar:
+
+    1. Sinf
+    2. Fan
+    3. Chorak
+    4. Bob
+    5. Bo‘lim
+    6. Mavzu
+    7. Kichik mavzu
+
+    ━━━━━━━━━━━━━━━
+
+    """,
 
         reply_markup=kb
 
@@ -1400,24 +2047,17 @@ async def dts_import(
     F.document
 )
 async def dts_excel_import(
-
     message: Message,
-
     state: FSMContext
-
 ):
-
     document = message.document
 
     if not document:
-
         await message.answer(
             "❌ Excel yuboring"
         )
-
         return
 
-    # TEMP papka yaratadi
     os.makedirs(
         "temp",
         exist_ok=True
@@ -1433,7 +2073,7 @@ async def dts_excel_import(
     )
 
     await message.answer(
-        "DOWNLOAD BOLDI"
+        "📥 Fayl yuklab olindi"
     )
 
     wb = load_workbook(
@@ -1460,7 +2100,7 @@ async def dts_excel_import(
     except Exception as e:
 
         await message.answer(
-            f"DB ERROR:\n{e}"
+            f"❌ DB ERROR:\n{e}"
         )
 
         return
@@ -1475,34 +2115,36 @@ async def dts_excel_import(
     dts_import_cache[user_id] = result
 
     text = f"""
+📥 DTS Import Tahlili
+
+━━━━━━━━━━━━━━━
+
 📄 Jami qator:
 {len(rows)}
 
-✅ Qo‘shiladi:
+✅ Import qilinadi:
 {len(result["valid_rows"])}
 
-⚠️ Takroriy:
+⚠️ Excel ichida takroriy:
 {len(result["duplicate_rows"])}
 
-⚠️ Bazada bor:
+📦 Bazada mavjud:
 {len(result["existing_rows"])}
 
-❌ Xato:
+❌ Xatolar:
 {len(result["error_rows"])}
+
+━━━━━━━━━━━━━━━
 """
+
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
 
             [
 
                 InlineKeyboardButton(
-
                     text="✅ Import qilish",
-
-                    callback_data=(
-                        "dts_confirm_import"
-                    )
-
+                    callback_data="dts_confirm_import"
                 )
 
             ],
@@ -1510,13 +2152,8 @@ async def dts_excel_import(
             [
 
                 InlineKeyboardButton(
-
                     text="📊 Muammolar tahlili",
-
-                    callback_data=(
-                        "dts_problems"
-                    )
-
+                    callback_data="dts_problems"
                 )
 
             ],
@@ -1524,13 +2161,8 @@ async def dts_excel_import(
             [
 
                 InlineKeyboardButton(
-
                     text="📥 Xatolarni yuklab olish",
-
-                    callback_data=(
-                        "dts_download_errors"
-                    )
-
+                    callback_data="dts_download_errors"
                 )
 
             ],
@@ -1538,13 +2170,8 @@ async def dts_excel_import(
             [
 
                 InlineKeyboardButton(
-
                     text="❌ Bekor qilish",
-
-                    callback_data=(
-                        "dts_cancel_import"
-                    )
-
+                    callback_data="dts_cancel_import"
                 )
 
             ],
@@ -1552,11 +2179,8 @@ async def dts_excel_import(
             [
 
                 InlineKeyboardButton(
-
                     text="⬅️ Menu",
-
                     callback_data="dts_menu"
-
                 )
 
             ]
@@ -1569,13 +2193,21 @@ async def dts_excel_import(
         reply_markup=kb
     )
 
+    cur.close()
+    conn.close()
+
     await state.clear()
 
+@dp.callback_query(
+    lambda c: c.data == "dts_confirm_import"
+)
 async def dts_confirm_import(
 
     call: CallbackQuery
 
 ):
+
+    await call.answer()
 
     user_id = call.from_user.id
 
@@ -1586,7 +2218,7 @@ async def dts_confirm_import(
     if not cache:
 
         await call.answer(
-            "Cache topilmadi"
+            "❌ Cache topilmadi"
         )
 
         return
@@ -1595,36 +2227,71 @@ async def dts_confirm_import(
         "valid_rows"
     ]
 
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
+    try:
 
-    cur = conn.cursor()
+        conn = psycopg2.connect(
+            DATABASE_URL
+        )
 
-    result = confirm_import(
-        cur,
-        valid_rows
-    )
+        cur = conn.cursor()
 
-    conn.commit()
+        result = confirm_import(
+            cur,
+            valid_rows
+        )
 
-    inserted_count = result["inserted_count"]
+        conn.commit()
 
-    conn.commit()
+        inserted_count = result[
+            "inserted_count"
+        ]
 
-    await call.message.edit_text(
-        f"""
+        failed_rows = result[
+            "failed_rows"
+        ]
 
-        ✅ DTS import tugadi
+        text = f"""
+✅ DTS import tugadi
 
-        📥 Qo‘shildi:
-        {inserted_count}
-        """
-    )
+━━━━━━━━━━━━━━━
 
+📥 Qo‘shildi:
+{inserted_count}
+
+❌ Xatolar:
+{len(failed_rows)}
+
+━━━━━━━━━━━━━━━
+"""
+
+        await call.message.edit_text(
+            text
+        )
+
+        dts_import_cache.pop(
+            user_id,
+            None
+        )
+
+    except Exception as e:
+
+        await call.message.answer(
+            f"❌ Import xatosi:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+@dp.callback_query(
+    lambda c: c.data == "dts_problems"
+)
 async def dts_problems(
     call: CallbackQuery
 ):
+
+    await call.answer()
 
     user_id = call.from_user.id
 
@@ -1635,43 +2302,55 @@ async def dts_problems(
     if not cache:
 
         await call.answer(
-            "Cache topilmadi"
+            "❌ Cache topilmadi"
         )
 
         return
 
-    text = ""
+    text = "📊 DTS Import Muammolari\n\n"
 
     for row in cache["duplicate_rows"]:
 
         text += (
-            f"⚠️ Takroriy:\n{row}\n\n"
+            f"⚠️ Takroriy\n"
+            f"Qator: {row['row_no']}\n"
+            f"Code: {row['topic_code']}\n"
+            f"{row['reason']}\n\n"
         )
 
     for row in cache["existing_rows"]:
 
         text += (
-            f"📦 Bazada bor:\n{row}\n\n"
+            f"📦 Bazada mavjud\n"
+            f"Qator: {row['row_no']}\n"
+            f"Code: {row['topic_code']}\n"
+            f"{row['reason']}\n\n"
         )
 
     for row in cache["error_rows"]:
 
         text += (
-            f"❌ Xato:\n{row}\n\n"
+            f"❌ Xato\n"
+            f"Qator: {row['row_no']}\n"
+            f"{row['reason']}\n\n"
         )
 
-    if not text:
+    if text == "📊 DTS Import Muammolari\n\n":
 
-        text = "Muammo yo‘q"
+        text += "✅ Muammo yo‘q"
 
     await call.message.answer(
         text[:4000]
     )
 
-
+@dp.callback_query(
+    lambda c: c.data == "dts_download_errors"
+)
 async def dts_download_errors(
     call: CallbackQuery
 ):
+
+    await call.answer()
 
     user_id = call.from_user.id
 
@@ -1682,28 +2361,47 @@ async def dts_download_errors(
     if not cache:
 
         await call.answer(
-            "Cache topilmadi"
+            "❌ Cache topilmadi"
         )
 
         return
 
-    text = ""
+    text = "DTS IMPORT XATOLARI\n\n"
 
     for row in cache["duplicate_rows"]:
 
-        text += f"TAKRORIY:\n{row}\n\n"
+        text += (
+            f"TAKRORIY\n"
+            f"Qator: {row['row_no']}\n"
+            f"Code: {row['topic_code']}\n"
+            f"{row['reason']}\n\n"
+        )
 
     for row in cache["existing_rows"]:
 
-        text += f"BAZADA BOR:\n{row}\n\n"
+        text += (
+            f"BAZADA MAVJUD\n"
+            f"Qator: {row['row_no']}\n"
+            f"Code: {row['topic_code']}\n"
+            f"{row['reason']}\n\n"
+        )
 
     for row in cache["error_rows"]:
 
-        text += f"XATO:\n{row}\n\n"
+        text += (
+            f"XATO\n"
+            f"Qator: {row['row_no']}\n"
+            f"{row['reason']}\n\n"
+        )
 
-    if not text:
+    if text == "DTS IMPORT XATOLARI\n\n":
 
-        text = "Xatolar yo‘q"
+        text += "Xatolar yo‘q"
+
+    os.makedirs(
+        "temp",
+        exist_ok=True
+    )
 
     file_path = (
         f"temp/errors_{user_id}.txt"
@@ -1721,10 +2419,14 @@ async def dts_download_errors(
         FSInputFile(file_path)
     )
 
-
+@dp.callback_query(
+    lambda c: c.data == "dts_cancel_import"
+)
 async def dts_cancel_import(
     call: CallbackQuery
 ):
+
+    await call.answer()
 
     user_id = call.from_user.id
 
@@ -1735,7 +2437,3 @@ async def dts_cancel_import(
     await call.message.edit_text(
         "❌ DTS import bekor qilindi"
     )
-
-
-
-
