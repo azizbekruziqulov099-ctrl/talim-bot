@@ -3826,15 +3826,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
-    if call.data == "dts_menu":
+    if call.data == "dts_import":
 
-        await dts_menu(call)
-
-        return
-
-    elif call.data == "dts_import":
-
-        await dts_import(call,state)
+        await dts_import(
+            call,
+            state
+        )
 
         return
 
@@ -3844,37 +3841,93 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    elif call.data == "dts_menu":
+
+        await dts_menu(call.message)
+
+        return
+
+    elif call.data == "dts_confirm_import":
+
+        await dts_confirm_import(call)
+
+        return
+
+    elif call.data == "dts_problems":
+
+        await dts_problems(call)
+
+        return
+
+    elif call.data == "dts_download_errors":
+
+        await dts_download_errors(call)
+
+        return
+
+    elif call.data == "dts_cancel_import":
+
+        await dts_cancel_import(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_subject_"
+    ):
+
+        await dts_subject(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_quarter_"
+    ):
+
+        await dts_quarter(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_bob_"
+    ):
+
+        await dts_bob(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_bolim_"
+    ):
+
+        await dts_bolim(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_mavzu_"
+    ):
+
+        await dts_mavzu(call)
+
+        return
+
+    elif call.data.startswith(
+        "dts_small_"
+    ):
+
+        await dts_small(call)
+
+        return
+
     elif call.data == "dts_search":
 
         await dts_search(call)
 
         return
 
-  
-    elif call.data == "dts_import_confirm":
+    elif call.data == "dts_export":
 
-        await dts_import_confirm(
-            call,
-            user_id
-        )
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM questions
-            WHERE topic_code=%s
-        """, (topic_code,))
-
-        cnt = cur.fetchone()[0]
-
-        await call.message.answer(
-            f"Topildi: {cnt} ta savol"
-        )
-
-        cur.close()
-        conn.close()
+        await dts_export(call)
 
         return
 
