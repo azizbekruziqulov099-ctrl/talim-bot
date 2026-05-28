@@ -574,15 +574,6 @@ async def handle_all(
     except:
         pass
 
-    if message.document:
-
-        await dts_excel_import(
-            message,
-            state
-        )
-
-        return
-
     if user_id not in temp_user:
         temp_user[user_id] = {}
 
