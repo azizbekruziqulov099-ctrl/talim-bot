@@ -6,7 +6,6 @@ from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
-from helpers import *
 from dts_import import *
 from dts_confirm import *
 from keyboards import get_main_keyboard
@@ -622,11 +621,11 @@ async def handle_all(message: types.Message):
 
     elif message.text == "📚 DTS boshqaruvi":
 
-        await dts_admin_menu(
-            message
-        )
+        await dts_menu(
+                message
+            )
 
-        return
+            return
 
     elif message.text == "📚 DTS":
 
