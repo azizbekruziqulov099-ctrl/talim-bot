@@ -1,6 +1,5 @@
 from aiogram.types import Message
 from loader import dp, bot
-from loader import dp, bot
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
@@ -12,7 +11,6 @@ from aiogram.fsm.context import (
     FSMContext
 )
 from difflib import SequenceMatcher
-from Talim import bot
 from aiogram.types import FSInputFile
 from aiogram.types import (
 
