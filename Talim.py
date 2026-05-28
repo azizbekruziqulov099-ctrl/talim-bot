@@ -9,6 +9,7 @@ from aiogram.filters import *
 from dts_import_handlers import *
 from keyboards import get_main_keyboard
 from aiogram import F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -3811,7 +3812,7 @@ async def handle_all(message: types.Message):
             return
 
 @dp.callback_query()
-async def test_buttons(call: types.CallbackQuery):
+async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
@@ -4771,3 +4772,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
