@@ -1374,11 +1374,12 @@ async def dts_subject(
     call: CallbackQuery
 
 ):
-
+    (
     _,
     _,
     grade,
-    subject_code = call.data.split("_")
+    subject_code 
+    )= call.data.split("_")
 
     conn = psycopg2.connect(
         DATABASE_URL
