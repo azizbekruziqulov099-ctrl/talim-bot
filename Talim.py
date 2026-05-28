@@ -7,7 +7,6 @@ from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
-from dts_confirm import *
 from keyboards import get_main_keyboard
 from aiogram import F
 from aiogram.types import (
@@ -23,7 +22,6 @@ import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
 import os
-from dts_import_handlers import *
 
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
@@ -3821,7 +3819,31 @@ async def test_buttons(call: types.CallbackQuery):
 
     user_id = call.from_user.id
 
-    if call.data.startswith("dts_grade_"):
+    if call.data == "dts_menu":
+
+        await dts_menu(call)
+
+        return
+
+    elif call.data == "dts_import":
+
+        await dts_import(call)
+
+        return
+
+    elif call.data == "dts_navigator":
+
+        await dts_navigator(call)
+
+        return
+
+    elif call.data == "dts_search":
+
+        await dts_search(call)
+
+        return
+
+    elif call.data.startswith("dts_grade_"):
 
         await dts_grade(call)
 
@@ -3870,7 +3892,7 @@ async def test_buttons(call: types.CallbackQuery):
             ""
         )
 
-    if call.data == "dts_existing":
+    elif call.data == "dts_existing":
 
         await dts_existing_show(
             call,
