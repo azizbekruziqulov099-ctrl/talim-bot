@@ -571,7 +571,14 @@ async def handle_all(message: types.Message):
     except:
         pass
 
+    if message.document:
 
+        await dts_excel_import(
+            message,
+            state
+        )
+
+        return
 
     if user_id not in temp_user:
         temp_user[user_id] = {}
@@ -3840,98 +3847,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
-    elif call.data.startswith("dts_grade_"):
-
-        await dts_grade(call)
-
-        return
-
-    elif call.data.startswith("dts_subject_"):
-
-        await dts_subject(call)
-
-        return    
-
-    elif call.data.startswith("dts_quarter_"):
-
-        await dts_quarter(call)
-
-        return
-    
-    elif call.data.startswith("dts_bob_"):
-
-        await dts_bob(call)
-
-        return
-
-    elif call.data.startswith("dts_bolim_"):
-
-        await dts_bolim(call)
-
-        return
-
-    elif call.data.startswith("dts_mavzu_"):
-
-        await dts_mavzu(call)
-
-        return
-
-    elif call.data.startswith("dts_small_"):
-
-        await dts_small(call)
-
-        return
-
-    elif call.data.startswith("dts_test_"):
-
-        topic_code = call.data.replace(
-            "dts_test_",
-            ""
-        )
-
-    elif call.data == "dts_existing":
-
-        await dts_existing_show(
-            call,
-            user_id
-        )
-
-        return
-
-    elif call.data == "dts_similar":
-
-        await dts_similar_show(
-            call,
-            user_id
-        )
-
-        return
-
-    elif call.data == "dts_errors":
-
-        await dts_errors_show(
-            call,
-            call.from_user.id
-        )
-        return
-
-    elif call.data == "dts_duplicates":
-
-        await dts_duplicates_show(
-            call,
-            call.from_user.id
-        )
-        return
-
-    elif call.data == "dts_import_cancel":
-
-        await dts_import_cancel(
-            call,
-            user_id
-        )
-
-        return
-
+  
     elif call.data == "dts_import_confirm":
 
         await dts_import_confirm(
