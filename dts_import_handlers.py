@@ -1293,6 +1293,10 @@ async def dts_navigator(
 
     )
 
+# =========================
+# dts_grade
+# =========================
+
 async def dts_grade(
 
     call: CallbackQuery
@@ -1332,7 +1336,7 @@ async def dts_grade(
 
             InlineKeyboardButton(
 
-                text=f"📚 {name}",
+                text=f"📚 {name} [{code}]",
 
                 callback_data=(
                     f"dts_subject_"
@@ -1368,17 +1372,27 @@ async def dts_grade(
 
     )
 
+    cur.close()
+    conn.close()
+
+
+# =========================
+# dts_subject
+# =========================
+
 async def dts_subject(
 
     call: CallbackQuery
 
 ):
+
     (
-    _,
-    _,
-    grade,
-    subject_code 
-    )= call.data.split("_")
+        _,
+        _,
+        grade,
+        subject_code
+
+    ) = call.data.split("_")
 
     conn = psycopg2.connect(
         DATABASE_URL
@@ -1404,10 +1418,12 @@ async def dts_subject(
     cur.execute("""
     SELECT subject_name
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     LIMIT 1
     """, (
-        subject_code,
+        grade,
+        subject_code
     ))
 
     subject_name = cur.fetchone()[0]
@@ -1420,7 +1436,7 @@ async def dts_subject(
 
             InlineKeyboardButton(
 
-                text=f"🗓 {quarter}",
+                text=f"🗓 {quarter}-chorak",
 
                 callback_data=(
 
@@ -1455,11 +1471,20 @@ async def dts_subject(
 
     await call.message.edit_text(
 
-        f"📚 {subject_name}",
+        f"📚 {subject_name} [{subject_code}]",
 
         reply_markup=kb
 
     )
+
+    cur.close()
+    conn.close()
+
+
+# =========================
+# dts_quarter
+# =========================
+
 async def dts_quarter(
 
     call: CallbackQuery
@@ -1507,7 +1532,7 @@ async def dts_quarter(
 
             InlineKeyboardButton(
 
-                text=f"📖 {name}",
+                text=f"📖 {name} [{code}]",
 
                 callback_data=(
 
@@ -1547,11 +1572,19 @@ async def dts_quarter(
 
     await call.message.edit_text(
 
-        f"🗓 {quarter}",
+        f"🗓 {quarter}-chorak",
 
         reply_markup=kb
 
     )
+
+    cur.close()
+    conn.close()
+
+
+# =========================
+# dts_bob
+# =========================
 
 async def dts_bob(
 
@@ -1598,477 +1631,6 @@ async def dts_bob(
     buttons = []
 
     for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📑 {name}",
-
-                callback_data=(
-
-                    f"dts_bolim_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_quarter_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        "📖 Boblar",
-
-        reply_markup=kb
-
-    )
-
-async def dts_bolim(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        mavzu_code,
-        mavzu_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND is_deleted=FALSE
-    ORDER BY mavzu_code
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📝 {name}",
-
-                callback_data=(
-
-                    f"dts_mavzu_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{bolim_code}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_bob_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}_"
-                f"{bob_code}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        "📑 Bo‘limlar",
-
-        reply_markup=kb
-
-    )
-
-async def dts_mavzu(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        kichik_code,
-        kichik_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_code=%s
-    AND is_deleted=FALSE
-    ORDER BY kichik_code
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"🔹 {name}",
-
-                callback_data=(
-
-                    f"dts_small_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{bolim_code}_"
-                    f"{mavzu_code}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_bolim_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}_"
-                f"{bob_code}_"
-                f"{bolim_code}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        "📝 Mavzular",
-
-        reply_markup=kb
-
-    )
-
-async def dts_small(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code,
-        kichik_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT
-
-        topic_code,
-
-        subject_name,
-
-        bob_name,
-
-        bolim_name,
-
-        mavzu_name,
-
-        kichik_name
-
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_code=%s
-    AND kichik_code=%s
-    AND is_deleted=FALSE
-    LIMIT 1
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code,
-        kichik_code
-    ))
-
-    row = cur.fetchone()
-
-    if not row:
-
-        await call.answer(
-            "Topilmadi"
-        )
-
-        return
-
-    (
-        topic_code,
-
-        subject_name,
-
-        bob_name,
-
-        bolim_name,
-
-        mavzu_name,
-
-        kichik_name
-
-    ) = row
-
-    text = f"""
-
-📚 DTS Ma’lumotlari
-
-━━━━━━━━━━━━━━━
-
-🏫 Sinf:
-{grade}
-
-📖 Fan:
-{subject_name}
-
-🗓 Chorak:
-{quarter}
-
-📘 Bob:
-{bob_name}
-
-📑 Bo‘lim:
-{bolim_name}
-
-📝 Mavzu:
-{mavzu_name}
-
-🔹 Kichik mavzu:
-{kichik_name}
-
-━━━━━━━━━━━━━━━
-
-🆔 Topic Code:
-{topic_code}
-
-"""
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-
-            [
-
-                InlineKeyboardButton(
-
-                    text="⬅️ Orqaga",
-
-                    callback_data=(
-
-                        f"dts_mavzu_"
-                        f"{grade}_"
-                        f"{subject_code}_"
-                        f"{quarter}_"
-                        f"{bob_code}_"
-                        f"{bolim_code}_"
-                        f"{mavzu_code}"
-
-                    )
-
-                )
-
-            ]
-
-        ]
-    )
-
-    await call.message.edit_text(
-
-        text,
-
-        reply_markup=kb
-
-    )
-
-
-
-
-async def dts_bob(
-
-    call: CallbackQuery,
-
-    page=0
-
-):
-
-    _, _, subject_code, quarter, bob_code = (
-        call.data.split("_")
-    )
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        bolim_code,
-        bolim_name
-    FROM dts_tree
-    WHERE subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND is_deleted=FALSE
-    ORDER BY bolim_code
-    """, (
-        subject_code,
-        quarter,
-        bob_code
-    ))
-
-    bolimlar = cur.fetchall()
-
-    page_size = 10
-
-    start = page * page_size
-
-    end = start + page_size
-
-    current_items = bolimlar[
-        start:end
-    ]
-
-    buttons = []
-
-    for code, name in current_items:
 
         buttons.append([
 
@@ -2079,13 +1641,10 @@ async def dts_bob(
                 callback_data=(
 
                     f"dts_bolim_"
-
+                    f"{grade}_"
                     f"{subject_code}_"
-
                     f"{quarter}_"
-
                     f"{bob_code}_"
-
                     f"{code}"
 
                 )
@@ -2093,80 +1652,6 @@ async def dts_bob(
             )
 
         ])
-
-    nav_buttons = []
-
-    if page > 0:
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="⬅️ Oldingi",
-
-                callback_data=(
-
-                    f"dts_bobpage_"
-
-                    f"{subject_code}_"
-
-                    f"{quarter}_"
-
-                    f"{bob_code}_"
-
-                    f"{page - 1}"
-
-                )
-
-            )
-
-        )
-
-    total_pages = (
-        len(bolimlar) - 1
-    ) // page_size + 1
-
-    nav_buttons.append(
-
-        InlineKeyboardButton(
-
-            text=(
-                f"{page + 1}/{total_pages}"
-            ),
-
-            callback_data="ignore"
-
-        )
-
-    )
-
-    if end < len(bolimlar):
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="Keyingi ➡️",
-
-                callback_data=(
-
-                    f"dts_bobpage_"
-
-                    f"{subject_code}_"
-
-                    f"{quarter}_"
-
-                    f"{bob_code}_"
-
-                    f"{page + 1}"
-
-                )
-
-            )
-
-        )
-
-    buttons.append(nav_buttons)
 
     buttons.append([
 
@@ -2177,9 +1662,8 @@ async def dts_bob(
             callback_data=(
 
                 f"dts_quarter_"
-
+                f"{grade}_"
                 f"{subject_code}_"
-
                 f"{quarter}"
 
             )
@@ -2200,17 +1684,24 @@ async def dts_bob(
 
     )
 
+    cur.close()
+    conn.close()
+
+
+# =========================
+# dts_bolim
+# =========================
+
 async def dts_bolim(
 
-    call: CallbackQuery,
-
-    page=0
+    call: CallbackQuery
 
 ):
 
     (
         _,
         _,
+        grade,
         subject_code,
         quarter,
         bob_code,
@@ -2229,34 +1720,26 @@ async def dts_bolim(
         mavzu_code,
         mavzu_name
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
     AND is_deleted=FALSE
     ORDER BY mavzu_code
     """, (
+        grade,
         subject_code,
         quarter,
         bob_code,
         bolim_code
     ))
 
-    mavzular = cur.fetchall()
-
-    page_size = 10
-
-    start = page * page_size
-
-    end = start + page_size
-
-    current_items = mavzular[
-        start:end
-    ]
+    rows = cur.fetchall()
 
     buttons = []
 
-    for code, name in current_items:
+    for code, name in rows:
 
         buttons.append([
 
@@ -2267,15 +1750,11 @@ async def dts_bolim(
                 callback_data=(
 
                     f"dts_mavzu_"
-
+                    f"{grade}_"
                     f"{subject_code}_"
-
                     f"{quarter}_"
-
                     f"{bob_code}_"
-
                     f"{bolim_code}_"
-
                     f"{code}"
 
                 )
@@ -2283,84 +1762,6 @@ async def dts_bolim(
             )
 
         ])
-
-    nav_buttons = []
-
-    if page > 0:
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="⬅️ Oldingi",
-
-                callback_data=(
-
-                    f"dts_bolimpage_"
-
-                    f"{subject_code}_"
-
-                    f"{quarter}_"
-
-                    f"{bob_code}_"
-
-                    f"{bolim_code}_"
-
-                    f"{page - 1}"
-
-                )
-
-            )
-
-        )
-
-    total_pages = (
-        len(mavzular) - 1
-    ) // page_size + 1
-
-    nav_buttons.append(
-
-        InlineKeyboardButton(
-
-            text=(
-                f"{page + 1}/{total_pages}"
-            ),
-
-            callback_data="ignore"
-
-        )
-
-    )
-
-    if end < len(mavzular):
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="Keyingi ➡️",
-
-                callback_data=(
-
-                    f"dts_bolimpage_"
-
-                    f"{subject_code}_"
-
-                    f"{quarter}_"
-
-                    f"{bob_code}_"
-
-                    f"{bolim_code}_"
-
-                    f"{page + 1}"
-
-                )
-
-            )
-
-        )
-
-    buttons.append(nav_buttons)
 
     buttons.append([
 
@@ -2371,11 +1772,9 @@ async def dts_bolim(
             callback_data=(
 
                 f"dts_bob_"
-
+                f"{grade}_"
                 f"{subject_code}_"
-
                 f"{quarter}_"
-
                 f"{bob_code}"
 
             )
@@ -2396,6 +1795,14 @@ async def dts_bolim(
 
     )
 
+    cur.close()
+    conn.close()
+
+
+# =========================
+# dts_mavzu
+# =========================
+
 async def dts_mavzu(
 
     call: CallbackQuery
@@ -2405,6 +1812,7 @@ async def dts_mavzu(
     (
         _,
         _,
+        grade,
         subject_code,
         quarter,
         bob_code,
@@ -2425,7 +1833,8 @@ async def dts_mavzu(
         kichik_name,
         topic_code
     FROM dts_tree
-    WHERE subject_code=%s
+    WHERE grade=%s
+    AND subject_code=%s
     AND quarter=%s
     AND bob_code=%s
     AND bolim_code=%s
@@ -2433,6 +1842,7 @@ async def dts_mavzu(
     AND is_deleted=FALSE
     ORDER BY kichik_code
     """, (
+        grade,
         subject_code,
         quarter,
         bob_code,
@@ -2440,11 +1850,11 @@ async def dts_mavzu(
         mavzu_code
     ))
 
-    kichiklar = cur.fetchall()
+    rows = cur.fetchall()
 
     buttons = []
 
-    for code, name, topic_code in kichiklar:
+    for code, name, topic_code in rows:
 
         buttons.append([
 
@@ -2453,8 +1863,7 @@ async def dts_mavzu(
                 text=f"🔹 {name} [{code}]",
 
                 callback_data=(
-                    f"dts_small_"
-                    f"{topic_code}"
+                    f"dts_small_{topic_code}"
                 )
 
             )
@@ -2468,11 +1877,14 @@ async def dts_mavzu(
             text="⬅️ Orqaga",
 
             callback_data=(
+
                 f"dts_bolim_"
+                f"{grade}_"
                 f"{subject_code}_"
                 f"{quarter}_"
                 f"{bob_code}_"
                 f"{bolim_code}"
+
             )
 
         )
@@ -2491,172 +1903,8 @@ async def dts_mavzu(
 
     )
 
-@dp.callback_query(
-    lambda c: c.data.startswith(
-        "dts_bolimpage_"
-    )
-)
-async def dts_bolim_page(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        page
-
-    ) = call.data.split("_")
-
-    await dts_bolim(
-        call,
-        int(page)
-    )
-
-async def dts_small(
-    call: CallbackQuery
-):
-
-    topic_code = call.data.replace(
-        "dts_small_",
-        ""
-    )
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-
-    SELECT
-        topic_code,
-        grade,
-        subject_name,
-        subject_code,
-        quarter,
-        bob_name,
-        bob_code,
-        bolim_name,
-        bolim_code,
-        mavzu_name,
-        mavzu_code,
-        kichik_name,
-        kichik_code
-    FROM dts_tree
-    WHERE topic_code=%s
-    AND is_deleted=FALSE
-    LIMIT 1
-
-    """, (
-
-        topic_code,
-
-    ))
-
-    row = cur.fetchone()
-
-    if not row:
-
-        await call.answer(
-            "Topilmadi"
-        )
-
-        return
-
-    (
-        topic_code,
-        grade,
-        subject_name,
-        subject_code,
-        quarter,
-        bob_name,
-        bob_code,
-        bolim_name,
-        bolim_code,
-        mavzu_name,
-        mavzu_code,
-        kichik_name,
-        kichik_code
-
-    ) = row
-
-    text = f"""
-📚 DTS Ma’lumotlari
-━━━━━━━━━━━━━━━
-
-🏫 Sinf:
-{grade}
-
-📖 Fan:
-{subject_name}
-
-🗓 Chorak:
-{quarter}
-
-📘 Bob:
-{bob_name}
-
-📑 Bo‘lim:
-{bolim_name}
-
-📝 Mavzu:
-{mavzu_name}
-
-🔹 Kichik mavzu:
-{kichik_name}
-
-━━━━━━━━━━━━━━━
-
-🆔 Topic Code:
-{topic_code}
-"""
-
-    kb = InlineKeyboardMarkup(
-
-        inline_keyboard=[
-
-            [
-
-                InlineKeyboardButton(
-
-                    text="⬅️ Orqaga",
-
-                    callback_data=(
-
-                        f"dts_mavzu_"
-                        f"{subject_code}_"
-                        f"{quarter}_"
-                        f"{bob_code}_"
-                        f"{bolim_code}_"
-                        f"{mavzu_code}"
-
-                    )
-
-                )
-
-            ]
-
-        ]
-
-    )
-
-    await call.message.edit_text(
-
-        text,
-        reply_markup=kb
-
-    )
-
     cur.close()
     conn.close()
-
 async def dts_menu(
 
     message
@@ -2946,9 +2194,6 @@ async def dts_excel_import(
 
     await state.clear()
 
-@dp.callback_query(
-    lambda c: c.data == "dts_confirm_import"
-)
 async def dts_confirm_import(
 
     call: CallbackQuery
@@ -3032,9 +2277,6 @@ async def dts_confirm_import(
         cur.close()
         conn.close()
 
-@dp.callback_query(
-    lambda c: c.data == "dts_problems"
-)
 async def dts_problems(
     call: CallbackQuery
 ):
@@ -3091,9 +2333,6 @@ async def dts_problems(
         text[:4000]
     )
 
-@dp.callback_query(
-    lambda c: c.data == "dts_download_errors"
-)
 async def dts_download_errors(
     call: CallbackQuery
 ):
@@ -3167,9 +2406,6 @@ async def dts_download_errors(
         FSInputFile(file_path)
     )
 
-@dp.callback_query(
-    lambda c: c.data == "dts_cancel_import"
-)
 async def dts_cancel_import(
     call: CallbackQuery
 ):
