@@ -1196,7 +1196,7 @@ async def dts_navigator(
         grade
     FROM dts_tree
     WHERE is_deleted=FALSE
-    ORDER BY subject_code
+    ORDER BY grade
     """)
 
     subjects = cur.fetchall()
@@ -2065,6 +2065,14 @@ async def dts_excel_import(
     message: Message,
     state: FSMContext
 ):
+    current_state = await state.get_state()
+
+    if current_state != (
+        DTSImportState.waiting_excel.state
+    ):
+
+        return
+
     document = message.document
 
     if not document:
