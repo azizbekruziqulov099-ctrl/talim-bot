@@ -1,6 +1,5 @@
 from openpyxl import load_workbook
 from admin_handlers import *
-from dts_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -3872,6 +3871,14 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         return
 
     elif call.data.startswith(
+        "dts_quarter_"
+    ):
+
+        await dts_quarter(call)
+
+        return
+
+    elif call.data.startswith(
         "dts_bob_"
     ):
 
@@ -3947,7 +3954,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     elif user_id not in user_test:
         await call.answer(
-            "♻️ Bot yangilangan.",
+            "♻️ Bot yangilangan.  qayta boshlang.",
             show_alert=True
         )
         return
