@@ -1,10 +1,12 @@
-from aiogram import Bot, Dispatcher, types
-import psycopg2
+from aiogram import Bot, Dispatcher
 import os
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL"
+API_TOKEN = os.getenv(
+    "BOT_TOKEN"
 )
-bot = Bot(token=API_TOKEN)
+
+bot = Bot(
+    token=API_TOKEN
+)
 
 dp = Dispatcher()
