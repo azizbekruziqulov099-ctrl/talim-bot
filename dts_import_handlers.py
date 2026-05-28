@@ -1436,12 +1436,12 @@ async def dts_excel_import(
     state: FSMContext
 
 ):
-    
+
     print("EXCEL KELDI")
 
     await message.answer(
         "EXCEL KELDI"
-     )
+    )
 
     document = message.document
 
@@ -1453,13 +1453,17 @@ async def dts_excel_import(
 
         return
 
+    # TEMP papka yaratadi
+    os.makedirs(
+        "temp",
+        exist_ok=True
+    )
+
     file_path = (
         f"temp/{document.file_name}"
     )
 
-    await message.answer(
-        "DOWNLOADGA KELDI"
-    )
+    print("DOWNLOAD BOSHLANDI")
 
     await bot.download(
         document,
@@ -1467,10 +1471,17 @@ async def dts_excel_import(
     )
 
     await message.answer(
-        "EXCEL OCHILYAPTI"
+        "DOWNLOAD BOLDI"
     )
+
+    print("EXCEL OCHILYAPTI")
+
     wb = load_workbook(
         file_path
+    )
+
+    await message.answer(
+        "EXCEL OCHILDI"
     )
 
     ws = wb.active
@@ -1482,11 +1493,33 @@ async def dts_excel_import(
         )
     )
 
-    conn = psycopg2.connect(
-        DATABASE_URL
+    await message.answer(
+        "ROWS OCHILDI"
     )
 
-    cur = conn.cursor()
+    try:
+
+        conn = psycopg2.connect(
+            DATABASE_URL
+        )
+
+        await message.answer(
+            "CONNECT BOLDI"
+        )
+
+        cur = conn.cursor()
+
+        await message.answer(
+            "CURSOR BOLDI"
+        )
+
+    except Exception as e:
+
+        await message.answer(
+            f"DB ERROR:\n{e}"
+        )
+
+        return
 
     await message.answer(
         "ANALYZE BOSHLANDI"
@@ -1502,7 +1535,6 @@ async def dts_excel_import(
     dts_import_cache[user_id] = result
 
     text = f"""
-
 📄 Jami qator:
 {len(rows)}
 
@@ -1552,11 +1584,8 @@ async def dts_excel_import(
     )
 
     await message.answer(
-
         text,
-
         reply_markup=kb
-
     )
 
     await state.clear()
