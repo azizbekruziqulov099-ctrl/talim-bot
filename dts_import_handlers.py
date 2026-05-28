@@ -1,10 +1,11 @@
+from aiogram.types import Message
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
+from Talim import dp
 import psycopg2
 import os
 import re
-from Talim import dp
 from aiogram.fsm.context import (
     FSMContext
 )
@@ -12,7 +13,7 @@ from difflib import SequenceMatcher
 from aiogram.types import FSInputFile
 from aiogram.types import (
     Message,
-    CallbackQuery,
+    FSInputFile,
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
@@ -1312,7 +1313,7 @@ async def dts_small(
 )
 async def dts_menu(
 
-    call: CallbackQuery
+    message
 
 ):
 
@@ -1370,7 +1371,7 @@ async def dts_menu(
         ]
     )
 
-    await call.message.edit_text(
+    await message.answer(
 
         "📚 DTS Boshqaruv Paneli",
 
