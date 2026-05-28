@@ -1434,6 +1434,12 @@ async def dts_excel_import(
     state: FSMContext
 
 ):
+    
+    print("EXCEL KELDI")
+
+        await message.answer(
+            "EXCEL KELDI"
+        )
 
     document = message.document
 
