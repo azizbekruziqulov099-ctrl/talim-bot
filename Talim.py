@@ -34,9 +34,6 @@ API_TOKEN = os.getenv("BOT_TOKEN")
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
-
 user_state = {}
 temp_user = {}
 user_test = {}
