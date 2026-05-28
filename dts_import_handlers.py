@@ -1425,7 +1425,8 @@ async def dts_import(
     )
 
 @dp.message(
-    DTSImportState.waiting_excel
+    DTSImportState.waiting_excel,
+    F.doument
 )
 async def dts_excel_import(
 
