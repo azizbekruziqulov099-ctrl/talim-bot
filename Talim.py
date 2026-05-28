@@ -3937,10 +3937,29 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    # =========================
+    # test_buttons
+    # =========================
+
     elif call.data == "dts_search":
-
         await dts_search(call)
+        return
 
+    elif call.data == "dts_fast_search":
+        await dts_fast_search(
+            call,
+            state
+        )
+        return
+
+    elif call.data == "dts_adv_search":
+        await dts_adv_search(call)
+        return
+
+    elif call.data.startswith(
+        "dts_adv_grade_"
+    ):
+        await dts_adv_grade(call)
         return
 
     elif call.data == "dts_export":
