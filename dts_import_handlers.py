@@ -1,8 +1,9 @@
 from aiogram.types import Message
+from loader import dp, bot
+from loader import dp, bot
 from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
-from Talim import dp
 import psycopg2
 import os
 import re
