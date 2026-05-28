@@ -3710,7 +3710,7 @@ async def handle_all(message: types.Message):
 
             await message.answer(text)
         # ===== NUMBER (SAVE) =====
-        elif message.text.isdigit():
+        elif message.text and message.text.isdigit():
 
             if user_state.get(message.from_user.id) == "survey":
 
@@ -4772,4 +4772,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
