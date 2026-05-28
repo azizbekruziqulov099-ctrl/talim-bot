@@ -3,7 +3,6 @@ from difflib import SequenceMatcher
 from openpyxl import load_workbook
 from openpyxl import Workbook
 from Talim import dp
-from Talim import bot
 import psycopg2
 import os
 import re
@@ -12,6 +11,7 @@ from aiogram.fsm.context import (
     FSMContext
 )
 from difflib import SequenceMatcher
+from Talim import bot
 from aiogram.types import FSInputFile
 from aiogram.types import (
 
@@ -1457,11 +1457,18 @@ async def dts_excel_import(
         f"temp/{document.file_name}"
     )
 
+    await message.answer(
+        "DOWNLOADGA KELDI"
+    )
+
     await bot.download(
         document,
         destination=file_path
     )
 
+    await message.answer(
+        "EXCEL OCHILYAPTI"
+    )
     wb = load_workbook(
         file_path
     )
@@ -1480,6 +1487,10 @@ async def dts_excel_import(
     )
 
     cur = conn.cursor()
+
+    await message.answer(
+        "ANALYZE BOSHLANDI"
+    )
 
     result = analyze_import(
         cur,
