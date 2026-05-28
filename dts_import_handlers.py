@@ -1395,8 +1395,7 @@ async def dts_import(
 ):
 
     await state.set_state(
-        DTSImportState.waiting_excel,
-        F.document
+        DTSImportState.waiting_excel
     )
 
     kb = InlineKeyboardMarkup(
