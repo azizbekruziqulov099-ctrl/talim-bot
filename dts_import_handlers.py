@@ -2421,3 +2421,326 @@ async def dts_cancel_import(
     await call.message.edit_text(
         "❌ DTS import bekor qilindi"
     )
+# =========================
+# DTS SEARCH MENU
+# =========================
+
+class DTSSearchState(StatesGroup):
+
+    waiting_fast_search = State()
+
+    select_grade = State()
+    select_subject = State()
+    select_quarter = State()
+    select_bob = State()
+    select_bolim = State()
+    select_mavzu = State()
+
+
+async def dts_search(
+    call: CallbackQuery
+):
+
+    kb = InlineKeyboardMarkup(
+
+        inline_keyboard=[
+
+            [
+                InlineKeyboardButton(
+                    text="⚡ Tezkor qidiruv",
+                    callback_data="dts_fast_search"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="🧭 Kengaytirilgan qidiruv",
+                    callback_data="dts_adv_search"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Orqaga",
+                    callback_data="dts_menu"
+                )
+            ]
+
+        ]
+
+    )
+
+    await call.message.edit_text(
+
+        "🔎 DTS Qidiruv",
+
+        reply_markup=kb
+
+    )
+
+# =========================
+# FAST SEARCH
+# =========================
+
+async def dts_fast_search(
+    call: CallbackQuery,
+    state: FSMContext
+):
+
+    await state.set_state(
+        DTSSearchState.waiting_fast_search
+    )
+
+    await call.message.edit_text(
+        "🔎 Mavzu nomini kiriting:"
+    )
+@dp.message(
+    DTSSearchState.waiting_fast_search
+)
+async def dts_fast_search_text(
+    message: Message,
+    state: FSMContext
+):
+
+    text = message.text.strip()
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+
+    SELECT DISTINCT
+
+        mavzu_code,
+        mavzu_name,
+
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code
+
+    FROM dts_tree
+
+    WHERE is_deleted=FALSE
+
+    AND (
+        LOWER(mavzu_name) LIKE LOWER(%s)
+        OR LOWER(kichik_name) LIKE LOWER(%s)
+    )
+
+    ORDER BY mavzu_name
+
+    LIMIT 50
+
+    """, (
+
+        f"%{text}%",
+        f"%{text}%"
+
+    ))
+
+    rows = cur.fetchall()
+
+    if not rows:
+
+        await message.answer(
+            "❌ Topilmadi"
+        )
+
+        return
+
+    buttons = []
+
+    for (
+
+        mavzu_code,
+        mavzu_name,
+
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code
+
+    ) in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📝 {mavzu_name} [{mavzu_code}]",
+
+                callback_data=(
+
+                    f"dts_mavzu_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}_"
+                    f"{bob_code}_"
+                    f"{bolim_code}_"
+                    f"{mavzu_code}"
+
+                )
+
+            )
+
+        ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await message.answer(
+
+        "🔎 Natijalar",
+
+        reply_markup=kb
+
+    )
+
+    await state.clear()
+
+    cur.close()
+    conn.close()
+
+# =========================
+# ADV SEARCH
+# =========================
+
+async def dts_adv_search(
+    call: CallbackQuery
+):
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+
+    SELECT DISTINCT grade
+
+    FROM dts_tree
+
+    WHERE is_deleted=FALSE
+
+    ORDER BY grade
+
+    """)
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for (grade,) in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"🏫 {grade}-sinf",
+
+                callback_data=(
+                    f"dts_adv_grade_{grade}"
+                )
+
+            )
+
+        ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        "🏫 Sinfni tanlang",
+
+        reply_markup=kb
+
+    )
+
+    cur.close()
+    conn.close()
+
+# =========================
+# ADV GRADE
+# =========================
+
+async def dts_adv_grade(
+    call: CallbackQuery
+):
+
+    grade = call.data.replace(
+        "dts_adv_grade_",
+        ""
+    )
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+
+    SELECT DISTINCT
+        subject_code,
+        subject_name
+
+    FROM dts_tree
+
+    WHERE grade=%s
+    AND is_deleted=FALSE
+
+    ORDER BY subject_code
+
+    """, (
+
+        grade,
+
+    ))
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for code, name in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📚 {name}",
+
+                callback_data=(
+
+                    f"dts_subject_"
+                    f"{grade}_"
+                    f"{code}"
+
+                )
+
+            )
+
+        ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        f"🏫 {grade}-sinf",
+
+        reply_markup=kb
+
+    )
+
+    cur.close()
+    conn.close()
