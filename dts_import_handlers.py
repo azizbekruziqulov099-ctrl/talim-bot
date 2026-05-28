@@ -1192,14 +1192,13 @@ async def dts_navigator(
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT DISTINCT
-        grade
+    SELECT DISTINCT grade
     FROM dts_tree
     WHERE is_deleted=FALSE
     ORDER BY grade
     """)
 
-    subjects = cur.fetchall()
+    grades = cur.fetchall()
 
     page_size = 10
 
@@ -1207,22 +1206,22 @@ async def dts_navigator(
 
     end = start + page_size
 
-    page_subjects = subjects[
+    current_items = grades[
         start:end
     ]
 
     buttons = []
 
-    for code, name in page_subjects:
+    for (grade,) in current_items:
 
         buttons.append([
 
             InlineKeyboardButton(
 
-                text=f"📚 {name} [{code}]",
+                text=f"🏫 {grade}-sinf",
 
                 callback_data=(
-                    f"dts_subject_{code}"
+                    f"dts_grade_{grade}"
                 )
 
             )
@@ -1237,7 +1236,7 @@ async def dts_navigator(
 
             InlineKeyboardButton(
 
-                text="⬅️ Oldingi",
+                text="⬅️",
 
                 callback_data=(
                     f"dts_nav_{page - 1}"
@@ -1248,7 +1247,7 @@ async def dts_navigator(
         )
 
     total_pages = (
-        len(subjects) - 1
+        len(grades) - 1
     ) // page_size + 1
 
     nav_buttons.append(
@@ -1265,13 +1264,13 @@ async def dts_navigator(
 
     )
 
-    if end < len(subjects):
+    if end < len(grades):
 
         nav_buttons.append(
 
             InlineKeyboardButton(
 
-                text="Keyingi ➡️",
+                text="➡️",
 
                 callback_data=(
                     f"dts_nav_{page + 1}"
@@ -1294,6 +1293,732 @@ async def dts_navigator(
         reply_markup=kb
 
     )
+
+async def dts_grade(
+
+    call: CallbackQuery
+
+):
+
+    grade = call.data.replace(
+        "dts_grade_",
+        ""
+    )
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        subject_code,
+        subject_name
+    FROM dts_tree
+    WHERE grade=%s
+    AND is_deleted=FALSE
+    ORDER BY subject_code
+    """, (
+        grade,
+    ))
+
+    subjects = cur.fetchall()
+
+    buttons = []
+
+    for code, name in subjects:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📚 {name}",
+
+                callback_data=(
+                    f"dts_subject_"
+                    f"{grade}_"
+                    f"{code}"
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data="dts_navigator"
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        f"🏫 {grade}-sinf fanlari",
+
+        reply_markup=kb
+
+    )
+
+async def dts_subject(
+
+    call: CallbackQuery
+
+):
+
+    _,
+    _,
+    grade,
+    subject_code = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        quarter
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND is_deleted=FALSE
+    ORDER BY quarter
+    """, (
+        grade,
+        subject_code
+    ))
+
+    quarters = cur.fetchall()
+
+    cur.execute("""
+    SELECT subject_name
+    FROM dts_tree
+    WHERE subject_code=%s
+    LIMIT 1
+    """, (
+        subject_code,
+    ))
+
+    subject_name = cur.fetchone()[0]
+
+    buttons = []
+
+    for (quarter,) in quarters:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"🗓 {quarter}",
+
+                callback_data=(
+
+                    f"dts_quarter_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}"
+
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data=(
+                f"dts_grade_{grade}"
+            )
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        f"📚 {subject_name}",
+
+        reply_markup=kb
+
+    )
+async def dts_quarter(
+
+    call: CallbackQuery
+
+):
+
+    (
+        _,
+        _,
+        grade,
+        subject_code,
+        quarter
+
+    ) = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        bob_code,
+        bob_name
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND quarter=%s
+    AND is_deleted=FALSE
+    ORDER BY bob_code
+    """, (
+        grade,
+        subject_code,
+        quarter
+    ))
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for code, name in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📖 {name}",
+
+                callback_data=(
+
+                    f"dts_bob_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}_"
+                    f"{code}"
+
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data=(
+
+                f"dts_subject_"
+                f"{grade}_"
+                f"{subject_code}"
+
+            )
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        f"🗓 {quarter}",
+
+        reply_markup=kb
+
+    )
+
+async def dts_bob(
+
+    call: CallbackQuery
+
+):
+
+    (
+        _,
+        _,
+        grade,
+        subject_code,
+        quarter,
+        bob_code
+
+    ) = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        bolim_code,
+        bolim_name
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND quarter=%s
+    AND bob_code=%s
+    AND is_deleted=FALSE
+    ORDER BY bolim_code
+    """, (
+        grade,
+        subject_code,
+        quarter,
+        bob_code
+    ))
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for code, name in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📑 {name}",
+
+                callback_data=(
+
+                    f"dts_bolim_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}_"
+                    f"{bob_code}_"
+                    f"{code}"
+
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data=(
+
+                f"dts_quarter_"
+                f"{grade}_"
+                f"{subject_code}_"
+                f"{quarter}"
+
+            )
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        "📖 Boblar",
+
+        reply_markup=kb
+
+    )
+
+async def dts_bolim(
+
+    call: CallbackQuery
+
+):
+
+    (
+        _,
+        _,
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code
+
+    ) = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        mavzu_code,
+        mavzu_name
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND quarter=%s
+    AND bob_code=%s
+    AND bolim_code=%s
+    AND is_deleted=FALSE
+    ORDER BY mavzu_code
+    """, (
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code
+    ))
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for code, name in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"📝 {name}",
+
+                callback_data=(
+
+                    f"dts_mavzu_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}_"
+                    f"{bob_code}_"
+                    f"{bolim_code}_"
+                    f"{code}"
+
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data=(
+
+                f"dts_bob_"
+                f"{grade}_"
+                f"{subject_code}_"
+                f"{quarter}_"
+                f"{bob_code}"
+
+            )
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        "📑 Bo‘limlar",
+
+        reply_markup=kb
+
+    )
+
+async def dts_mavzu(
+
+    call: CallbackQuery
+
+):
+
+    (
+        _,
+        _,
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code,
+        mavzu_code
+
+    ) = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT DISTINCT
+        kichik_code,
+        kichik_name
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND quarter=%s
+    AND bob_code=%s
+    AND bolim_code=%s
+    AND mavzu_code=%s
+    AND is_deleted=FALSE
+    ORDER BY kichik_code
+    """, (
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code,
+        mavzu_code
+    ))
+
+    rows = cur.fetchall()
+
+    buttons = []
+
+    for code, name in rows:
+
+        buttons.append([
+
+            InlineKeyboardButton(
+
+                text=f"🔹 {name}",
+
+                callback_data=(
+
+                    f"dts_small_"
+                    f"{grade}_"
+                    f"{subject_code}_"
+                    f"{quarter}_"
+                    f"{bob_code}_"
+                    f"{bolim_code}_"
+                    f"{mavzu_code}_"
+                    f"{code}"
+
+                )
+
+            )
+
+        ])
+
+    buttons.append([
+
+        InlineKeyboardButton(
+
+            text="⬅️ Orqaga",
+
+            callback_data=(
+
+                f"dts_bolim_"
+                f"{grade}_"
+                f"{subject_code}_"
+                f"{quarter}_"
+                f"{bob_code}_"
+                f"{bolim_code}"
+
+            )
+
+        )
+
+    ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await call.message.edit_text(
+
+        "📝 Mavzular",
+
+        reply_markup=kb
+
+    )
+
+async def dts_small(
+
+    call: CallbackQuery
+
+):
+
+    (
+        _,
+        _,
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code,
+        mavzu_code,
+        kichik_code
+
+    ) = call.data.split("_")
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT
+
+        topic_code,
+
+        subject_name,
+
+        bob_name,
+
+        bolim_name,
+
+        mavzu_name,
+
+        kichik_name
+
+    FROM dts_tree
+    WHERE grade=%s
+    AND subject_code=%s
+    AND quarter=%s
+    AND bob_code=%s
+    AND bolim_code=%s
+    AND mavzu_code=%s
+    AND kichik_code=%s
+    AND is_deleted=FALSE
+    LIMIT 1
+    """, (
+        grade,
+        subject_code,
+        quarter,
+        bob_code,
+        bolim_code,
+        mavzu_code,
+        kichik_code
+    ))
+
+    row = cur.fetchone()
+
+    if not row:
+
+        await call.answer(
+            "Topilmadi"
+        )
+
+        return
+
+    (
+        topic_code,
+
+        subject_name,
+
+        bob_name,
+
+        bolim_name,
+
+        mavzu_name,
+
+        kichik_name
+
+    ) = row
+
+    text = f"""
+
+📚 DTS Ma’lumotlari
+
+━━━━━━━━━━━━━━━
+
+🏫 Sinf:
+{grade}
+
+📖 Fan:
+{subject_name}
+
+🗓 Chorak:
+{quarter}
+
+📘 Bob:
+{bob_name}
+
+📑 Bo‘lim:
+{bolim_name}
+
+📝 Mavzu:
+{mavzu_name}
+
+🔹 Kichik mavzu:
+{kichik_name}
+
+━━━━━━━━━━━━━━━
+
+🆔 Topic Code:
+{topic_code}
+
+"""
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+
+            [
+
+                InlineKeyboardButton(
+
+                    text="⬅️ Orqaga",
+
+                    callback_data=(
+
+                        f"dts_mavzu_"
+                        f"{grade}_"
+                        f"{subject_code}_"
+                        f"{quarter}_"
+                        f"{bob_code}_"
+                        f"{bolim_code}_"
+                        f"{mavzu_code}"
+
+                    )
+
+                )
+
+            ]
+
+        ]
+    )
+
+    await call.message.edit_text(
+
+        text,
+
+        reply_markup=kb
+
+    )
+
+
+
 
 async def dts_bob(
 
