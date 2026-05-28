@@ -1634,12 +1634,14 @@ async def dts_confirm_import(
 
     cur = conn.cursor()
 
-    inserted_count = confirm_import(
-
+    result = confirm_import(
         cur,
         valid_rows
-
     )
+
+    conn.commit()
+
+    inserted_count = result["inserted_count"]
 
     conn.commit()
 
@@ -1651,23 +1653,6 @@ async def dts_confirm_import(
         📥 Qo‘shildi:
         {inserted_count}
         """
-    )
-
-@dp.callback_query(
-    lambda c: c.data == "dts_cancel_import"
-)
-async def dts_cancel_import(
-    call: CallbackQuery
-):
-
-    user_id = call.from_user.id
-
-    if user_id in dts_import_cache:
-
-        del dts_import_cache[user_id]
-
-    await call.message.edit_text(
-        "❌ Import bekor qilindi"
     )
 
 @dp.callback_query(
@@ -1717,6 +1702,78 @@ async def dts_problems(
 
     await call.message.answer(
         text[:4000]
+    )
+
+@dp.callback_query(
+    lambda c: c.data == "dts_download_errors"
+)
+async def dts_download_errors(
+    call: CallbackQuery
+):
+
+    user_id = call.from_user.id
+
+    cache = dts_import_cache.get(
+        user_id
+    )
+
+    if not cache:
+
+        await call.answer(
+            "Cache topilmadi"
+        )
+
+        return
+
+    text = ""
+
+    for row in cache["duplicate_rows"]:
+
+        text += f"TAKRORIY:\n{row}\n\n"
+
+    for row in cache["existing_rows"]:
+
+        text += f"BAZADA BOR:\n{row}\n\n"
+
+    for row in cache["error_rows"]:
+
+        text += f"XATO:\n{row}\n\n"
+
+    if not text:
+
+        text = "Xatolar yo‘q"
+
+    file_path = (
+        f"temp/errors_{user_id}.txt"
+    )
+
+    with open(
+        file_path,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        f.write(text)
+
+    await call.message.answer_document(
+        FSInputFile(file_path)
+    )
+
+@dp.callback_query(
+    lambda c: c.data == "dts_cancel_import"
+)
+async def dts_cancel_import(
+    call: CallbackQuery
+):
+
+    user_id = call.from_user.id
+
+    if user_id in dts_import_cache:
+
+        del dts_import_cache[user_id]
+
+    await call.message.edit_text(
+        "❌ DTS import bekor qilindi"
     )
 
 
