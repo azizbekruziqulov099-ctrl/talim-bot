@@ -3834,40 +3834,32 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         )
 
         return
-
     elif call.data == "dts_navigator":
 
         await dts_navigator(call)
 
-        return
+        return   
 
-    elif call.data == "dts_menu":
+    elif call.data.startswith(
+        "dts_nav_"
+    ):
 
-        await dts_menu(call.message)
+        page = int(
+            call.data.split("_")[-1]
+        )
 
-        return
-
-    elif call.data == "dts_confirm_import":
-
-        await dts_confirm_import(call)
-
-        return
-
-    elif call.data == "dts_problems":
-
-        await dts_problems(call)
+        await dts_navigator(
+            call,
+            page
+        )
 
         return
 
-    elif call.data == "dts_download_errors":
+    elif call.data.startswith(
+        "dts_grade_"
+    ):
 
-        await dts_download_errors(call)
-
-        return
-
-    elif call.data == "dts_cancel_import":
-
-        await dts_cancel_import(call)
+        await dts_grade(call)
 
         return
 
@@ -3876,14 +3868,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
     ):
 
         await dts_subject(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_quarter_"
-    ):
-
-        await dts_quarter(call)
 
         return
 
@@ -3919,6 +3903,36 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    elif call.data == "dts_menu":
+
+        await dts_menu(call.message)
+
+        return
+
+    elif call.data == "dts_confirm_import":
+
+        await dts_confirm_import(call)
+
+        return
+
+    elif call.data == "dts_problems":
+
+        await dts_problems(call)
+
+        return
+
+    elif call.data == "dts_download_errors":
+
+        await dts_download_errors(call)
+
+        return
+
+    elif call.data == "dts_cancel_import":
+
+        await dts_cancel_import(call)
+
+        return
+
     elif call.data == "dts_search":
 
         await dts_search(call)
@@ -3933,7 +3947,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     elif user_id not in user_test:
         await call.answer(
-            "♻️ Bot yangilangan. Testni qayta boshlang.",
+            "♻️ Bot yangilangan.",
             show_alert=True
         )
         return
