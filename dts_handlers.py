@@ -48,52 +48,6 @@ async def dts_menu(message):
 
     cur.close()
     conn.close()
-async def dts_grade(call: CallbackQuery):
-
-    grade = call.data.replace(
-        "dts_grade_",
-        ""
-    )
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT DISTINCT subject
-        FROM dts_tree
-        WHERE track='DTS'
-        AND grade=%s
-        ORDER BY subject
-        """,
-        (grade,)
-    )
-
-    subjects = cur.fetchall()
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[]
-    )
-
-    for subject in subjects:
-
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(
-                text=subject[0],
-                callback_data=f"dts_subject_{grade}_{subject[0]}"
-            )
-        ])
-
-    await call.message.edit_text(
-        f"{grade}-sinf fanlari",
-        reply_markup=kb
-    )
-
-    cur.close()
-    conn.close()
 
 async def dts_grade(call: CallbackQuery):
 
@@ -149,7 +103,7 @@ async def dts_grade(call: CallbackQuery):
 
 async def dts_subject(call):
 
-    _, _, grade, subject = call.data.split("_", 3)
+    _, _, grade, subject = call.data.split("_")
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -483,6 +437,5 @@ async def dts_small(call):
 
     cur.close()
     conn.close()
-
 
 
