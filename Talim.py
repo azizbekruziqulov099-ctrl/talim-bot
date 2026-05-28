@@ -630,10 +630,6 @@ async def handle_all(message: types.Message):
             "TEST"
         )
 
-        await dts_menu(
-            message
-        )
-
         return
 
     elif message.text == "📥 DTS import":
@@ -3827,7 +3823,7 @@ async def test_buttons(call: types.CallbackQuery):
 
     elif call.data == "dts_import":
 
-        await dts_import(call)
+        await dts_import(call,state)
 
         return
 
