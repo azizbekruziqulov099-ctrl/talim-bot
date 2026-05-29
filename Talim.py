@@ -7,6 +7,7 @@ from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
 from ai_generatori import *
+from ai_generatori import AIGeneratorState
 from keyboards import get_main_keyboard
 from loader import dp, bot
 from aiogram import F
@@ -576,50 +577,6 @@ async def handle_all(
             message,
             state
         )
-
-        return
-
-    current_state = await state.get_state()
-
-    if current_state == AIGeneratorState.wait_grade.state:
-
-        await state.update_data(
-            grade=message.text
-        )
-
-        await state.set_state(
-            AIGeneratorState.wait_subject
-        )
-
-        await message.answer(
-            "Fan nomini yuboring"
-        )
-
-        return
-
-    elif current_state == AIGeneratorState.wait_subject.state:
-
-        await state.update_data(
-            subject=message.text
-        )
-
-        await message.answer(
-            "Excel fayl yuboring"
-        )
-
-        await state.set_state(
-            AIGeneratorState.wait_file
-        )
-
-        return
-
-    elif current_state == AIGeneratorState.wait_file.state:
-
-        await message.answer(
-            "Fayl qabul qilindi"
-        )
-
-        await state.clear()
 
         return
 
