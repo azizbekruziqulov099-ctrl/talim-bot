@@ -647,6 +647,14 @@ async def handle_all(
             )
         return
 
+    elif message.text == "🤖 AI Generator":
+
+        await message.answer(
+            "AI Generator test ishladi"
+        )
+
+        return
+
     elif message.text == "📚 DTS":
 
         await message.answer(
