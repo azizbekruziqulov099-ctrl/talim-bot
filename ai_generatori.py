@@ -50,9 +50,9 @@ async def generate_topic_tree(
         topic: str
 ):
     prompt = f"""
-Siz O‘zbekiston umumiy o‘rta ta'lim DTS eksperti, metodist va fan mutaxassisisiz.
+Siz O‘zbekiston Respublikasi umumiy o‘rta ta'lim DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
 
-KIRISH MA'LUMOTLARI
+MA'LUMOTLAR
 
 Sinf: {grade}
 Fan: {subject}
@@ -66,36 +66,39 @@ Berilgan mavzu uchun:
 1. Mantiqan to‘g‘ri Bob yarating.
 2. Mantiqan to‘g‘ri Bo‘lim yarating.
 3. Mavzuni saqlang.
-4. Mavzuning mazmunini ochib beruvchi 4 ta kichik mavzu yarating.
+4. Mavzuni to‘liq qamrab oluvchi kichik mavzular yarating.
 
-TALABLAR
+KICHIK MAVZULAR TALABI
+
+- Mavzuning barcha asosiy mazmunini qamrab olsin.
+- O‘quvchi egallashi kerak bo‘lgan bilim va ko‘nikmalarni aks ettirsin.
+- Takrorlanmasin.
+- Keraksiz maydalanmasin.
+- Mantiqan ketma-ket bo‘lsin.
+- Har bir kichik mavzu mazmunli bo‘lsin.
+- Har bir kichik mavzu 4-6 ta so‘zdan iborat bo‘lsin.
+- Har bir kichik mavzu 12 ta so‘zdan oshmasin.
+- Zaruratga qarab 2 tadan 4 tagacha kichik mavzu yarating.
+- Sun'iy ravishda sonni ko'paytirmang.
+- Maqsad mavzuni to‘liq qamrab olishdir.
+
+QO‘SHIMCHA TALABLAR
 
 - Sinf darajasi hisobga olinsin.
 - Fan terminologiyasi saqlansin.
-- Bob juda qisqa bo‘lmasin.
-- Bo‘lim juda qisqa bo‘lmasin.
-- Kichik mavzular 1-2 so‘zdan iborat bo‘lmasin.
-- Kichik mavzular to‘liq mazmunli bo‘lsin.
-- Kichik mavzular o‘quv dasturiga mos bo‘lsin.
-- Kichik mavzular takrorlanmasin.
+- Bob va bo‘lim nomlari mazmunli bo‘lsin.
 - Javob faqat o‘zbek tilida bo‘lsin.
 - Hech qanday izoh yozmang.
+- Faqat JSON qaytaring.
 
-JSON format:
+JSON FORMAT
 
 {{
     "bob": "",
     "bolim": "",
     "mavzu": "{topic}",
-    "kichik_mavzular": [
-        "",
-        "",
-        "",
-        ""
-    ]
+    "kichik_mavzular": []
 }}
-
-Faqat JSON qaytaring.
 """
 
     response = await client.chat.completions.create(
@@ -115,7 +118,14 @@ Faqat JSON qaytaring.
     result = response.choices[0].message.content.strip()
 
     try:
-        return json.loads(result)
+        data = json.loads(result)
+
+        return {
+            "bob": data.get("bob", ""),
+            "bolim": data.get("bolim", ""),
+            "mavzu": data.get("mavzu", topic),
+            "kichik_mavzular": data.get("kichik_mavzular", [])
+        }
 
     except Exception:
         return {
@@ -124,7 +134,69 @@ Faqat JSON qaytaring.
             "mavzu": topic,
             "kichik_mavzular": []
         }
-    
+
+async def generate_topic_tree_batch(
+        grade: int,
+        subject: str,
+        quarter: int,
+        topics: list
+):
+    topics_text = "\n".join(
+        [f"- {topic}" for topic in topics]
+    )
+
+    prompt = f"""
+Siz DTS eksperti va metodistsiz.
+
+Sinf: {grade}
+Fan: {subject}
+Chorak: {quarter}
+
+Quyidagi mavzular uchun alohida natija yarating:
+
+{topics_text}
+
+Har bir mavzu uchun:
+
+- Bob
+- Bo'lim
+- Mavzu
+- Kichik mavzular
+
+yarating.
+
+JSON massiv qaytaring.
+
+Format:
+
+[
+    {{
+        "bob": "",
+        "bolim": "",
+        "mavzu": "",
+        "kichik_mavzular": []
+    }}
+]
+"""
+
+    response = await client.chat.completions.create(
+        model="gpt-5.5",
+        messages=[
+            {
+                "role": "system",
+                "content": "Siz DTS metodistisiz."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    return json.loads(
+        response.choices[0].message.content
+    )
+
 def read_topics(file_path):
     wb = load_workbook(file_path)
     ws = wb.active
@@ -199,26 +271,39 @@ async def ai_generator_file(
 
     result_rows = []
 
-    for item in topics:
+    CHUNK_SIZE = 15
 
-        result = await generate_topic_tree(
-            grade=grade,
-            subject=subject,
-            quarter=item["quarter"],
-            topic=item["topic"]
+    for i in range(0, len(topics), CHUNK_SIZE):
+
+        chunk = topics[i:i + CHUNK_SIZE]
+
+        quarter = chunk[0]["quarter"]
+
+        topic_names = [
+            x["topic"]
+            for x in chunk
+        ]
+
+        results = await generate_topic_tree_batch(
+            grade,
+            subject,
+            quarter,
+            topic_names
         )
 
-        for km in result["kichik_mavzular"]:
+        for result in results:
 
-            result_rows.append([
-                grade,
-                subject,
-                item["quarter"],
-                result["bob"],
-                result["bolim"],
-                result["mavzu"],
-                km
-            ])
+            for km in result["kichik_mavzular"]:
+
+                result_rows.append([
+                    grade,
+                    subject,
+                    quarter,
+                    result["bob"],
+                    result["bolim"],
+                    result["mavzu"],
+                    km
+                ])
 
     output_file = (
         f"temp/{grade}_{subject}_AI.xlsx"
