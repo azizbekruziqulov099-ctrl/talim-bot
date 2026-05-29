@@ -1,4 +1,5 @@
 from openpyxl import load_workbook
+from ai_generatori import AIGeneratorState
 from admin_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
