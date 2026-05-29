@@ -2,3 +2,4 @@ aiogram
 edge-tts
 psycopg2-binary
 openpyxl
+openai
