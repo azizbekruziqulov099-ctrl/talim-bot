@@ -6,7 +6,9 @@ from aiogram import Bot, Dispatcher, types
 from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
+from ai_generatori import *
 from keyboards import get_main_keyboard
+from loader import dp, bot
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -22,7 +24,6 @@ import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
 import os
-
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
@@ -511,6 +512,21 @@ async def test_ovoz(message: types.Message):
         FSInputFile("temp.mp3")
     )
 
+@dp.message(F.text == "🤖 AI Generator")
+async def ai_generator_menu(
+    message: Message,
+    state: FSMContext
+):
+    await state.set_state(
+        AIGeneratorState.select_grade
+    )
+
+    await message.answer(
+        "Sinfni tanlang.\nMasalan: 1-sinf"
+    )
+
+    return
+
 # ====== START ======
 @dp.message(CommandStart())
 async def start(message: types.Message):
@@ -579,14 +595,14 @@ async def handle_all(
 
         return
 
-    if user_id not in temp_user:
+    elif user_id not in temp_user:
         temp_user[user_id] = {}
 
-    if user_id not in user_state:
+    elif user_id not in user_state:
         user_state[user_id] = None
 
     # lock yaratish
-    if user_id not in user_locks:
+    elif user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
 
     elif message.text == "👥 Foydalanuvchilar statistikasi":
