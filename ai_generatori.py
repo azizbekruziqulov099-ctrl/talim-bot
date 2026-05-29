@@ -256,28 +256,23 @@ async def select_grade(
         "Fan nomini yuboring"
     )
 
-@dp.message(
-    AIGeneratorState.select_grade
-)
-async def select_grade(
+@dp.message(AIGeneratorState.select_subject)
+async def select_subject(
     message: Message,
     state: FSMContext
 ):
-    grade = int(
-        message.text.split("-")[0]
-    )
-
     await state.update_data(
-        grade=grade
+        subject=message.text
     )
 
     await state.set_state(
-        AIGeneratorState.select_subject
+        AIGeneratorState.wait_file
     )
 
     await message.answer(
-        "Fan tanlang"
+        "📄 Excel fayl yuboring"
     )
+
 
 
 
