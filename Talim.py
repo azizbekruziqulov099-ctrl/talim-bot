@@ -1,5 +1,4 @@
-from openpyxl import load_workbook
-from ai_generatori import AIGeneratorState
+from ai_generatori import AIGeneratorStatefrom openpyxl import load_workbook
 from admin_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
@@ -708,7 +707,13 @@ async def handle_all(
         return
         
     # parallel message bloklash
+    
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
+        
     async with user_locks[user_id]:
+
+
 
         action = TEXT_TO_ID.get(message.text)
 
