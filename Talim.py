@@ -511,22 +511,6 @@ async def test_ovoz(message: types.Message):
     await message.answer_voice(
         FSInputFile("temp.mp3")
     )
-
-@dp.message(F.text == "🤖 AI Generator")
-async def ai_generator_menu(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.select_grade
-    )
-
-    await message.answer(
-        "Sinfni tanlang.\nMasalan: 1-sinf"
-    )
-
-    return
-
 # ====== START ======
 @dp.message(CommandStart())
 async def start(message: types.Message):
@@ -649,8 +633,12 @@ async def handle_all(
 
     elif message.text == "🤖 AI Generator":
 
+        await state.set_state(
+            AIGeneratorState.select_grade
+        )
+
         await message.answer(
-            "AI Generator test ishladi"
+            "Sinfni tanlang\n\n1-sinf\n2-sinf\n3-sinf ..."
         )
 
         return
