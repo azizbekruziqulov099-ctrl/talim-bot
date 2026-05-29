@@ -100,7 +100,6 @@ Faqat JSON qaytaring.
 
     response = await client.chat.completions.create(
         model="gpt-5.5",
-        temperature=0.2,
         messages=[
             {
                 "role": "system",
