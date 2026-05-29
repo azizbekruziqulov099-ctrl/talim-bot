@@ -626,7 +626,7 @@ async def handle_all(
 
     elif message.text == "📚 DTS boshqaruvi":
 
-        await dts_menu(
+        await dts_admin_menu(
                 message
             )
         return
