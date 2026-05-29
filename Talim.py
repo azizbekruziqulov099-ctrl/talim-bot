@@ -579,6 +579,50 @@ async def handle_all(
 
         return
 
+    current_state = await state.get_state()
+
+    if current_state == AIGeneratorState.wait_grade.state:
+
+        await state.update_data(
+            grade=message.text
+        )
+
+        await state.set_state(
+            AIGeneratorState.wait_subject
+        )
+
+        await message.answer(
+            "Fan nomini yuboring"
+        )
+
+        return
+
+    elif current_state == AIGeneratorState.wait_subject.state:
+
+        await state.update_data(
+            subject=message.text
+        )
+
+        await message.answer(
+            "Excel fayl yuboring"
+        )
+
+        await state.set_state(
+            AIGeneratorState.wait_file
+        )
+
+        return
+
+    elif current_state == AIGeneratorState.wait_file.state:
+
+        await message.answer(
+            "Fayl qabul qilindi"
+        )
+
+        await state.clear()
+
+        return
+
     elif user_id not in temp_user:
         temp_user[user_id] = {}
 
