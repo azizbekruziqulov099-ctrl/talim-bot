@@ -9,7 +9,7 @@ def get_main_keyboard(role=None):
     if role == "O‘quvchi":
         keyboard = [
             [KeyboardButton(text="📚 BILIMNI SINASH"),
-             KeyboardButton(text="📚 DTS")],
+             KeyboardButton(text="📚 DTS Navigator")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="📊 So‘rovnoma"),
@@ -30,7 +30,7 @@ def get_main_keyboard(role=None):
 
         keyboard = [
             [KeyboardButton(text="🇺🇿 Respublika statistikasi"),
-            KeyboardButton(text="📚 DTS"),
+            KeyboardButton(text="🤖 AI Generator"),
             KeyboardButton(text="🏫 Maktab statistikasi")],
             [KeyboardButton(text="🎓 Sinf statistikasi"),
             KeyboardButton(text="👨‍🎓 TOP o‘quvchilar"),
