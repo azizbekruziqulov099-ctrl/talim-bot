@@ -901,9 +901,12 @@ def analyze_import(
 
                     "row_no": i,
 
-                    "reason": (
-                        "Bo‘sh ustun bor"
-                    )
+                    "bob": bob_name,
+                    "bolim": bolim_name,
+                    "mavzu": mavzu_name,
+                    "kichik": kichik_name,
+
+                    "reason": "Bo‘sh ustun bor"
 
                 })
 
@@ -1028,7 +1031,14 @@ def analyze_import(
                 duplicate_rows.append({
 
                     "row_no": i,
+
                     "topic_code": topic_code,
+
+                    "bob": bob_name,
+                    "bolim": bolim_name,
+                    "mavzu": mavzu_name,
+                    "kichik": kichik_name,
+
                     "reason": "Excel ichida takroriy"
 
                 })
@@ -1056,9 +1066,12 @@ def analyze_import(
 
                     "topic_code": topic_code,
 
-                    "reason": (
-                        "Bazada mavjud"
-                    )
+                    "bob": bob_name,
+                    "bolim": bolim_name,
+                    "mavzu": mavzu_name,
+                    "kichik": kichik_name,
+
+                    "reason": "Bazada mavjud"
 
                 })
 
@@ -1079,6 +1092,11 @@ def analyze_import(
             error_rows.append({
 
                 "row_no": i,
+
+                "bob": locals().get("bob_name", ""),
+                "bolim": locals().get("bolim_name", ""),
+                "mavzu": locals().get("mavzu_name", ""),
+                "kichik": locals().get("kichik_name", ""),
 
                 "reason": str(e)
 
@@ -2291,19 +2309,29 @@ async def dts_problems(
     for row in cache["duplicate_rows"]:
 
         text += (
-            f"⚠️ Takroriy\n"
+            f"⚠️ TAKRORIY\n\n"
             f"Qator: {row['row_no']}\n"
             f"Code: {row['topic_code']}\n"
-            f"{row['reason']}\n\n"
+            f"Bob: {row.get('bob','')}\n"
+            f"Bo'lim: {row.get('bolim','')}\n"
+            f"Mavzu: {row.get('mavzu','')}\n"
+            f"Kichik mavzu: {row.get('kichik','')}\n"
+            f"Sabab: {row['reason']}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
         )
 
     for row in cache["existing_rows"]:
 
         text += (
-            f"📦 Bazada mavjud\n"
+            f"📦 BAZADA MAVJUD\n\n"
             f"Qator: {row['row_no']}\n"
             f"Code: {row['topic_code']}\n"
-            f"{row['reason']}\n\n"
+            f"Bob: {row.get('bob','')}\n"
+            f"Bo'lim: {row.get('bolim','')}\n"
+            f"Mavzu: {row.get('mavzu','')}\n"
+            f"Kichik mavzu: {row.get('kichik','')}\n"
+            f"Sabab: {row['reason']}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
         )
 
     for row in cache["error_rows"]:
@@ -2347,27 +2375,42 @@ async def dts_download_errors(
     for row in cache["duplicate_rows"]:
 
         text += (
-            f"TAKRORIY\n"
+            f"TAKRORIY\n\n"
             f"Qator: {row['row_no']}\n"
             f"Code: {row['topic_code']}\n"
-            f"{row['reason']}\n\n"
+            f"Bob: {row.get('bob','')}\n"
+            f"Bo'lim: {row.get('bolim','')}\n"
+            f"Mavzu: {row.get('mavzu','')}\n"
+            f"Kichik mavzu: {row.get('kichik','')}\n"
+            f"Sabab: {row['reason']}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
         )
 
     for row in cache["existing_rows"]:
 
         text += (
-            f"BAZADA MAVJUD\n"
+            f"BAZADA MAVJUD\n\n"
             f"Qator: {row['row_no']}\n"
             f"Code: {row['topic_code']}\n"
-            f"{row['reason']}\n\n"
+            f"Bob: {row.get('bob','')}\n"
+            f"Bo'lim: {row.get('bolim','')}\n"
+            f"Mavzu: {row.get('mavzu','')}\n"
+            f"Kichik mavzu: {row.get('kichik','')}\n"
+            f"Sabab: {row['reason']}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
         )
 
     for row in cache["error_rows"]:
 
         text += (
-            f"XATO\n"
+            f"XATO\n\n"
             f"Qator: {row['row_no']}\n"
-            f"{row['reason']}\n\n"
+            f"Bob: {row.get('bob','')}\n"
+            f"Bo'lim: {row.get('bolim','')}\n"
+            f"Mavzu: {row.get('mavzu','')}\n"
+            f"Kichik mavzu: {row.get('kichik','')}\n"
+            f"Sabab: {row['reason']}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
         )
 
     if text == "DTS IMPORT XATOLARI\n\n":
