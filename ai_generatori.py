@@ -19,7 +19,13 @@ from aiogram.fsm.context import (
 )
 class AIGeneratorState(StatesGroup):
     select_grade = State()
+    search_grade = State()
+    add_grade = State()
+
     select_subject = State()
+    search_subject = State()
+    add_subject = State()
+
     wait_file = State()
 
 
@@ -39,61 +45,240 @@ async def ai_generator_menu(
         AIGeneratorState.select_grade
     )
 
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name
+        FROM ai_grades
+        ORDER BY id
+    """)
+
+    grades = cur.fetchall()
+
+    conn.close()
+
+    keyboard = []
+
+    for grade in grades:
+        keyboard.append([
+            KeyboardButton(text=grade[0])
+        ])
+
+    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish")
+    ])
+
+    keyboard.append([
+        KeyboardButton(text="➕ Yangi sinf")
+    ])
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True
+    )
+
     await message.answer(
-        "Sinfni tanlang\nMasalan: 1-sinf"
+        "📚 Sinfni tanlang yoki yarating",
+        reply_markup=kb
+    )
+
+@dp.message(
+    AIGeneratorState.select_grade,
+    F.text == "🔍 Qidirish"
+)
+async def search_grade_start(
+    message: Message,
+    state: FSMContext
+):
+    await state.set_state(
+        AIGeneratorState.search_grade
+    )
+
+    await message.answer(
+        "🔍 Sinf nomini kiriting"
+    )
+
+@dp.message(
+    AIGeneratorState.search_grade
+)
+async def search_grade(
+    message: Message,
+    state: FSMContext
+):
+    text = message.text.strip()
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name
+        FROM ai_grades
+        WHERE LOWER(name) LIKE LOWER(%s)
+        ORDER BY name
+        LIMIT 20
+    """, (f"%{text}%",))
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    if not rows:
+        await message.answer(
+            "❌ Hech narsa topilmadi"
+        )
+        return
+
+    keyboard = []
+
+    for row in rows:
+        keyboard.append([
+            KeyboardButton(text=row[0])
+        ])
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True
+    )
+
+    await state.set_state(
+        AIGeneratorState.select_grade
+    )
+
+    await message.answer(
+        "Topilgan sinflar:",
+        reply_markup=kb
+    )
+
+@dp.message(
+    AIGeneratorState.select_grade,
+    F.text == "➕ Yangi sinf"
+)
+async def add_grade_start(
+    message: Message,
+    state: FSMContext
+):
+    await state.set_state(
+        AIGeneratorState.add_grade
+    )
+
+    await message.answer(
+        "Yangi sinf nomini yuboring"
+    )
+
+@dp.message(
+    AIGeneratorState.add_grade
+)
+async def add_grade_save(
+    message: Message,
+    state: FSMContext
+):
+    grade_name = message.text.strip()
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            INSERT INTO ai_grades(name)
+            VALUES(%s)
+        """, (grade_name,))
+
+        conn.commit()
+
+        await message.answer(
+            f"✅ {grade_name} qo'shildi"
+        )
+
+    except:
+        await message.answer(
+            "❌ Bu sinf allaqachon mavjud"
+        )
+
+    finally:
+        conn.close()
+
+    await state.set_state(
+        AIGeneratorState.select_grade
     )
 
 async def generate_topic_tree(
-        grade: int,
-        subject: str,
-        quarter: int,
-        topic: str
+        grade,
+        subject,
+        quarter,
+        topic
 ):
     prompt = f"""
-Siz O‘zbekiston Respublikasi umumiy o‘rta ta'lim DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
+Siz O‘zbekiston Respublikasi DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
 
-MA'LUMOTLAR
-
-Sinf: {grade}
-Fan: {subject}
-Chorak: {quarter}
-Mavzu: {topic}
+SINF: {grade}
+FAN: {subject}
+DAVR: {quarter}
+MAVZU: {topic}
 
 VAZIFA
 
-Berilgan mavzu uchun:
+Berilgan mavzuni tahlil qiling va:
 
-1. Mantiqan to‘g‘ri Bob yarating.
-2. Mantiqan to‘g‘ri Bo‘lim yarating.
+1. Eng mos Bobni aniqlang.
+2. Eng mos Bo‘limni aniqlang.
 3. Mavzuni saqlang.
-4. Mavzuni to‘liq qamrab oluvchi kichik mavzular yarating.
+4. Kichik mavzular yarating.
+
+MUHIM
+
+Agar mavzu quyidagilardan biri bo‘lsa:
+
+- Nazorat ishi
+- Sinov ishi
+- Takrorlash
+- Mustahkamlash
+- Tahlil va tuzatish ishlari
+- Loyiha faoliyati
+- Diagnostika
+- Yakuniy baholash
+
+unda:
+
+{{
+    "skip": true
+}}
+
+qaytaring.
+
+Bunday mavzular uchun bob, bo‘lim va kichik mavzular yaratmang.
+
+BOB TALABLARI
+
+- Bob yirik mazmuniy birlik bo‘lsin.
+- Har bir mavzu uchun yangi bob yaratmang.
+- Bir xil mazmundagi mavzular bir xil bobga joylashtirilsin.
+- Bob nomida chorak yoki semestr bo‘lmasin.
+- Bob nomida raqamlar bo‘lmasin.
+- Bob qisqa va mazmunli bo‘lsin.
+
+BO‘LIM TALABLARI
+
+- Bo‘lim bob tarkibidagi mavzular guruhi bo‘lsin.
+- Har bir mavzu uchun yangi bo‘lim yaratmang.
+- Bir xil mazmundagi mavzular bir xil bo‘limga joylashtirilsin.
+- Bo‘lim nomida chorak yoki semestr bo‘lmasin.
 
 KICHIK MAVZULAR TALABI
 
-- Mavzuning barcha asosiy mazmunini qamrab olsin.
-- O‘quvchi egallashi kerak bo‘lgan bilim va ko‘nikmalarni aks ettirsin.
+- Mavzuni to‘liq qamrab olsin.
 - Takrorlanmasin.
-- Keraksiz maydalanmasin.
-- Mantiqan ketma-ket bo‘lsin.
-- Har bir kichik mavzu mazmunli bo‘lsin.
-- Har bir kichik mavzu 4-6 ta so‘zdan iborat bo‘lsin.
-- Har bir kichik mavzu 12 ta so‘zdan oshmasin.
-- Zaruratga qarab 2 tadan 4 tagacha kichik mavzu yarating.
-- Sun'iy ravishda sonni ko'paytirmang.
-- Maqsad mavzuni to‘liq qamrab olishdir.
+- O‘quv dasturiga mos bo‘lsin.
+- 3 tadan 8 tagacha bo‘lsin.
+- Har biri mazmunli bo‘lsin.
+- Har biri 20 ta so‘zdan oshmasin.
 
-QO‘SHIMCHA TALABLAR
-
-- Sinf darajasi hisobga olinsin.
-- Fan terminologiyasi saqlansin.
-- Bob va bo‘lim nomlari mazmunli bo‘lsin.
-- Javob faqat o‘zbek tilida bo‘lsin.
-- Hech qanday izoh yozmang.
-- Faqat JSON qaytaring.
+Faqat JSON qaytaring.
 
 JSON FORMAT
 
 {{
+    "skip": false,
     "bob": "",
     "bolim": "",
     "mavzu": "{topic}",
@@ -106,7 +291,7 @@ JSON FORMAT
         messages=[
             {
                 "role": "system",
-                "content": "Siz DTS va o‘quv dasturlari bo‘yicha ekspert metodistsiz."
+                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
             },
             {
                 "role": "user",
@@ -121,6 +306,7 @@ JSON FORMAT
         data = json.loads(result)
 
         return {
+            "skip": data.get("skip", False),
             "bob": data.get("bob", ""),
             "bolim": data.get("bolim", ""),
             "mavzu": data.get("mavzu", topic),
@@ -129,6 +315,7 @@ JSON FORMAT
 
     except Exception:
         return {
+            "skip": False,
             "bob": "",
             "bolim": "",
             "mavzu": topic,
@@ -136,38 +323,65 @@ JSON FORMAT
         }
 
 async def generate_topic_tree_batch(
-        grade: int,
-        subject: str,
-        quarter: int,
-        topics: list
+        grade,
+        subject,
+        quarter,
+        topics
 ):
     topics_text = "\n".join(
         [f"- {topic}" for topic in topics]
     )
 
     prompt = f"""
-Siz DTS eksperti va metodistsiz.
+Siz DTS, o‘quv dasturi va metodika bo‘yicha ekspert mutaxassissiz.
 
 Sinf: {grade}
 Fan: {subject}
-Chorak: {quarter}
+Davr: {quarter}
 
-Quyidagi mavzular uchun alohida natija yarating:
+Quyidagi mavzularni tahlil qiling:
 
 {topics_text}
 
-Har bir mavzu uchun:
+MUHIM
 
-- Bob
-- Bo'lim
-- Mavzu
-- Kichik mavzular
+Quyidagi mavzularni natijaga kiritmang:
 
-yarating.
+- Nazorat ishi
+- Sinov ishi
+- Takrorlash
+- Mustahkamlash
+- Tahlil va tuzatish ishlari
+- Loyiha faoliyati
+- Diagnostika
+- Yakuniy baholash
 
-JSON massiv qaytaring.
+Ularni JSON ga qo‘shmang.
 
-Format:
+BOB TALABLARI
+
+- Boblar yirik mazmuniy qismlar bo‘lsin.
+- Bir xil mazmundagi mavzular bir xil bobga joylashtirilsin.
+- Har bir mavzu uchun yangi bob yaratmang.
+- Boblar soni odatda 3 tadan 6 tagacha bo‘lishi kerak.
+- Bob nomida chorak, semestr yoki raqamlar bo‘lmasin.
+
+BO'LIM TALABLARI
+
+- Bo‘limlar bob tarkibidagi mavzular guruhi bo‘lsin.
+- Har bir mavzu uchun yangi bo‘lim yaratmang.
+- Bir xil mazmundagi mavzular bir xil bo‘limga joylashtirilsin.
+- Bo‘limlar soni odatda 15 tadan 20 tagacha bo‘lishi kerak.
+- Bo‘lim nomida chorak yoki semestr bo‘lmasin.
+
+KICHIK MAVZULAR
+
+- 3 tadan 8 tagacha bo‘lsin.
+- Mazmunli bo‘lsin.
+- Takrorlanmasin.
+- Har biri 20 ta so‘zdan oshmasin.
+
+Faqat JSON massiv qaytaring.
 
 [
     {{
@@ -184,7 +398,7 @@ Format:
         messages=[
             {
                 "role": "system",
-                "content": "Siz DTS metodistisiz."
+                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
             },
             {
                 "role": "user",
@@ -193,9 +407,13 @@ Format:
         ]
     )
 
-    return json.loads(
-        response.choices[0].message.content
-    )
+    try:
+        return json.loads(
+            response.choices[0].message.content
+        )
+
+    except Exception:
+        return []
 
 def read_topics(file_path):
     wb = load_workbook(file_path)
@@ -326,10 +544,108 @@ async def select_grade(
     message: Message,
     state: FSMContext
 ):
-    grade = int(message.text.split("-")[0])
-
     await state.update_data(
-        grade=grade
+        grade=message.text
+    )
+
+    await state.set_state(
+        AIGeneratorState.select_subject
+    )
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name
+        FROM ai_subjects
+        ORDER BY name
+    """)
+
+    subjects = cur.fetchall()
+
+    conn.close()
+
+    keyboard = []
+
+    for subject in subjects:
+        keyboard.append([
+            KeyboardButton(text=subject[0])
+        ])
+
+    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish")
+    ])
+
+    keyboard.append([
+        KeyboardButton(text="➕ Yangi fan")
+    ])
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True
+    )
+
+    await message.answer(
+        "📖 Fanni tanlang yoki yarating",
+        reply_markup=kb
+    )
+
+@dp.message(
+    AIGeneratorState.select_subject,
+    F.text == "🔍 Qidirish"
+)
+async def search_subject_start(
+    message: Message,
+    state: FSMContext
+):
+    await state.set_state(
+        AIGeneratorState.search_subject
+    )
+
+    await message.answer(
+        "🔍 Fan nomini kiriting"
+    )
+
+@dp.message(
+    AIGeneratorState.search_subject
+)
+async def search_subject(
+    message: Message,
+    state: FSMContext
+):
+    text = message.text.strip()
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name
+        FROM ai_subjects
+        WHERE LOWER(name) LIKE LOWER(%s)
+        ORDER BY name
+        LIMIT 20
+    """, (f"%{text}%",))
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    if not rows:
+        await message.answer(
+            "❌ Fan topilmadi"
+        )
+        return
+
+    keyboard = []
+
+    for row in rows:
+        keyboard.append([
+            KeyboardButton(text=row[0])
+        ])
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True
     )
 
     await state.set_state(
@@ -337,7 +653,60 @@ async def select_grade(
     )
 
     await message.answer(
-        "Fan nomini yuboring"
+        "📖 Topilgan fanlar",
+        reply_markup=kb
+    )
+
+@dp.message(
+    AIGeneratorState.select_subject,
+    F.text == "➕ Yangi fan"
+)
+async def add_subject_start(
+    message: Message,
+    state: FSMContext
+):
+    await state.set_state(
+        AIGeneratorState.add_subject
+    )
+
+    await message.answer(
+        "Yangi fan nomini yuboring"
+    )
+
+@dp.message(
+    AIGeneratorState.add_subject
+)
+async def add_subject_save(
+    message: Message,
+    state: FSMContext
+):
+    subject_name = message.text.strip()
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            INSERT INTO ai_subjects(name)
+            VALUES(%s)
+        """, (subject_name,))
+
+        conn.commit()
+
+        await message.answer(
+            f"✅ {subject_name} qo'shildi"
+        )
+
+    except:
+        await message.answer(
+            "❌ Bu fan allaqachon mavjud"
+        )
+
+    finally:
+        conn.close()
+
+    await state.set_state(
+        AIGeneratorState.select_subject
     )
 
 @dp.message(AIGeneratorState.select_subject)
