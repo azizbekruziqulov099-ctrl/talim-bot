@@ -1028,15 +1028,13 @@ def analyze_import(
                 duplicate_rows.append({
 
                     "row_no": i,
-
-                    "reason": (
-                        "Excel ichida takroriy"
-                    )
+                    "topic_code": topic_code,
+                    "reason": "Excel ichida takroriy"
 
                 })
 
                 continue
-
+            
             seen.add(tree_key)
 
             cur.execute("""
@@ -2347,7 +2345,6 @@ async def dts_download_errors(
     text = "DTS IMPORT XATOLARI\n\n"
 
     for row in cache["duplicate_rows"]:
-        print(row)
 
         text += (
             f"TAKRORIY\n"
