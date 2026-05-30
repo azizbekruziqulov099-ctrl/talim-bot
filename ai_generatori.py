@@ -66,19 +66,24 @@ async def ai_generator_menu(
 
     keyboard = []
 
-    for grade in grades:
-        keyboard.append([
+    row = []
+
+    for i, grade in enumerate(grades, start=1):
+        row.append(
             KeyboardButton(text=grade[0])
-        ])
+        )
+
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
 
     keyboard.append([
-        KeyboardButton(text="🔍 Qidirish")
-    ])
-
-    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish"),
         KeyboardButton(text="➕ Yangi sinf")
     ])
-
     kb = ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True
@@ -208,10 +213,9 @@ async def add_grade_save(
         AIGeneratorState.select_grade
     )
 
-async def generate_topic_tree_batch(
+async def generate_bobs(
         grade,
         subject,
-        quarter,
         topics
 ):
     topics_text = "\n".join(
@@ -219,39 +223,322 @@ async def generate_topic_tree_batch(
     )
 
     prompt = f"""
-Siz DTS va o‘quv dasturi bo‘yicha ekspert mutaxassissiz.
+Siz O‘zbekiston Respublikasi DTS, o‘quv dasturlari, metodika va darsliklar bo‘yicha eng tajribali ekspertlar guruhisiz.
 
-Sinf: {grade}
-Fan: {subject}
-Davr: {quarter}
+SINF: {grade}
 
-Quyidagi mavzular:
+FAN: {subject}
+
+MAVZULAR:
 
 {topics_text}
 
+VAZIFA
+
+Barcha mavzularni birgalikda tahlil qiling.
+
+Avval mavzulardagi asosiy tushunchalarni aniqlang.
+
+Keyin mazmun jihatidan o‘xshash mavzularni guruhlang.
+
+Keyin ushbu guruhlar asosida Boblar yarating.
+
+ENG MUHIM QOIDALAR
+
+- Bob mavzu emas.
+- Bob fan tarkibidagi yirik mazmuniy birlik.
+- Bob bir nechta bo‘lim va ko‘plab mavzularni o‘z ichiga olishi kerak.
+- Bir xil mazmundagi mavzular bir Bobga joylashtirilishi kerak.
+- Bir-biriga yaqin mavzular turli Boblarga ajratilmasin.
+- Boblar DTS va o‘quv dasturi uslubida yozilsin.
+- Boblar soni kamida 3 ta va ko‘pi bilan 6 ta bo‘lsin.
+- Zarurat bo‘lmasa yangi Bob yaratmang.
+
+TAQIQLANADI
+
+Quyidagilar Bob bo‘la olmaydi:
+
+- Fan nomi
+- Mavzu nomi
+- Nazorat ishi
+- Sinov ishi
+- Takrorlash
+- Mustahkamlash
+- Diagnostika
+- Loyiha faoliyati
+- Tahlil va tuzatish ishlari
+- Yakuniy baholash
+
+YOMON MISOLLAR
+
+Kasrlar
+Radius
+Aylana
+Fe'l
+Ot
+Sifat
+Elektr toki
+O'simlik
+
+Bular juda tor tushunchalar yoki mavzulardir.
+
+YAXSHI MISOLLAR
+
+Sonlar va amallar
+
+Geometrik tushunchalar
+
+So‘z turkumlari
+
+Elektr hodisalari
+
+Tirik organizmlar
+
+Tabiat va atrof-muhit
+
+Bular ko‘plab mavzularni birlashtira oladigan yirik mazmuniy birliklardir.
+
+NATIJA
+
+Faqat JSON qaytaring.
+
+[
+    "Bob nomi",
+    "Bob nomi",
+    "Bob nomi"
+]
+"""
+
+    response = await client.chat.completions.create(
+        model="gpt-5.5",
+        messages=[
+            {
+                "role": "system",
+                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    return json.loads(
+        response.choices[0].message.content
+    )
+
+async def generate_bolims(
+        grade,
+        subject,
+        bobs,
+        topics
+):
+    bobs_text = "\n".join(
+        [f"- {bob}" for bob in bobs]
+    )
+
+    topics_text = "\n".join(
+        [f"- {topic}" for topic in topics]
+    )
+
+    prompt = f"""
+Siz DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
+
+SINF: {grade}
+
+FAN: {subject}
+
+BOBLAR:
+
+{bobs_text}
+
+MAVZULAR:
+
+{topics_text}
+
+VAZIFA
+
+Berilgan Boblar asosida Bo‘limlar yarating.
+
+Bo‘limlar Bob tarkibidagi mazmuniy qismlar bo‘lsin.
+
+ENG MUHIM QOIDALAR
+
+- Bo‘lim mavzu emas.
+- Bo‘lim Bobdan kichik, mavzudan katta bo‘lsin.
+- Bir xil mazmundagi mavzular bitta Bo‘limga tushsin.
+- Bo‘lim nomi mavzu nomidan olinmasin.
+- Fan nomidan olinmasin.
+- Bo‘limlar DTS uslubida yozilsin.
+- Bo‘limlar soni 15 tadan 20 tagacha bo‘lsin.
+- Har bir Bo‘lim albatta mavjud Boblardan biriga tegishli bo‘lsin.
+
+TAQIQLANADI
+
+Quyidagilar Bo‘lim bo‘la olmaydi:
+
+- Nazorat ishi
+- Sinov ishi
+- Takrorlash
+- Mustahkamlash
+- Diagnostika
+- Loyiha faoliyati
+- Tahlil va tuzatish ishlari
+- Yakuniy baholash
+
+FAQAT JSON QAYTARING
+
+[
+    {{
+        "bob": "",
+        "bolim": ""
+    }}
+]
+"""
+    
+    response = await client.chat.completions.create(
+        model="gpt-5.5",
+        messages=[
+            {
+                "role": "system",
+                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    return json.loads(
+        response.choices[0].message.content
+    )
+
+async def generate_mapping(
+        grade,
+        subject,
+        bobs,
+        bolims,
+        topics
+):
+    bobs_text = "\n".join(
+        [f"- {bob}" for bob in bobs]
+    )
+
+    bolims_text = "\n".join(
+        [
+            f"- {x['bob']} -> {x['bolim']}"
+            for x in bolims
+        ]
+    )
+
+    topics_text = "\n".join(
+        [f"- {topic}" for topic in topics]
+    )
+
+    prompt = f"""
+Siz DTS va metodika bo‘yicha ekspert mutaxassissiz.
+
+SINF: {grade}
+
+FAN: {subject}
+
+BOBLAR:
+
+{bobs_text}
+
+BO‘LIMLAR:
+
+{bolims_text}
+
+MAVZULAR:
+
+{topics_text}
+
+VAZIFA
+
+Har bir mavzuni eng mos Bob va Bo‘limga joylashtiring.
+
 QOIDALAR
 
-- Nazorat ishi, sinov ishi, takrorlash, mustahkamlash, loyiha, diagnostika va tahlil mavzularini e'tiborga olmang.
-- Bir xil mazmundagi mavzular uchun aynan bir xil bob ishlating.
-- Bir xil mazmundagi mavzular uchun aynan bir xil bo‘lim ishlating.
-- Har bir mavzu uchun yangi bob yaratmang.
-- Har bir mavzu uchun yangi bo‘lim yaratmang.
-- Boblar soni imkon qadar 3 tadan 6 tagacha bo‘lsin.
-- Bo‘limlar soni imkon qadar 15 tadan 20 tagacha bo‘lsin.
-- Bob nomlarida chorak, semestr yoki raqamlar bo‘lmasin.
-- Bo‘lim nomlarida chorak, semestr yoki raqamlar bo‘lmasin.
-- Kichik mavzular 3 tadan 8 tagacha bo‘lsin.
-- Kichik mavzular mazmunli bo‘lsin.
-- Kichik mavzular 20 ta so‘zdan oshmasin.
+- Mavzu faqat bitta Bobga tegishli bo‘lsin.
+- Mavzu faqat bitta Bo‘limga tegishli bo‘lsin.
+- Yangi Bob yaratmang.
+- Yangi Bo‘lim yaratmang.
+- Faqat berilgan Bob va Bo‘limlardan foydalaning.
+- Mantiqiy yaqinlikni saqlang.
 
-Faqat JSON massiv qaytaring.
+FAQAT JSON QAYTARING
 
 [
     {{
         "bob": "",
         "bolim": "",
+        "mavzu": ""
+    }}
+]
+"""
+
+    response = await client.chat.completions.create(
+        model="gpt-5.5",
+        messages=[
+            {
+                "role": "system",
+                "content": "Siz DTS eksperti va metodistsiz."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    return json.loads(
+        response.choices[0].message.content
+    )
+
+async def generate_small_topics_batch(
+        grade,
+        subject,
+        topics
+):
+    topics_text = "\n".join(
+        [f"- {topic}" for topic in topics]
+    )
+
+    prompt = f"""
+Siz DTS va metodika bo‘yicha ekspert mutaxassissiz.
+
+SINF: {grade}
+
+FAN: {subject}
+
+MAVZULAR:
+
+{topics_text}
+
+VAZIFA
+
+Har bir mavzu uchun 4 tadan 8 tagacha
+kichik mavzu yarating.
+
+QOIDALAR
+
+- Kichik mavzular mazmunli bo‘lsin.
+- DTSga mos bo‘lsin.
+- Takrorlanmasin.
+- Bilim, ko‘nikma va amaliy faoliyatni qamrab olsin.
+- Faqat mavzu ichidagi so‘zlarni takrorlamasin.
+
+FAQAT JSON QAYTARING
+
+[
+    {{
         "mavzu": "",
-        "kichik_mavzular": []
+        "kichik_mavzular": [
+            "",
+            ""
+        ]
     }}
 ]
 """
@@ -270,12 +557,9 @@ Faqat JSON massiv qaytaring.
         ]
     )
 
-    try:
-        return json.loads(
-            response.choices[0].message.content
-        )
-    except:
-        return []
+    return json.loads(
+        response.choices[0].message.content
+    )
 
 def read_topics(file_path):
     wb = load_workbook(file_path)
@@ -345,7 +629,9 @@ async def ai_generator_file(
         message: Message,
         state: FSMContext
 ):
-    await message.answer("⏳ Fayl tahlil qilinmoqda...")
+    await message.answer(
+        "⏳ Fayl tahlil qilinmoqda..."
+    )
 
     file = await bot.get_file(
         message.document.file_id
@@ -356,56 +642,84 @@ async def ai_generator_file(
         exist_ok=True
     )
 
-    input_file = f"temp/{message.document.file_name}"
+    input_file = (
+        f"temp/{message.document.file_name}"
+    )
 
     await bot.download_file(
         file.file_path,
         destination=input_file
     )
 
-    topics = read_topics(input_file)
+    topics_data = read_topics(
+        input_file
+    )
 
     data = await state.get_data()
 
     grade = data["grade"]
     subject = data["subject"]
 
+    topic_names = [
+        x["topic"]
+        for x in topics_data
+    ]
+
+    bobs = await generate_bobs(
+        grade,
+        subject,
+        topic_names
+    )
+
+    bolims = await generate_bolims(
+        grade,
+        subject,
+        bobs,
+        topic_names
+    )
+
+    mapping = await generate_mapping(
+        grade,
+        subject,
+        bobs,
+        bolims,
+        topic_names
+    )
+
     result_rows = []
 
-    CHUNK_SIZE = 40
+    mapped_topics = [
+        x["mavzu"]
+        for x in mapping
+    ]
 
-    for i in range(0, len(topics), CHUNK_SIZE):
+    small_topics_data = await generate_small_topics_batch(
+        grade,
+        subject,
+        mapped_topics
+    )
 
-        chunk = topics[i:i + CHUNK_SIZE]
+    small_topics_map = {
+        x["mavzu"]: x["kichik_mavzular"]
+        for x in small_topics_data
+    }
 
-        quarter = chunk[0]["quarter"]
+    for item in mapping:
 
-        topic_names = [
-            x["topic"]
-            for x in chunk
-        ]
+        for km in small_topics_map.get(
+            item["mavzu"],
+            []
+        ):
 
-        results = await generate_topic_tree_batch(
-            grade,
-            subject,
-            quarter,
-            topic_names
-        )
-
-        for result in results:
-
-            for km in result["kichik_mavzular"]:
-
-                result_rows.append([
-                    grade,
-                    subject,
-                    quarter,
-                    result["bob"],
-                    result["bolim"],
-                    result["mavzu"],
-                    km
-                ])
-
+            result_rows.append([
+                grade,
+                subject,
+                "",
+                item["bob"],
+                item["bolim"],
+                item["mavzu"],
+                km
+            ])
     output_file = (
         f"temp/{grade}_{subject}_AI.xlsx"
     )
@@ -450,19 +764,25 @@ async def select_grade(
 
     keyboard = []
 
+    row = []
+
     for subject in subjects:
-        keyboard.append([
+        row.append(
             KeyboardButton(text=subject[0])
-        ])
+        )
+
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
 
     keyboard.append([
-        KeyboardButton(text="🔍 Qidirish")
-    ])
-
-    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish"),
         KeyboardButton(text="➕ Yangi fan")
     ])
-
+    
     kb = ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True
@@ -610,5 +930,9 @@ async def select_subject(
     )
 
 
+    await message.answer(
+        "✅ Fayli yuborildi, jarayon bir necha daqiqada tugaydi! ",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 
