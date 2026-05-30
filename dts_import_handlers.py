@@ -13,30 +13,21 @@ from aiogram.fsm.context import (
 from difflib import SequenceMatcher
 from aiogram.types import FSInputFile
 from aiogram.types import (
-
     Message,
     CallbackQuery,
-
     InlineKeyboardMarkup,
     InlineKeyboardButton
-
 )
 from aiogram.fsm.state import (
     State,
     StatesGroup
 )
 class DTSImportState(
-
     StatesGroup
-
 ):
-
     waiting_excel = State()
-
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 dts_import_cache = {}
-
 def normalize_text(text):
 
     if text is None:
@@ -2356,6 +2347,7 @@ async def dts_download_errors(
     text = "DTS IMPORT XATOLARI\n\n"
 
     for row in cache["duplicate_rows"]:
+        print(row)
 
         text += (
             f"TAKRORIY\n"
