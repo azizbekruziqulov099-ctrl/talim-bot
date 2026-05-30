@@ -202,126 +202,6 @@ async def add_grade_save(
         AIGeneratorState.select_grade
     )
 
-async def generate_topic_tree(
-        grade,
-        subject,
-        quarter,
-        topic
-):
-    prompt = f"""
-Siz O‘zbekiston Respublikasi DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
-
-SINF: {grade}
-FAN: {subject}
-DAVR: {quarter}
-MAVZU: {topic}
-
-VAZIFA
-
-Berilgan mavzuni tahlil qiling va:
-
-1. Eng mos Bobni aniqlang.
-2. Eng mos Bo‘limni aniqlang.
-3. Mavzuni saqlang.
-4. Kichik mavzular yarating.
-
-MUHIM
-
-Agar mavzu quyidagilardan biri bo‘lsa:
-
-- Nazorat ishi
-- Sinov ishi
-- Takrorlash
-- Mustahkamlash
-- Tahlil va tuzatish ishlari
-- Loyiha faoliyati
-- Diagnostika
-- Yakuniy baholash
-
-unda:
-
-{{
-    "skip": true
-}}
-
-qaytaring.
-
-Bunday mavzular uchun bob, bo‘lim va kichik mavzular yaratmang.
-
-BOB TALABLARI
-
-- Bob yirik mazmuniy birlik bo‘lsin.
-- Har bir mavzu uchun yangi bob yaratmang.
-- Bir xil mazmundagi mavzular bir xil bobga joylashtirilsin.
-- Bob nomida chorak yoki semestr bo‘lmasin.
-- Bob nomida raqamlar bo‘lmasin.
-- Bob qisqa va mazmunli bo‘lsin.
-
-BO‘LIM TALABLARI
-
-- Bo‘lim bob tarkibidagi mavzular guruhi bo‘lsin.
-- Har bir mavzu uchun yangi bo‘lim yaratmang.
-- Bir xil mazmundagi mavzular bir xil bo‘limga joylashtirilsin.
-- Bo‘lim nomida chorak yoki semestr bo‘lmasin.
-
-KICHIK MAVZULAR TALABI
-
-- Mavzuni to‘liq qamrab olsin.
-- Takrorlanmasin.
-- O‘quv dasturiga mos bo‘lsin.
-- 3 tadan 8 tagacha bo‘lsin.
-- Har biri mazmunli bo‘lsin.
-- Har biri 20 ta so‘zdan oshmasin.
-
-Faqat JSON qaytaring.
-
-JSON FORMAT
-
-{{
-    "skip": false,
-    "bob": "",
-    "bolim": "",
-    "mavzu": "{topic}",
-    "kichik_mavzular": []
-}}
-"""
-
-    response = await client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    result = response.choices[0].message.content.strip()
-
-    try:
-        data = json.loads(result)
-
-        return {
-            "skip": data.get("skip", False),
-            "bob": data.get("bob", ""),
-            "bolim": data.get("bolim", ""),
-            "mavzu": data.get("mavzu", topic),
-            "kichik_mavzular": data.get("kichik_mavzular", [])
-        }
-
-    except Exception:
-        return {
-            "skip": False,
-            "bob": "",
-            "bolim": "",
-            "mavzu": topic,
-            "kichik_mavzular": []
-        }
-
 async def generate_topic_tree_batch(
         grade,
         subject,
@@ -333,53 +213,30 @@ async def generate_topic_tree_batch(
     )
 
     prompt = f"""
-Siz DTS, o‘quv dasturi va metodika bo‘yicha ekspert mutaxassissiz.
+Siz DTS va o‘quv dasturi bo‘yicha ekspert mutaxassissiz.
 
 Sinf: {grade}
 Fan: {subject}
 Davr: {quarter}
 
-Quyidagi mavzularni tahlil qiling:
+Quyidagi mavzular:
 
 {topics_text}
 
-MUHIM
+QOIDALAR
 
-Quyidagi mavzularni natijaga kiritmang:
-
-- Nazorat ishi
-- Sinov ishi
-- Takrorlash
-- Mustahkamlash
-- Tahlil va tuzatish ishlari
-- Loyiha faoliyati
-- Diagnostika
-- Yakuniy baholash
-
-Ularni JSON ga qo‘shmang.
-
-BOB TALABLARI
-
-- Boblar yirik mazmuniy qismlar bo‘lsin.
-- Bir xil mazmundagi mavzular bir xil bobga joylashtirilsin.
+- Nazorat ishi, sinov ishi, takrorlash, mustahkamlash, loyiha, diagnostika va tahlil mavzularini e'tiborga olmang.
+- Bir xil mazmundagi mavzular uchun aynan bir xil bob ishlating.
+- Bir xil mazmundagi mavzular uchun aynan bir xil bo‘lim ishlating.
 - Har bir mavzu uchun yangi bob yaratmang.
-- Boblar soni odatda 3 tadan 6 tagacha bo‘lishi kerak.
-- Bob nomida chorak, semestr yoki raqamlar bo‘lmasin.
-
-BO'LIM TALABLARI
-
-- Bo‘limlar bob tarkibidagi mavzular guruhi bo‘lsin.
 - Har bir mavzu uchun yangi bo‘lim yaratmang.
-- Bir xil mazmundagi mavzular bir xil bo‘limga joylashtirilsin.
-- Bo‘limlar soni odatda 15 tadan 20 tagacha bo‘lishi kerak.
-- Bo‘lim nomida chorak yoki semestr bo‘lmasin.
-
-KICHIK MAVZULAR
-
-- 3 tadan 8 tagacha bo‘lsin.
-- Mazmunli bo‘lsin.
-- Takrorlanmasin.
-- Har biri 20 ta so‘zdan oshmasin.
+- Boblar soni imkon qadar 3 tadan 6 tagacha bo‘lsin.
+- Bo‘limlar soni imkon qadar 15 tadan 20 tagacha bo‘lsin.
+- Bob nomlarida chorak, semestr yoki raqamlar bo‘lmasin.
+- Bo‘lim nomlarida chorak, semestr yoki raqamlar bo‘lmasin.
+- Kichik mavzular 3 tadan 8 tagacha bo‘lsin.
+- Kichik mavzular mazmunli bo‘lsin.
+- Kichik mavzular 20 ta so‘zdan oshmasin.
 
 Faqat JSON massiv qaytaring.
 
@@ -398,7 +255,7 @@ Faqat JSON massiv qaytaring.
         messages=[
             {
                 "role": "system",
-                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
+                "content": "Siz DTS metodistisiz."
             },
             {
                 "role": "user",
@@ -411,26 +268,46 @@ Faqat JSON massiv qaytaring.
         return json.loads(
             response.choices[0].message.content
         )
-
-    except Exception:
+    except:
         return []
 
 def read_topics(file_path):
     wb = load_workbook(file_path)
     ws = wb.active
 
+    ignore_words = [
+        "nazorat",
+        "sinov",
+        "takrorlash",
+        "mustahkamlash",
+        "loyiha",
+        "diagnostika",
+        "tahlil",
+        "yakuniy baholash"
+    ]
+
     topics = []
 
     for row in ws.iter_rows(min_row=2, values_only=True):
-        quarter = row[0]
-        topic = row[1]
 
-        if not topic:
+        quarter = row[0]
+
+        if not row[1]:
+            continue
+
+        topic = str(row[1]).strip()
+
+        lower_topic = topic.lower()
+
+        if any(
+            word in lower_topic
+            for word in ignore_words
+        ):
             continue
 
         topics.append({
             "quarter": quarter,
-            "topic": str(topic).strip()
+            "topic": topic
         })
 
     return topics
@@ -489,7 +366,7 @@ async def ai_generator_file(
 
     result_rows = []
 
-    CHUNK_SIZE = 15
+    CHUNK_SIZE = 40
 
     for i in range(0, len(topics), CHUNK_SIZE):
 
