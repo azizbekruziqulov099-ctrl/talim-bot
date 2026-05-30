@@ -66,6 +66,11 @@ async def ai_generator_menu(
 
     keyboard = []
 
+    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish"),
+        KeyboardButton(text="➕ Yangi sinf")
+    ])
+
     row = []
 
     for i, grade in enumerate(grades, start=1):
@@ -80,10 +85,7 @@ async def ai_generator_menu(
     if row:
         keyboard.append(row)
 
-    keyboard.append([
-        KeyboardButton(text="🔍 Qidirish"),
-        KeyboardButton(text="➕ Yangi sinf")
-    ])
+
     kb = ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True
@@ -764,6 +766,11 @@ async def select_grade(
 
     keyboard = []
 
+    keyboard.append([
+        KeyboardButton(text="🔍 Qidirish"),
+        KeyboardButton(text="➕ Yangi fan")
+    ])
+
     row = []
 
     for subject in subjects:
@@ -777,11 +784,6 @@ async def select_grade(
 
     if row:
         keyboard.append(row)
-
-    keyboard.append([
-        KeyboardButton(text="🔍 Qidirish"),
-        KeyboardButton(text="➕ Yangi fan")
-    ])
     
     kb = ReplyKeyboardMarkup(
         keyboard=keyboard,
