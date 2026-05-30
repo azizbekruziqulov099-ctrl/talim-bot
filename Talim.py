@@ -625,22 +625,21 @@ async def handle_all(
 
     elif message.text == "📚 DTS boshqaruvi":
 
-        await dts_admin_menu(
+        await dts_menu(
                 message
             )
         return
 
-    elif message.text == "🤖 AI Generator":
-
-        await state.set_state(
-            AIGeneratorState.select_grade
-        )
-
-        await message.answer(
-            "Sinfni tanlang\n\n1-sinf\n2-sinf\n3-sinf ..."
-        )
-
-        return
+#   elif message.text == "🤖 AI Generator":
+#
+ #       await state.set_state(
+  #          AIGeneratorState.select_grade
+   #     )
+#
+ #       await message.answer(
+  #          "Sinfni tanlang\n\n1-sinf\n2-sinf\n3-sinf ..."
+   #     )
+    #    return
 
     elif message.text == "📚 DTS":
 
