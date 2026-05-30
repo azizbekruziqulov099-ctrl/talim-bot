@@ -1,5 +1,6 @@
 import json
 from openai import AsyncOpenAI
+from aiogram.types import ReplyKeyboardRemove
 from aiogram.filters import *
 from openpyxl import load_workbook, Workbook
 from loader import dp, bot
@@ -325,9 +326,12 @@ Faqat JSON qaytaring.
         ]
     )
 
-    return json.loads(
-        response.choices[0].message.content
-    )
+    try:
+        return json.loads(
+            response.choices[0].message.content
+        )
+    except:
+        return []
 
 async def generate_bolims(
         grade,
@@ -412,9 +416,12 @@ FAQAT JSON QAYTARING
         ]
     )
 
-    return json.loads(
-        response.choices[0].message.content
-    )
+    try:
+        return json.loads(
+            response.choices[0].message.content
+        )
+    except:
+        return []
 
 async def generate_mapping(
         grade,
@@ -495,9 +502,12 @@ FAQAT JSON QAYTARING
         ]
     )
 
-    return json.loads(
-        response.choices[0].message.content
-    )
+    try:
+        return json.loads(
+            response.choices[0].message.content
+        )
+    except:
+        return []
 
 async def generate_small_topics_batch(
         grade,
@@ -559,9 +569,12 @@ FAQAT JSON QAYTARING
         ]
     )
 
-    return json.loads(
-        response.choices[0].message.content
-    )
+    try:
+        return json.loads(
+            response.choices[0].message.content
+        )
+    except:
+        return []
 
 def read_topics(file_path):
     wb = load_workbook(file_path)
@@ -635,6 +648,10 @@ async def ai_generator_file(
         "⏳ Fayl tahlil qilinmoqda..."
     )
 
+    await message.answer(
+        "📚 Boblar yaratilmoqda..."
+    )
+
     file = await bot.get_file(
         message.document.file_id
     )
@@ -673,11 +690,31 @@ async def ai_generator_file(
         topic_names
     )
 
+    if not bobs:
+        await message.answer(
+            "❌ Boblar yaratilmadi"
+        )
+        return
+
+    await message.answer(
+        "📖 Bo'limlar yaratilmoqda..."
+    )
+
     bolims = await generate_bolims(
         grade,
         subject,
         bobs,
         topic_names
+    )
+
+    if not bolims:
+        await message.answer(
+            "❌ Bo'limlar yaratilmadi"
+        )
+        return    
+
+    await message.answer(
+        "🗂 Mavzular joylashtirilmoqda..."
     )
 
     mapping = await generate_mapping(
@@ -688,18 +725,41 @@ async def ai_generator_file(
         topic_names
     )
 
+    if not mapping:
+        await message.answer(
+            "❌ Mavzular joylashtirilmadi"
+        )
+        return
+
     result_rows = []
 
-    mapped_topics = [
-        x["mavzu"]
-        for x in mapping
-    ]
+    mapped_topics = list(
+        {
+            x["mavzu"]
+            for x in mapping
+        }
+    )
+
+    topic_quarters = {
+        x["topic"]: x["quarter"]
+        for x in topics_data
+    }
+
+    await message.answer(
+        "📝 Kichik mavzular yaratilmoqda..."
+    )
 
     small_topics_data = await generate_small_topics_batch(
         grade,
         subject,
         mapped_topics
     )
+
+    if not small_topics_data:
+        await message.answer(
+            "❌ Kichik mavzular yaratilmadi"
+        )
+        return
 
     small_topics_map = {
         x["mavzu"]: x["kichik_mavzular"]
@@ -713,10 +773,23 @@ async def ai_generator_file(
             []
         ):
 
+            topic_data = next(
+                (
+                    x for x in topics_data
+                    if x["topic"] == item["mavzu"]
+                ),
+                {}
+            )
+
+            quarter = topic_quarters.get(
+                item["mavzu"],
+                ""
+            )
+
             result_rows.append([
                 grade,
                 subject,
-                "",
+                quarter,
                 item["bob"],
                 item["bolim"],
                 item["mavzu"],
@@ -733,10 +806,27 @@ async def ai_generator_file(
 
     await message.answer_document(
         FSInputFile(output_file),
-        caption="✅ Tayyor"
+        caption=(
+            f"✅ Tayyor\n\n"
+            f"📚 Boblar: {len(bobs)}\n"
+            f"📖 Bo'limlar: {len(bolims)}\n"
+            f"🗂 Mavzular: {len(mapping)}"
+        )
     )
+    try:
+        os.remove(input_file)
+    except:
+        pass
 
+    try:
+        os.remove(output_file)
+    except:
+        pass
     await state.clear()
+
+    await message.answer(
+        "🤖 AI Generator yakunlandi"
+    )
 
 @dp.message(AIGeneratorState.select_grade)
 async def select_grade(
@@ -928,13 +1018,6 @@ async def select_subject(
     )
 
     await message.answer(
-        "📄 Excel fayl yuboring"
-    )
-
-
-    await message.answer(
-        "✅ Fayli yuborildi, jarayon bir necha daqiqada tugaydi! ",
+        "📄 Excel fayl yuboring",
         reply_markup=ReplyKeyboardRemove()
     )
-
-
