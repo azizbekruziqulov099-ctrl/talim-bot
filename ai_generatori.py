@@ -1,5 +1,6 @@
 import json
 from openai import AsyncOpenAI
+from keyboards import get_main_keyboard
 from aiogram.types import ReplyKeyboardRemove
 from aiogram.filters import *
 from openpyxl import load_workbook, Workbook
@@ -1019,5 +1020,5 @@ async def select_subject(
 
     await message.answer(
         "📄 Excel fayl yuboring",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=get_main_keyboard("Admin")
     )
