@@ -4,10 +4,13 @@ from aiogram.filters import *
 from openpyxl import load_workbook, Workbook
 from loader import dp, bot
 import os
+import psycopg2
 from aiogram import F
 from aiogram.types import (
     Message,
-    FSInputFile
+    FSInputFile,
+    KeyboardButton,
+    ReplyKeyboardMarkup
 )
 from aiogram.fsm.state import (
     State,
@@ -28,6 +31,9 @@ class AIGeneratorState(StatesGroup):
 
     wait_file = State()
 
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
 
 OPENAI_API_KEY = os.getenv(
     "OPENAI_API_KEY"
