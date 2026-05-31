@@ -18,7 +18,7 @@ def build_prompt(
     grade, subject, bob, bolim, mavzu, kichik = info
 
     prompt = f"""
-    Siz professional pedagog, metodist, DTS eksperti va testologsiz.
+    Siz professional pedagog, metodist, DTS eksperti, baholash mutaxassisi va testologsiz.
 
     SINF: {grade}
     FAN: {subject}
@@ -46,11 +46,11 @@ def build_prompt(
     4. BO'LIM nimani o'rgatadi
     5. MAVZU nimani o'rgatadi
     6. KICHIK MAVZU nimani o'rgatadi
-    7. SKILL qaysi ko'nikmani tekshiradi
+    7. SKILL nimani tekshiradi
 
     Ushbu ma'lumotlarni tushunmasdan savol yaratma.
 
-    Savol yaratish tartibi:
+    Savol yaratish ketma-ketligi:
 
     FAN
     ↓
@@ -68,7 +68,7 @@ def build_prompt(
     ↓
     SAVOL
 
-    Har bir keyingi bosqich oldingisiga mos bo'lishi shart.
+    Har bir bosqich oldingisiga mos bo'lishi shart.
 
     ==================================================
     SKILL QOIDASI
@@ -85,28 +85,139 @@ def build_prompt(
     Agar savolni yechishda ushbu skill ishlatilmasa,
     savol noto'g'ri hisoblanadi.
 
-    Agar skill tekshirilmasa,
-    savol yaratma.
+    SKILL FAN va MAVZUni buzmasligi kerak.
+
+    Bir xil skill turli fanlarda turlicha ma'no berishi mumkin.
+
+    Shuning uchun avval FAN,
+    keyin MAVZU,
+    keyin SKILL hisobga olinsin.
 
     ==================================================
     MAVZU QOIDASI
     ==================================================
 
-    MAVZU va KICHIK MAVZU savol markazida bo'lishi shart.
+    MAVZU savolning o'zi emas.
+
+    MAVZU va KICHIK MAVZU savol markazida bo'lishi kerak.
+
+    Savol mavzudan chetga chiqmasin.
+
+    Savol kichik mavzudan chetga chiqmasin.
+
+    Mavzu matnini ko'chirib yozma.
+
+    Mavzu nomini savolga aylantirib yuborma.
+
+    Savol mavzuda o'rgatilayotgan bilim va ko'nikmani tekshirsin.
+    ==================================================
+    YOSH VA SINF MOSLIGI
+    ==================================================
+
+    Savol yaratishdan oldin o'quvchi yoshini hisobga ol.
+
+    -4 = 2-3 yosh
+    -3 = 3-4 yosh
+    -2 = 4-5 yosh
+    -1 = 5-6 yosh
+    0 = 6-7 yosh
+
+    1 = 1-sinf
+    2 = 2-sinf
+    3 = 3-sinf
+    4 = 4-sinf
+    5 = 5-sinf
+    6 = 6-sinf
+    7 = 7-sinf
+    8 = 8-sinf
+    9 = 9-sinf
+    10 = 10-sinf
+    11 = 11-sinf
+
+    Savolning:
+
+    - matn uzunligi
+    - terminlari
+    - fikrlash darajasi
+    - yechim bosqichlari
+
+    sinfga mos bo'lishi shart.
+
+    Agar savol o'quvchi yoshidan yuqori bo'lsa,
+    savol yaratma.
+
+    Agar savol juda sodda bo'lsa,
+    savol yaratma.
+
+    ==================================================
+    QIYINLIK DARAJASI
+    ==================================================
+
+    oson:
+
+    - bitta asosiy fikr
+    - minimal tahlil
+    - tez yechim
+    - yoshga mos sodda topshiriq
+
+    o'rta:
+
+    - 2-3 qadam
+    - tushunish talab qilinadi
+    - bog'lanishlarni topish kerak
+
+    qiyin:
+
+    - tahlil talab qilinadi
+    - bir nechta ma'lumot ishlatiladi
+    - xulosa chiqarish kerak
+
+    murakkab:
+
+    - chuqur fikrlash
+    - ko'p bosqichli yechim
+    - murakkab bog'lanishlar
+
+    Agar savol qiyinlik talabiga mos kelmasa,
+    savolni qayta yarat.
+
+    ==================================================
+    FAN QOIDASI
+    ==================================================
+
+    Har bir fan o'z metodikasiga ega.
+
+    Savol fan metodikasiga mos bo'lishi shart.
+
+    Bir fan metodikasini boshqa fan bilan aralashtirma.
+
+    Fan nima o'rgatsa,
+    savol ham shuni baholasin.
 
     Savol:
 
-    - mavzudan chiqmasin
-    - kichik mavzudan chiqmasin
-    - boshqa mavzuga o'tmasin
-    - boshqa ko'nikmaga o'tmasin
+    - fan maqsadiga mos
+    - mavzuga mos
+    - kichik mavzuga mos
+    - skillga mos
 
-    Agar savolni yechish uchun MAVZU kerak bo'lmasa,
-    savol noto'g'ri hisoblanadi.
+    bo'lishi shart.
 
-    Agar savolni yechish uchun KICHIK MAVZU kerak bo'lmasa,
-    savol noto'g'ri hisoblanadi.
+    ==================================================
+    HAYOTIYLIK DARAJASI
+    ==================================================
 
+    0 = oddiy akademik savol
+
+    1 = sodda hayotiy vaziyat
+
+    2 = kundalik hayot bilan bog'langan
+
+    3 = murakkab real vaziyat
+
+    4 = ko'p bosqichli real hayotiy vaziyat
+
+    Hayotiylik darajasi berilgan qiymatdan oshib ketmasin.
     ==================================================
     TAKRORLANISHNI OLDINI OL
     ==================================================
@@ -127,9 +238,13 @@ def build_prompt(
     - bir xil fikrlash usuli
     - bir xil yechim usuli
     - bir xil kontekst
+    - bir xil vaziyat
 
     Agar o'xshashlik aniqlansa,
     mutlaqo yangi savol yarat.
+
+    Savol nafaqat matn jihatdan,
+    balki mazmun jihatdan ham yangi bo'lishi kerak.
 
     ==================================================
     XILMA-XILLIK
@@ -149,142 +264,152 @@ def build_prompt(
     - rasm asosida
     - jadval asosida
     - mantiqiy fikrlash
+    - ketma-ketlikni topish
+    - guruhlash
+    - tanlash
+    - bog'lash
 
     Har bir yangi savol boshqa yondashuvdan foydalansin.
-
-    ==================================================
-    ASOSIY TALABLAR
-    ==================================================
-
-    1. Savol sinf yoshiga mos bo'lsin.
-    2. Savol mavzudan chetga chiqmasin.
-    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
-    4. Savol tushunarli va ravon yozilsin.
-    5. Mantiqsiz savollar yaratma.
-    6. Takroriy savollar yaratma.
-    7. Bir xil sonlarni aylantirib yozma.
-    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
-    9. O'quvchini fikrlashga undasin.
-    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
-
-    ==================================================
-    TIL TALABLARI
-    ==================================================
-
-    - Savol fan tilida yozilsin.
-    - Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
-    - Rus tili fanida topshiriq rus tilida bo'lsin.
-    - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
-    - Tilni aralashtirma.
-
-    ==================================================
-    QIYINLIK DARAJASI
-    ==================================================
-
-    oson:
-    - bitta fikr
-    - tez yechim
-    - minimal tahlil
-
-    o'rta:
-    - 2-3 qadam
-    - tushunish talab qilinadi
-
-    qiyin:
-    - tahlil talab qilinadi
-    - bir nechta bosqich
-
-    murakkab:
-    - chuqur fikrlash
-    - ko'p bosqichli yechim
-
-    ==================================================
-    HAYOTIYLIK DARAJASI
-    ==================================================
-
-    0 = oddiy akademik savol
-
-    1 = sodda hayotiy vaziyat
-
-    2 = kundalik hayot bilan bog'langan
-
-    3 = murakkab real vaziyat
-
-    4 = ko'p bosqichli real hayotiy vaziyat
 
     ==================================================
     TEST TURLARI
     ==================================================
 
     single_choice:
+
     - 4 variant
     - 1 ta to'g'ri javob
+    - faqat bitta javob to'g'ri bo'lsin
 
     multiple_choice:
+
     - 4 variant
     - kamida 2 ta to'g'ri javob
     - correct_answer misol: "A,C"
 
     true_false:
+
     - option_a = "To'g'ri"
     - option_b = "Noto'g'ri"
 
     write_answer:
+
     - variantlar bo'lmasin
+    - javob o'quvchi tomonidan yozilsin
 
     image_question:
+
     - image_prompt majburiy
-    - rasm orqali javob topilsin
+    - rasm savolni yechishda muhim bo'lsin
+    - rasm shunchaki bezak bo'lmasin
 
     ==================================================
     MULTIMEDIA
     ==================================================
 
     Agar rasm kerak bo'lsa:
+
     "is_latex": false
-    image_prompt ni to'ldir
+
+    image_prompt ni to'ldir.
 
     Agar formula kerak bo'lsa:
+
     "is_latex": true
 
     Agar audio kerak bo'lsa:
-    audio_text ni to'ldir
 
+    audio_text ni to'ldir.
+
+    Multimedia savolni yechishga xizmat qilishi kerak.
     ==================================================
     VARIANT TALABLARI
     ==================================================
 
-    - Variantlar qisqa bo'lsin
-    - Juda uzun gap bo'lmasin
-    - Variantlar aniq farqlansin
-    - Variantlar mantiqli bo'lsin
-    - Juda kulgili variantlar berilmasin
+    Variantlar:
+
+    - qisqa bo'lsin
+    - tushunarli bo'lsin
+    - bir-biridan aniq farq qilsin
+    - mantiqli bo'lsin
+    - yoshga mos bo'lsin
+
+    Taqiqlanadi:
+
+    - juda uzun variantlar
+    - bir xil ma'nodagi variantlar
+    - kulgili variantlar
+    - mavzuga aloqasiz variantlar
+
+    Noto'g'ri variantlar ham mantiqan mumkin
+    bo'lgan javoblar bo'lsin.
 
     ==================================================
     JAVOB TALABLARI
     ==================================================
 
-    correct_answer da javob MATNI qaytarsin.
+    correct_answer ichida javob MATNI qaytarilsin.
 
     Harf qaytarma.
 
-    Misol:
+    To'g'ri:
 
     "correct_answer":"40"
 
+    Noto'g'ri:
+
+    "correct_answer":"A"
+
+    Agar single_choice bo'lsa:
+
+    correct_answer variantlardan biri bilan
+    aynan bir xil bo'lishi kerak.
+
+    Agar multiple_choice bo'lsa:
+
+    correct_answer misol:
+
+    "A,C"
+
     ==================================================
-    IZOH
+    IZOH TALABLARI
     ==================================================
 
-    - explanation qisqa bo'lsin
-    - explanation tushunarli bo'lsin
-    - to'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+    explanation:
+
+    - qisqa bo'lsin
+    - tushunarli bo'lsin
+    - yoshga mos bo'lsin
+
+    Izohda:
+
+    to'g'ri javob nima uchun to'g'ri ekanligi
+    tushuntirilsin.
+
+    Keraksiz uzun nazariya yozilmasin.
+
+    ==================================================
+    PEDAGOGIK TALABLAR
+    ==================================================
+
+    Savol:
+
+    - pedagogik jihatdan to'g'ri bo'lsin
+    - o'quv maqsadiga xizmat qilsin
+    - mavzuni baholasin
+    - skillni baholasin
+
+    Savol:
+
+    - mantiqsiz bo'lmasin
+    - chalkash bo'lmasin
+    - noto'g'ri talqin qilinmasin
 
     ==================================================
     YAKUNIY TEKSHIRUV
     ==================================================
 
-    JSON yuborishdan oldin tekshir:
+    JSON yuborishdan oldin ichki tekshir:
 
     1. Savol FANga mosmi
     2. Savol SINFga mosmi
@@ -293,10 +418,18 @@ def build_prompt(
     5. Savol MAVZUga mosmi
     6. Savol KICHIK MAVZUga mosmi
     7. Savol SKILLni tekshiryaptimi
-    8. Savol takror emasmi
+    8. Savol QIYINLIK darajasiga mosmi
+    9. Savol yoshga mosmi
+    10. Savol takror emasmi
+    11. Variantlar mantiqliymi
+    12. To'g'ri javob haqiqatan ham to'g'rimi
 
     Agar bittasiga ham YO'Q javobi chiqsa,
     savolni qayta yarat.
+
+    ==================================================
+    NATIJA
+    ==================================================
 
     FAQAT JSON QAYTAR.
 
@@ -304,7 +437,9 @@ def build_prompt(
 
     HECH QANDAY MARKDOWN YOZMA.
 
-    {{
+    HECH QANDAY ```json YOZMA.
+
+    {
     "question_type":"",
     "is_latex":false,
     "image_prompt":"",
@@ -316,7 +451,6 @@ def build_prompt(
     "option_d":"",
     "correct_answer":"",
     "explanation":""
-    }}
+    }
     """
-
     return prompt
