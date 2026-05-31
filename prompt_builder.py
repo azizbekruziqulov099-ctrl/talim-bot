@@ -18,7 +18,7 @@ def build_prompt(
     grade, subject, bob, bolim, mavzu, kichik = info
 
     prompt = f"""
-    Siz professional pedagog, metodist va test tuzuvchisiz.
+    Siz professional pedagog, metodist, DTS eksperti va testologsiz.
 
     SINF: {grade}
     FAN: {subject}
@@ -34,59 +34,127 @@ def build_prompt(
     TEST_TURI: {question_type}
     SKILL: {skill}
 
+    ==================================================
     ENG MUHIM QOIDA
+    ==================================================
 
-    GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
+    Savol yaratishdan oldin quyidagilarni ichki tahlil qil:
 
-    SKILL ushbu mavzudan kelib chiqadigan ko'nikma hisoblanadi.
+    1. FAN nimani o'rgatadi
+    2. SINF darajasi qanday
+    3. BOB nimani o'rgatadi
+    4. BO'LIM nimani o'rgatadi
+    5. MAVZU nimani o'rgatadi
+    6. KICHIK MAVZU nimani o'rgatadi
+    7. SKILL qaysi ko'nikmani tekshiradi
 
-    Savol yaratish ketma-ketligi:
+    Ushbu ma'lumotlarni tushunmasdan savol yaratma.
 
-    1. FAN aniqlansin
-    2. SINF aniqlansin
-    3. BOB aniqlansin
-    4. BO'LIM aniqlansin
-    5. MAVZU aniqlansin
-    6. KICHIK MAVZU aniqlansin
-    7. SKILL aniqlansin
+    Savol yaratish tartibi:
 
-    Shundan keyingina savol yaratiladi.
+    FAN
+    ↓
+    SINF
+    ↓
+    BOB
+    ↓
+    BO'LIM
+    ↓
+    MAVZU
+    ↓
+    KICHIK MAVZU
+    ↓
+    SKILL
+    ↓
+    SAVOL
 
-    Agar yaratilgan savol:
+    Har bir keyingi bosqich oldingisiga mos bo'lishi shart.
 
-    - MAVZUga mos kelmasa
-    - KICHIK MAVZUga mos kelmasa
-    - SKILLni tekshirmasa
+    ==================================================
+    SKILL QOIDASI
+    ==================================================
 
-    savol yaroqsiz hisoblanadi va yaratmaslik kerak.
+    SKILL testning asosiy maqsadi hisoblanadi.
 
-    TAQIQLANADI:
+    Savolni yechish uchun o'quvchi aynan:
 
-    - Sonlarni almashtirib qayta yozish
-    - Ismlarni almashtirib qayta yozish
-    - Oldingi savol qolipidan foydalanish
-    - Mazmunan o'xshash savol yaratish
-    - Bir xil javobga olib keluvchi savol yaratish
-    - Bir xil fikrlash usulidan foydalanish
+    {skill}
 
-    Har bir yangi savol:
+    ko'nikmasidan foydalanishi shart.
 
-    - yangi kontekst
-    - yangi vaziyat
-    - yangi fikrlash
-    - yangi yechim
+    Agar savolni yechishda ushbu skill ishlatilmasa,
+    savol noto'g'ri hisoblanadi.
 
-    asosida yaratilishi kerak.
+    Agar skill tekshirilmasa,
+    savol yaratma.
 
-    Agar oldingi savollarga o'xshashlik aniqlansa, yangi savol ishlab chiqilsin.
+    ==================================================
+    MAVZU QOIDASI
+    ==================================================
 
-    MAVZU ustuvor.
-    KICHIK MAVZU ustuvor.
-    SKILL ustuvor.
+    MAVZU va KICHIK MAVZU savol markazida bo'lishi shart.
 
-    Savolni yechish uchun o'quvchi aynan {skill} ko'nikmasidan foydalanishi shart.
+    Savol:
 
+    - mavzudan chiqmasin
+    - kichik mavzudan chiqmasin
+    - boshqa mavzuga o'tmasin
+    - boshqa ko'nikmaga o'tmasin
+
+    Agar savolni yechish uchun MAVZU kerak bo'lmasa,
+    savol noto'g'ri hisoblanadi.
+
+    Agar savolni yechish uchun KICHIK MAVZU kerak bo'lmasa,
+    savol noto'g'ri hisoblanadi.
+
+    ==================================================
+    TAKRORLANISHNI OLDINI OL
+    ==================================================
+
+    OXIRGI YARATILGAN SAVOLLAR
+
+    {last_questions}
+
+    YUQORIDAGI SAVOLLARNI TAKRORLAMA.
+
+    QAT'IYAN TAQIQLANADI:
+
+    - sonlarni almashtirib qayta yozish
+    - ismlarni almashtirib qayta yozish
+    - matnni ozgina o'zgartirib qayta yozish
+    - bir xil qolipdagi savollar
+    - bir xil javobga olib keluvchi savollar
+    - bir xil fikrlash usuli
+    - bir xil yechim usuli
+    - bir xil kontekst
+
+    Agar o'xshashlik aniqlansa,
+    mutlaqo yangi savol yarat.
+
+    ==================================================
+    XILMA-XILLIK
+    ==================================================
+
+    Bir mavzu ichida barcha savollar bir xil bo'lmasin.
+
+    Imkon qadar quyidagilar aralashtirib ishlatilsin:
+
+    - natijani topish
+    - xatoni topish
+    - taqqoslash
+    - moslashtirish
+    - tahlil qilish
+    - sababni aniqlash
+    - hayotiy vaziyat
+    - rasm asosida
+    - jadval asosida
+    - mantiqiy fikrlash
+
+    Har bir yangi savol boshqa yondashuvdan foydalansin.
+
+    ==================================================
     ASOSIY TALABLAR
+    ==================================================
 
     1. Savol sinf yoshiga mos bo'lsin.
     2. Savol mavzudan chetga chiqmasin.
@@ -99,7 +167,9 @@ def build_prompt(
     9. O'quvchini fikrlashga undasin.
     10. Noto'g'ri javoblar ham mantiqli bo'lsin.
 
+    ==================================================
     TIL TALABLARI
+    ==================================================
 
     - Savol fan tilida yozilsin.
     - Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
@@ -107,12 +177,14 @@ def build_prompt(
     - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
     - Tilni aralashtirma.
 
+    ==================================================
     QIYINLIK DARAJASI
+    ==================================================
 
     oson:
-    - bitta amal
     - bitta fikr
-    - tez yechiladigan
+    - tez yechim
+    - minimal tahlil
 
     o'rta:
     - 2-3 qadam
@@ -123,10 +195,12 @@ def build_prompt(
     - bir nechta bosqich
 
     murakkab:
-    - mantiqiy fikrlash
-    - bir nechta yechim bosqichi
+    - chuqur fikrlash
+    - ko'p bosqichli yechim
 
+    ==================================================
     HAYOTIYLIK DARAJASI
+    ==================================================
 
     0 = oddiy akademik savol
 
@@ -138,7 +212,9 @@ def build_prompt(
 
     4 = ko'p bosqichli real hayotiy vaziyat
 
+    ==================================================
     TEST TURLARI
+    ==================================================
 
     single_choice:
     - 4 variant
@@ -160,53 +236,73 @@ def build_prompt(
     - image_prompt majburiy
     - rasm orqali javob topilsin
 
+    ==================================================
     MULTIMEDIA
+    ==================================================
 
     Agar rasm kerak bo'lsa:
     "is_latex": false
-    "image_prompt" ni to'ldir
+    image_prompt ni to'ldir
 
     Agar formula kerak bo'lsa:
     "is_latex": true
 
     Agar audio kerak bo'lsa:
-    "audio_text" ni to'ldir
+    audio_text ni to'ldir
 
+    ==================================================
     VARIANT TALABLARI
+    ==================================================
 
     - Variantlar qisqa bo'lsin
     - Juda uzun gap bo'lmasin
-    - Variant oxiri "..." bilan tugamasin
-    - Variantlar bir-biridan aniq farq qilsin
+    - Variantlar aniq farqlansin
+    - Variantlar mantiqli bo'lsin
+    - Juda kulgili variantlar berilmasin
 
+    ==================================================
     JAVOB TALABLARI
+    ==================================================
 
-    - correct_answer da javob MATNI qaytarsin
-    - Harf qaytarma
+    correct_answer da javob MATNI qaytarsin.
+
+    Harf qaytarma.
 
     Misol:
 
     "correct_answer":"40"
 
+    ==================================================
     IZOH
+    ==================================================
 
-    - explanation qisqa va tushunarli bo'lsin
-    - To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+    - explanation qisqa bo'lsin
+    - explanation tushunarli bo'lsin
+    - to'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
 
-    OXIRGI YARATILGAN SAVOLLAR
+    ==================================================
+    YAKUNIY TEKSHIRUV
+    ==================================================
 
-    {last_questions}
+    JSON yuborishdan oldin tekshir:
 
-    YUQORIDAGI SAVOLLARNI TAKRORLAMA.
+    1. Savol FANga mosmi
+    2. Savol SINFga mosmi
+    3. Savol BOBga mosmi
+    4. Savol BO'LIMga mosmi
+    5. Savol MAVZUga mosmi
+    6. Savol KICHIK MAVZUga mosmi
+    7. Savol SKILLni tekshiryaptimi
+    8. Savol takror emasmi
 
-    MATNINI O'ZGARTIRIB
-    QAYTA YOZMA.
+    Agar bittasiga ham YO'Q javobi chiqsa,
+    savolni qayta yarat.
 
-    MAZMUNAN HAM
-    O'XSHASH SAVOL
-    YARATMA.
+    FAQAT JSON QAYTAR.
 
-    FAQAT JSON QAYTAR
+    HECH QANDAY IZOH YOZMA.
+
+    HECH QANDAY MARKDOWN YOZMA.
 
     {{
     "question_type":"",
@@ -222,4 +318,5 @@ def build_prompt(
     "explanation":""
     }}
     """
+
     return prompt
