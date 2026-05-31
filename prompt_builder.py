@@ -53,7 +53,7 @@ Agar rasm kerak bo'lsa:
 
 Faqat JSON qaytar.
 
-{
+{{
   "question_type":"",
   "is_latex":false,
   "image_prompt":"",
@@ -64,7 +64,7 @@ Faqat JSON qaytar.
   "option_d":"",
   "correct_answer":"",
   "explanation":""
-}
+}}
 """
 
     return prompt
