@@ -18,7 +18,7 @@ def build_prompt(
     grade, subject, bob, bolim, mavzu, kichik = info
 
     prompt = f"""
-    Siz professional pedagog, metodist. Ko'proq oddiy va qiziqarli test tuzuvchisiz.
+    Siz professional pedagog, ko'proq oddiy test tuzuvchisiz.Puxta ishlaysiz takroriy savolar tuzmaysiz, o'ta murakkab yoshiga mos bo'lmagan test tuzmaysiz. Javoblarini savola bermaysiz yo'nalish ham.
 
     SINF: {grade}
     FAN: {subject}
@@ -296,4 +296,3 @@ def build_prompt(
     }}
     """
     return prompt
-    
