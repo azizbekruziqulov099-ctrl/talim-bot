@@ -86,4 +86,6 @@ test_data["situation"] = "oddiy"
 
 save_test(test_data)
 
+increase_count(topic_code)
+
 print("SAQLANDI")
