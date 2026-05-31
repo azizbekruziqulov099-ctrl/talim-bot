@@ -10,143 +10,143 @@ def build_prompt(topic_code, difficulty, situation, question_type):
 
     grade, subject, bob, bolim, mavzu, kichik = info
 
-prompt = f"""
-Siz professional pedagog, metodist va test tuzuvchisiz.
+    prompt = f"""
+    Siz professional pedagog, metodist va test tuzuvchisiz.
 
-SINF: {grade}
-FAN: {subject}
+    SINF: {grade}
+    FAN: {subject}
 
-BOB: {bob}
-BO'LIM: {bolim}
-MAVZU: {mavzu}
-KICHIK MAVZU: {kichik}
+    BOB: {bob}
+    BO'LIM: {bolim}
+    MAVZU: {mavzu}
+    KICHIK MAVZU: {kichik}
 
-QIYINLIK: {difficulty}
-VAZIYAT: {situation}
+    QIYINLIK: {difficulty}
+    VAZIYAT: {situation}
 
-TEST_TURI: {question_type}
+    TEST_TURI: {question_type}
 
-ASOSIY TALABLAR
+    ASOSIY TALABLAR
 
-1. Savol sinf yoshiga mos bo'lsin.
-2. Savol mavzudan chetga chiqmasin.
-3. Savol pedagogik jihatdan to'g'ri bo'lsin.
-4. Savol tushunarli va ravon yozilsin.
-5. Mantiqsiz savollar yaratma.
-6. Takroriy savollar yaratma.
-7. Bir xil sonlarni aylantirib yozma.
-8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
-9. O'quvchini fikrlashga undasin.
-10. Noto'g'ri javoblar ham mantiqli bo'lsin.
+    1. Savol sinf yoshiga mos bo'lsin.
+    2. Savol mavzudan chetga chiqmasin.
+    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
+    4. Savol tushunarli va ravon yozilsin.
+    5. Mantiqsiz savollar yaratma.
+    6. Takroriy savollar yaratma.
+    7. Bir xil sonlarni aylantirib yozma.
+    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+    9. O'quvchini fikrlashga undasin.
+    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
 
-TIL TALABLARI
+    TIL TALABLARI
 
-- Savol fan tilida yozilsin.
-- Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
-- Rus tili fanida topshiriq rus tilida bo'lsin.
-- O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
-- Tilni aralashtirma.
+    - Savol fan tilida yozilsin.
+    - Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
+    - Rus tili fanida topshiriq rus tilida bo'lsin.
+    - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
+    - Tilni aralashtirma.
 
-QIYINLIK DARAJASI
+    QIYINLIK DARAJASI
 
-oson:
-- bitta amal
-- bitta fikr
-- tez yechiladigan
+    oson:
+    - bitta amal
+    - bitta fikr
+    - tez yechiladigan
 
-o'rta:
-- 2-3 qadam
-- tushunish talab qilinadi
+    o'rta:
+    - 2-3 qadam
+    - tushunish talab qilinadi
 
-qiyin:
-- tahlil talab qilinadi
-- bir nechta bosqich
+    qiyin:
+    - tahlil talab qilinadi
+    - bir nechta bosqich
 
-murakkab:
-- mantiqiy fikrlash
-- bir nechta yechim bosqichi
+    murakkab:
+    - mantiqiy fikrlash
+    - bir nechta yechim bosqichi
 
-HAYOTIYLIK DARAJASI
+    HAYOTIYLIK DARAJASI
 
-0 = oddiy akademik savol
+    0 = oddiy akademik savol
 
-1 = sodda hayotiy vaziyat
+    1 = sodda hayotiy vaziyat
 
-2 = kundalik hayot bilan bog'langan
+    2 = kundalik hayot bilan bog'langan
 
-3 = murakkab real vaziyat
+    3 = murakkab real vaziyat
 
-4 = ko'p bosqichli real hayotiy vaziyat
+    4 = ko'p bosqichli real hayotiy vaziyat
 
-TEST TURLARI
+    TEST TURLARI
 
-single_choice:
-- 4 variant
-- 1 ta to'g'ri javob
+    single_choice:
+    - 4 variant
+    - 1 ta to'g'ri javob
 
-multiple_choice:
-- 4 variant
-- kamida 2 ta to'g'ri javob
-- correct_answer misol: "A,C"
+    multiple_choice:
+    - 4 variant
+    - kamida 2 ta to'g'ri javob
+    - correct_answer misol: "A,C"
 
-true_false:
-- option_a = "To'g'ri"
-- option_b = "Noto'g'ri"
+    true_false:
+    - option_a = "To'g'ri"
+    - option_b = "Noto'g'ri"
 
-write_answer:
-- variantlar bo'lmasin
+    write_answer:
+    - variantlar bo'lmasin
 
-image_question:
-- image_prompt majburiy
-- rasm orqali javob topilsin
+    image_question:
+    - image_prompt majburiy
+    - rasm orqali javob topilsin
 
-MULTIMEDIA
+    MULTIMEDIA
 
-Agar rasm kerak bo'lsa:
-"is_latex": false
-"image_prompt" ni to'ldir
+    Agar rasm kerak bo'lsa:
+    "is_latex": false
+    "image_prompt" ni to'ldir
 
-Agar formula kerak bo'lsa:
-"is_latex": true
+    Agar formula kerak bo'lsa:
+    "is_latex": true
 
-Agar audio kerak bo'lsa:
-"audio_text" ni to'ldir
+    Agar audio kerak bo'lsa:
+    "audio_text" ni to'ldir
 
-VARIANT TALABLARI
+    VARIANT TALABLARI
 
-- Variantlar qisqa bo'lsin
-- Juda uzun gap bo'lmasin
-- Variant oxiri "..." bilan tugamasin
-- Variantlar bir-biridan aniq farq qilsin
+    - Variantlar qisqa bo'lsin
+    - Juda uzun gap bo'lmasin
+    - Variant oxiri "..." bilan tugamasin
+    - Variantlar bir-biridan aniq farq qilsin
 
-JAVOB TALABLARI
+    JAVOB TALABLARI
 
-- correct_answer da javob MATNI qaytarsin
-- Harf qaytarma
+    - correct_answer da javob MATNI qaytarsin
+    - Harf qaytarma
 
-Misol:
+    Misol:
 
-"correct_answer":"40"
+    "correct_answer":"40"
 
-IZOH
+    IZOH
 
-- explanation qisqa va tushunarli bo'lsin
-- To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+    - explanation qisqa va tushunarli bo'lsin
+    - To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
 
-FAQAT JSON QAYTAR
+    FAQAT JSON QAYTAR
 
-{{
-  "question_type":"",
-  "is_latex":false,
-  "image_prompt":"",
-  "audio_text":"",
-  "question":"",
-  "option_a":"",
-  "option_b":"",
-  "option_c":"",
-  "option_d":"",
-  "correct_answer":"",
-  "explanation":""
-}}
-"""
+    {{
+    "question_type":"",
+    "is_latex":false,
+    "image_prompt":"",
+    "audio_text":"",
+    "question":"",
+    "option_a":"",
+    "option_b":"",
+    "option_c":"",
+    "option_d":"",
+    "correct_answer":"",
+    "explanation":""
+    }}
+    """
     return prompt
