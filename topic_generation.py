@@ -3,6 +3,7 @@ import psycopg2
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+
 def get_next_topic(limit=10):
 
     conn = psycopg2.connect(DATABASE_URL)
@@ -26,24 +27,16 @@ def get_next_topic(limit=10):
 
     return rows
 
-def increase_count(
-    topic_code,
-    count
-):
-
+def increase_count(topic_code):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     cur.execute("""
         UPDATE topic_generation
-        SET current_count =
-            current_count + %s,
+        SET current_count = current_count + 1,
             last_generated_at = NOW()
         WHERE topic_code = %s
-    """, (
-        count,
-        topic_code
-    ))
+    """, (topic_code,))
 
     conn.commit()
 
