@@ -18,7 +18,7 @@ def build_prompt(
     grade, subject, bob, bolim, mavzu, kichik = info
 
     prompt = f"""
-    Siz professional pedagog, metodist va test tuzuvchisiz.
+    Siz professional pedagog, metodist. Ko'proq oddiy va qiziqarli test tuzuvchisiz.
 
     SINF: {grade}
     FAN: {subject}
@@ -32,10 +32,9 @@ def build_prompt(
     VAZIYAT: {situation}
 
     TEST_TURI: {question_type}
-    SKILL: {skill}
 
     ENG MUHIM QOIDA
-    Oddiyroq testlar tuz ko‘proq.
+
     GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
     Savol yaratish ketma-ketligi:
@@ -60,22 +59,8 @@ def build_prompt(
     2. SINF darajasini aniqla
     3. MAVZU maqsadini aniqla
     4. KICHIK MAVZU maqsadini aniqla
-    5. SKILL maqsadini aniqla
 
     Savol ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
-
-    ==================================================
-    SKILL TALQINI
-    ==================================================
-
-    SKILL faqat nom emas.
-
-    GPT avval SKILL nimani baholashini tushunishi kerak.
-
-    Savolni yechish uchun o'quvchi aynan SKILLdan foydalanishi shart.
-
-    Agar savol boshqa ko'nikmani baholayotgan bo'lsa,
-    savolni bekor qil va yangisini yarat.
 
     ==================================================
     MAVZU TALQINI
@@ -122,8 +107,7 @@ def build_prompt(
     - sinfga mos
     - fan metodikasiga mos
     - mavzuga mos
-    - skillga mos
-
+ 
     bo'lishi shart.
 
     Keraksiz murakkablik yaratma.
@@ -173,9 +157,7 @@ def build_prompt(
 
     MAVZU ustuvor.
     KICHIK MAVZU ustuvor.
-    SKILL ustuvor.
-
-    Savolni yechish uchun o'quvchi aynan {skill} ko'nikmasidan foydalanishi shart.
+    Savollarni javobini bermaslik savolan keyin ustuvor.
 
     ASOSIY TALABLAR
 
@@ -314,3 +296,4 @@ def build_prompt(
     }}
     """
     return prompt
+    
