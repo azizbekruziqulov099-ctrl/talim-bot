@@ -1,7 +1,7 @@
 from topic_info import get_topic_info
 
 
-def build_prompt(topic_code, difficulty, situation, question_type):
+def build_prompt(topic_code, difficulty, situation, question_type, skill):
 
     info = get_topic_info(topic_code)
 
@@ -25,6 +25,7 @@ def build_prompt(topic_code, difficulty, situation, question_type):
     VAZIYAT: {situation}
 
     TEST_TURI: {question_type}
+    SKILL: {skill}
 
     ASOSIY TALABLAR
 
