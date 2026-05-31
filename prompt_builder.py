@@ -36,7 +36,8 @@ def build_prompt(
 
     ENG MUHIM QOIDA
 
-    GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
+    1.GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin 
+    2. yuqoriagiga moslab skill yarat .
 
     Savol yaratish ketma-ketligi:
 
@@ -179,16 +180,18 @@ def build_prompt(
 
     ASOSIY TALABLAR
 
-    1. Savol sinf yoshiga mos bo'lsin.
-    2. Savol mavzudan chetga chiqmasin.
-    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
-    4. Savol tushunarli va ravon yozilsin.
-    5. Mantiqsiz savollar yaratma.
-    6. Takroriy savollar yaratma.
-    7. Bir xil sonlarni aylantirib yozma.
-    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
-    9. O'quvchini fikrlashga undasin.
-    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
+    1. Javoblarni savlda berma.
+    2. Savol sinf yoshiga mos bo'lsin.
+    3. murakkab maslalar kamroq tuz asosan 60 % oddiy 1, 2 ammali kam gapli bo'ldi.
+    4. Savol mavzudan chetga chiqmasin.
+    5. Savol pedagogik jihatdan to'g'ri bo'lsin.
+    6. Savol tushunarli va ravon yozilsin.
+    7. Mantiqsiz savollar yaratma.
+    8. Takroriy savollar yaratma.
+    9. Bir xil sonlarni aylantirib yozma.
+    10. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+    11. O'quvchini fikrlashga undasin.
+    12. Noto'g'ri javoblar ham mantiqli bo'lsin.
     
     TIL TALABLARI
 
@@ -296,6 +299,14 @@ def build_prompt(
     O'XSHASH SAVOL
     YARATMA.
 
+    ENG MUHIM QOIDA
+
+    Savol FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZU asosida yaratilishi shart.
+
+    Savol aynan mavzuda o'rgatilayotgan bilim va ko'nikmani tekshirsin.
+
+    Mavzuga mos kelmagan savol yaratma.
+    
     FAQAT JSON QAYTAR
 
     {{
