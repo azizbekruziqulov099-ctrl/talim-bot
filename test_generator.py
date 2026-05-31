@@ -39,19 +39,14 @@ def save_test(test_data):
     cur.close()
     conn.close()
 
-fake_test = {
-    "topic_code": "2-01-1-01-01-01-001",
-    "difficulty": "oson",
-    "situation": "oddiy",
-    "question": "12 sonidan keyin qaysi son keladi?",
-    "option_a": "13",
-    "option_b": "14",
-    "option_c": "15",
-    "option_d": "16",
-    "correct_answer": "A",
-    "explanation": "12 dan keyin 13 keladi."
-}
+topic_code = get_next_topic(1)[0][0]
 
-save_test(fake_test)
+info = get_topic_info(topic_code)
 
-print("SAQLANDI")
+prompt = build_prompt(
+    info,
+    difficulty="oson",
+    situation="oddiy"
+)
+
+print(prompt)
