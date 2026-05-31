@@ -1,141 +1,152 @@
-import os
-import psycopg2
-import json
-from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
-from prompt_builder import build_prompt
-from openai_client import client
 
-DATABASE_URL = os.getenv("DATABASE_URL")
 
-def save_test(test_data):
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+def build_prompt(topic_code, difficulty, situation, question_type):
 
-    # Dublikat tekshirish
+    info = get_topic_info(topic_code)
 
-    cur.execute("""
-        SELECT 1
-        FROM generated_tests
-        WHERE topic_code=%s
-        AND question=%s
-        LIMIT 1
-    """, (
-        test_data["topic_code"],
-        test_data["question"]
-    ))
+    if not info:
+        return None
 
-    if cur.fetchone():
-        print("⚠️ DUPLIKAT TEST")
-        cur.close()
-        conn.close()
-        return
+    grade, subject, bob, bolim, mavzu, kichik = info
 
-    # Saqlash
+    prompt = f"""
+    Siz professional pedagog, metodist va test tuzuvchisiz.
 
-    cur.execute("""
-        INSERT INTO generated_tests (
-            topic_code,
-            difficulty,
-            situation,
-            question,
-            option_a,
-            option_b,
-            option_c,
-            option_d,
-            correct_answer,
-            explanation,
-            question_type,
-            is_latex,
-            image_url,
-            audio_text,
-            language,
-            life_level
-        )
-        VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
-        )
-    """, (
-        test_data["topic_code"],
-        test_data["difficulty"],
-        test_data["situation"],
-        test_data["question"],
-        test_data.get("option_a"),
-        test_data.get("option_b"),
-        test_data.get("option_c"),
-        test_data.get("option_d"),
-        test_data["correct_answer"],
-        test_data.get("explanation"),
-        test_data.get("question_type", "single_choice"),
-        test_data.get("is_latex", False),
-        test_data.get("image_url"),
-        test_data.get("audio_text"),
-        test_data.get("language", "uz"),
-        test_data.get("life_level", 0)
-    ))
+    SINF: {grade}
+    FAN: {subject}
 
-    conn.commit()
+    BOB: {bob}
+    BO'LIM: {bolim}
+    MAVZU: {mavzu}
+    KICHIK MAVZU: {kichik}
 
-    cur.close()
-    conn.close()
+    QIYINLIK: {difficulty}
+    VAZIYAT: {situation}
 
-topic_code = get_next_topic(1)[0][0]
+    TEST_TURI: {question_type}
 
-test_types = (
-    ["single_choice"] * 8 +
-    ["multiple_choice"] * 4 +
-    ["true_false"] * 3 +
-    ["write_answer"] * 3 +
-    ["image_question"] * 2
-)
+    ASOSIY TALABLAR
 
-for question_type in test_types:
+    1. Savol sinf yoshiga mos bo'lsin.
+    2. Savol mavzudan chetga chiqmasin.
+    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
+    4. Savol tushunarli va ravon yozilsin.
+    5. Mantiqsiz savollar yaratma.
+    6. Takroriy savollar yaratma.
+    7. Bir xil sonlarni aylantirib yozma.
+    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+    9. O'quvchini fikrlashga undasin.
+    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
 
-    prompt = build_prompt(
-        topic_code,
-        difficulty="oson",
-        situation="oddiy",
-        question_type=question_type
-    )
+    TIL TALABLARI
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.7
-    )
+    - Savol fan tilida yozilsin.
+    - Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
+    - Rus tili fanida topshiriq rus tilida bo'lsin.
+    - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
+    - Tilni aralashtirma.
 
-    content = response.choices[0].message.content
+    QIYINLIK DARAJASI
 
-    content = content.replace("```json", "")
-    content = content.replace("```", "")
-    content = content.strip()
+    oson:
+    - bitta amal
+    - bitta fikr
+    - tez yechiladigan
 
-    try:
-        test_data = json.loads(content)
+    o'rta:
+    - 2-3 qadam
+    - tushunish talab qilinadi
 
-        test_data["topic_code"] = topic_code
-        test_data["difficulty"] = "oson"
-        test_data["situation"] = "oddiy"
+    qiyin:
+    - tahlil talab qilinadi
+    - bir nechta bosqich
 
-        save_test(test_data)
+    murakkab:
+    - mantiqiy fikrlash
+    - bir nechta yechim bosqichi
 
-        print(
-            f"✅ SAQLANDI: {question_type}"
-        )
+    HAYOTIYLIK DARAJASI
 
-    except Exception as e:
+    0 = oddiy akademik savol
 
-        print(
-            f"❌ XATO: {question_type}"
-        )
+    1 = sodda hayotiy vaziyat
 
-        print(e)
+    2 = kundalik hayot bilan bog'langan
 
-increase_count(topic_code)
+    3 = murakkab real vaziyat
 
-print("🎉 MAVZU TUGADI")
+    4 = ko'p bosqichli real hayotiy vaziyat
+
+    TEST TURLARI
+
+    single_choice:
+    - 4 variant
+    - 1 ta to'g'ri javob
+
+    multiple_choice:
+    - 4 variant
+    - kamida 2 ta to'g'ri javob
+    - correct_answer misol: "A,C"
+
+    true_false:
+    - option_a = "To'g'ri"
+    - option_b = "Noto'g'ri"
+
+    write_answer:
+    - variantlar bo'lmasin
+
+    image_question:
+    - image_prompt majburiy
+    - rasm orqali javob topilsin
+
+    MULTIMEDIA
+
+    Agar rasm kerak bo'lsa:
+    "is_latex": false
+    "image_prompt" ni to'ldir
+
+    Agar formula kerak bo'lsa:
+    "is_latex": true
+
+    Agar audio kerak bo'lsa:
+    "audio_text" ni to'ldir
+
+    VARIANT TALABLARI
+
+    - Variantlar qisqa bo'lsin
+    - Juda uzun gap bo'lmasin
+    - Variant oxiri "..." bilan tugamasin
+    - Variantlar bir-biridan aniq farq qilsin
+
+    JAVOB TALABLARI
+
+    - correct_answer da javob MATNI qaytarsin
+    - Harf qaytarma
+
+    Misol:
+
+    "correct_answer":"40"
+
+    IZOH
+
+    - explanation qisqa va tushunarli bo'lsin
+    - To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+
+    FAQAT JSON QAYTAR
+
+    {{
+    "question_type":"",
+    "is_latex":false,
+    "image_prompt":"",
+    "audio_text":"",
+    "question":"",
+    "option_a":"",
+    "option_b":"",
+    "option_c":"",
+    "option_d":"",
+    "correct_answer":"",
+    "explanation":""
+    }}
+    """
+    return prompt
