@@ -74,6 +74,9 @@ print(
     response.choices[0].message.content
 )
 content = response.choices[0].message.content
+content = content.replace("```json", "")
+content = content.replace("```", "")
+content = content.strip()
 
 test_data = json.loads(content)
 
