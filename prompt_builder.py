@@ -18,7 +18,7 @@ def build_prompt(
     grade, subject, bob, bolim, mavzu, kichik = info
 
     prompt = f"""
-    Siz professional pedagog, metodist, DTS eksperti, baholash mutaxassisi va testologsiz.
+    Siz professional pedagog, metodist va test tuzuvchisiz.
 
     SINF: {grade}
     FAN: {subject}
@@ -34,178 +34,190 @@ def build_prompt(
     TEST_TURI: {question_type}
     SKILL: {skill}
 
-    ==================================================
     ENG MUHIM QOIDA
-    ==================================================
 
-    Savol yaratishdan oldin quyidagilarni ichki tahlil qil:
-
-    1. FAN nimani o'rgatadi
-    2. SINF darajasi qanday
-    3. BOB nimani o'rgatadi
-    4. BO'LIM nimani o'rgatadi
-    5. MAVZU nimani o'rgatadi
-    6. KICHIK MAVZU nimani o'rgatadi
-    7. SKILL nimani tekshiradi
-
-    Ushbu ma'lumotlarni tushunmasdan savol yaratma.
+    GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
     Savol yaratish ketma-ketligi:
 
-    FAN
-    ↓
-    SINF
-    ↓
-    BOB
-    ↓
-    BO'LIM
-    ↓
-    MAVZU
-    ↓
-    KICHIK MAVZU
-    ↓
-    SKILL
-    ↓
-    SAVOL
+    1. FAN aniqlansin
+    2. SINF aniqlansin
+    3. BOB aniqlansin
+    4. BO'LIM aniqlansin
+    5. MAVZU aniqlansin
+    6. KICHIK MAVZU aniqlansin
+    7. SKILL aniqlansin
 
-    Har bir bosqich oldingisiga mos bo'lishi shart.
+    Shundan keyingina savol yaratiladi.
 
     ==================================================
-    SKILL QOIDASI
+    SAVOL YARATISH PRINSIPLARI
     ==================================================
 
-    SKILL testning asosiy maqsadi hisoblanadi.
+    Savol yaratishdan oldin:
 
-    Savolni yechish uchun o'quvchi aynan:
+    1. FAN maqsadini aniqla
+    2. SINF darajasini aniqla
+    3. MAVZU maqsadini aniqla
+    4. KICHIK MAVZU maqsadini aniqla
+    5. SKILL maqsadini aniqla
 
-    {skill}
-
-    ko'nikmasidan foydalanishi shart.
-
-    Agar savolni yechishda ushbu skill ishlatilmasa,
-    savol noto'g'ri hisoblanadi.
-
-    SKILL FAN va MAVZUni buzmasligi kerak.
-
-    Bir xil skill turli fanlarda turlicha ma'no berishi mumkin.
-
-    Shuning uchun avval FAN,
-    keyin MAVZU,
-    keyin SKILL hisobga olinsin.
+    Savol ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
 
     ==================================================
-    MAVZU QOIDASI
+    SKILL TALQINI
     ==================================================
 
-    MAVZU savolning o'zi emas.
+    SKILL faqat nom emas.
 
-    MAVZU va KICHIK MAVZU savol markazida bo'lishi kerak.
+    GPT avval SKILL nimani baholashini tushunishi kerak.
 
-    Savol mavzudan chetga chiqmasin.
+    Savolni yechish uchun o'quvchi aynan SKILLdan foydalanishi shart.
 
-    Savol kichik mavzudan chetga chiqmasin.
-
-    Mavzu matnini ko'chirib yozma.
-
-    Mavzu nomini savolga aylantirib yuborma.
-
-    Savol mavzuda o'rgatilayotgan bilim va ko'nikmani tekshirsin.
-    ==================================================
-    YOSH VA SINF MOSLIGI
-    ==================================================
-
-    Savol yaratishdan oldin o'quvchi yoshini hisobga ol.
-
-    -4 = 2-3 yosh
-    -3 = 3-4 yosh
-    -2 = 4-5 yosh
-    -1 = 5-6 yosh
-    0 = 6-7 yosh
-
-    1 = 1-sinf
-    2 = 2-sinf
-    3 = 3-sinf
-    4 = 4-sinf
-    5 = 5-sinf
-    6 = 6-sinf
-    7 = 7-sinf
-    8 = 8-sinf
-    9 = 9-sinf
-    10 = 10-sinf
-    11 = 11-sinf
-
-    Savolning:
-
-    - matn uzunligi
-    - terminlari
-    - fikrlash darajasi
-    - yechim bosqichlari
-
-    sinfga mos bo'lishi shart.
-
-    Agar savol o'quvchi yoshidan yuqori bo'lsa,
-    savol yaratma.
-
-    Agar savol juda sodda bo'lsa,
-    savol yaratma.
+    Agar savol boshqa ko'nikmani baholayotgan bo'lsa,
+    savolni bekor qil va yangisini yarat.
 
     ==================================================
-    QIYINLIK DARAJASI
+    MAVZU TALQINI
     ==================================================
 
-    oson:
+    MAVZU savolning nusxasi emas.
 
-    - bitta asosiy fikr
-    - minimal tahlil
-    - tez yechim
-    - yoshga mos sodda topshiriq
+    MAVZU va KICHIK MAVZU o'rgatilayotgan bilimni bildiradi.
 
-    o'rta:
+    Savol aynan mavzudagi bilim va ko'nikmani tekshirsin.
 
-    - 2-3 qadam
-    - tushunish talab qilinadi
-    - bog'lanishlarni topish kerak
+    Mavzu nomini ko'chirib yozma.
 
-    qiyin:
+    Mavzu matnini savolga aylantirma.
 
-    - tahlil talab qilinadi
-    - bir nechta ma'lumot ishlatiladi
-    - xulosa chiqarish kerak
-
-    murakkab:
-
-    - chuqur fikrlash
-    - ko'p bosqichli yechim
-    - murakkab bog'lanishlar
-
-    Agar savol qiyinlik talabiga mos kelmasa,
-    savolni qayta yarat.
+    Mavzuning mohiyatini tekshir.
 
     ==================================================
-    FAN QOIDASI
+    YANGILIK QOIDASI
     ==================================================
 
-    Har bir fan o'z metodikasiga ega.
+    Har bir savol:
 
-    Savol fan metodikasiga mos bo'lishi shart.
+    - yangi vaziyat
+    - yangi kontekst
+    - yangi fikrlash
+    - yangi yondashuv
 
-    Bir fan metodikasini boshqa fan bilan aralashtirma.
+    asosida yaratilishi kerak.
 
-    Fan nima o'rgatsa,
-    savol ham shuni baholasin.
+    Faqat sonlarni almashtirish yangi savol hisoblanmaydi.
+
+    Faqat ismlarni almashtirish yangi savol hisoblanmaydi.
+
+    Faqat matnni o'zgartirish yangi savol hisoblanmaydi.
+
+    ==================================================
+    PEDAGOGIK QOIDA
+    ==================================================
 
     Savol:
 
-    - fan maqsadiga mos
+    - yoshga mos
+    - sinfga mos
+    - fan metodikasiga mos
     - mavzuga mos
-    - kichik mavzuga mos
     - skillga mos
 
     bo'lishi shart.
 
+    Keraksiz murakkablik yaratma.
+
+    Keraksiz soddalik yaratma.
+
     ==================================================
+    MANTIQIY TEKSHIRUV
+    ==================================================
+
+    Savol yaratilgandan keyin ichki tekshir:
+
+    1. Savol nimani baholayapti?
+    2. Qaysi skillni tekshirayapti?
+    3. Qaysi mavzuni tekshirayapti?
+    4. O'quvchi bu savolni yechish uchun nima qilishi kerak?
+
+    Agar ushbu savollarga aniq javob bo'lmasa,
+    savolni qayta yarat.
+    
+    Agar yaratilgan savol:
+
+    - MAVZUga mos kelmasa
+    - KICHIK MAVZUga mos kelmasa
+
+    savol yaroqsiz hisoblanadi va yaratmaslik kerak.
+
+    TAQIQLANADI:
+
+    - Sonlarni almashtirib qayta yozish
+    - Ismlarni almashtirib qayta yozish
+    - Oldingi savol qolipidan foydalanish
+    - Mazmunan o'xshash savol yaratish
+    - Bir xil javobga olib keluvchi savol yaratish
+    - Bir xil fikrlash usulidan foydalanish
+
+    Har bir yangi savol:
+
+    - yangi kontekst
+    - yangi vaziyat
+    - yangi fikrlash
+    - yangi yechim
+
+    asosida yaratilishi kerak.
+
+    Agar oldingi savollarga o'xshashlik aniqlansa, yangi savol ishlab chiqilsin.
+
+    MAVZU ustuvor.
+    KICHIK MAVZU ustuvor.
+    SKILL ustuvor.
+
+    Savolni yechish uchun o'quvchi aynan {skill} ko'nikmasidan foydalanishi shart.
+
+    ASOSIY TALABLAR
+
+    1. Savol sinf yoshiga mos bo'lsin.
+    2. Savol mavzudan chetga chiqmasin.
+    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
+    4. Savol tushunarli va ravon yozilsin.
+    5. Mantiqsiz savollar yaratma.
+    6. Takroriy savollar yaratma.
+    7. Bir xil sonlarni aylantirib yozma.
+    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+    9. O'quvchini fikrlashga undasin.
+    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
+    11. Osonlikik darajasi va qilinlik darajasini 1, 2, 3, 4,  osqiha amalga oshirish esdan chiqmasin 
+    TIL TALABLARI
+
+    - Savol fan tilida yozilsin.
+    - Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
+    - Rus tili fanida topshiriq rus tilida bo'lsin.
+    - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
+    - Tilni aralashtirma.
+
+    QIYINLIK DARAJASI
+
+    oson:
+    - bitta amal
+    - bitta fikr
+    - tez yechiladigan
+
+    o'rta:
+    - 2-3 qadam
+    - tushunish talab qilinadi
+
+    qiyin:
+    - tahlil talab qilinadi
+    - bir nechta bosqich
+
+    murakkab:
+    - mantiqiy fikrlash
+    - bir nechta yechim bosqichi
+
     HAYOTIYLIK DARAJASI
-    ==================================================
 
     0 = oddiy akademik savol
 
@@ -217,10 +229,60 @@ def build_prompt(
 
     4 = ko'p bosqichli real hayotiy vaziyat
 
-    Hayotiylik darajasi berilgan qiymatdan oshib ketmasin.
-    ==================================================
-    TAKRORLANISHNI OLDINI OL
-    ==================================================
+    TEST TURLARI
+
+    single_choice:
+    - 4 variant
+    - 1 ta to'g'ri javob
+
+    multiple_choice:
+    - 4 variant
+    - kamida 2 ta to'g'ri javob
+    - correct_answer misol: "A,C"
+
+    true_false:
+    - option_a = "To'g'ri"
+    - option_b = "Noto'g'ri"
+
+    write_answer:
+    - variantlar bo'lmasin
+
+    image_question:
+    - image_prompt majburiy
+    - rasm orqali javob topilsin
+
+    MULTIMEDIA
+
+    Agar rasm kerak bo'lsa:
+    "is_latex": false
+    "image_prompt" ni to'ldir
+
+    Agar formula kerak bo'lsa:
+    "is_latex": true
+
+    Agar audio kerak bo'lsa:
+    "audio_text" ni to'ldir
+
+    VARIANT TALABLARI
+
+    - Variantlar qisqa bo'lsin
+    - Juda uzun gap bo'lmasin
+    - Variant oxiri "..." bilan tugamasin
+    - Variantlar bir-biridan aniq farq qilsin
+
+    JAVOB TALABLARI
+
+    - correct_answer da javob MATNI qaytarsin
+    - Harf qaytarma
+
+    Misol:
+
+    "correct_answer":"40"
+
+    IZOH
+
+    - explanation qisqa va tushunarli bo'lsin
+    - To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
 
     OXIRGI YARATILGAN SAVOLLAR
 
@@ -228,216 +290,14 @@ def build_prompt(
 
     YUQORIDAGI SAVOLLARNI TAKRORLAMA.
 
-    QAT'IYAN TAQIQLANADI:
+    MATNINI O'ZGARTIRIB
+    QAYTA YOZMA.
 
-    - sonlarni almashtirib qayta yozish
-    - ismlarni almashtirib qayta yozish
-    - matnni ozgina o'zgartirib qayta yozish
-    - bir xil qolipdagi savollar
-    - bir xil javobga olib keluvchi savollar
-    - bir xil fikrlash usuli
-    - bir xil yechim usuli
-    - bir xil kontekst
-    - bir xil vaziyat
+    MAZMUNAN HAM
+    O'XSHASH SAVOL
+    YARATMA.
 
-    Agar o'xshashlik aniqlansa,
-    mutlaqo yangi savol yarat.
-
-    Savol nafaqat matn jihatdan,
-    balki mazmun jihatdan ham yangi bo'lishi kerak.
-
-    ==================================================
-    XILMA-XILLIK
-    ==================================================
-
-    Bir mavzu ichida barcha savollar bir xil bo'lmasin.
-
-    Imkon qadar quyidagilar aralashtirib ishlatilsin:
-
-    - natijani topish
-    - xatoni topish
-    - taqqoslash
-    - moslashtirish
-    - tahlil qilish
-    - sababni aniqlash
-    - hayotiy vaziyat
-    - rasm asosida
-    - jadval asosida
-    - mantiqiy fikrlash
-    - ketma-ketlikni topish
-    - guruhlash
-    - tanlash
-    - bog'lash
-
-    Har bir yangi savol boshqa yondashuvdan foydalansin.
-
-    ==================================================
-    TEST TURLARI
-    ==================================================
-
-    single_choice:
-
-    - 4 variant
-    - 1 ta to'g'ri javob
-    - faqat bitta javob to'g'ri bo'lsin
-
-    multiple_choice:
-
-    - 4 variant
-    - kamida 2 ta to'g'ri javob
-    - correct_answer misol: "A,C"
-
-    true_false:
-
-    - option_a = "To'g'ri"
-    - option_b = "Noto'g'ri"
-
-    write_answer:
-
-    - variantlar bo'lmasin
-    - javob o'quvchi tomonidan yozilsin
-
-    image_question:
-
-    - image_prompt majburiy
-    - rasm savolni yechishda muhim bo'lsin
-    - rasm shunchaki bezak bo'lmasin
-
-    ==================================================
-    MULTIMEDIA
-    ==================================================
-
-    Agar rasm kerak bo'lsa:
-
-    "is_latex": false
-
-    image_prompt ni to'ldir.
-
-    Agar formula kerak bo'lsa:
-
-    "is_latex": true
-
-    Agar audio kerak bo'lsa:
-
-    audio_text ni to'ldir.
-
-    Multimedia savolni yechishga xizmat qilishi kerak.
-    ==================================================
-    VARIANT TALABLARI
-    ==================================================
-
-    Variantlar:
-
-    - qisqa bo'lsin
-    - tushunarli bo'lsin
-    - bir-biridan aniq farq qilsin
-    - mantiqli bo'lsin
-    - yoshga mos bo'lsin
-
-    Taqiqlanadi:
-
-    - juda uzun variantlar
-    - bir xil ma'nodagi variantlar
-    - kulgili variantlar
-    - mavzuga aloqasiz variantlar
-
-    Noto'g'ri variantlar ham mantiqan mumkin
-    bo'lgan javoblar bo'lsin.
-
-    ==================================================
-    JAVOB TALABLARI
-    ==================================================
-
-    correct_answer ichida javob MATNI qaytarilsin.
-
-    Harf qaytarma.
-
-    To'g'ri:
-
-    "correct_answer":"40"
-
-    Noto'g'ri:
-
-    "correct_answer":"A"
-
-    Agar single_choice bo'lsa:
-
-    correct_answer variantlardan biri bilan
-    aynan bir xil bo'lishi kerak.
-
-    Agar multiple_choice bo'lsa:
-
-    correct_answer misol:
-
-    "A,C"
-
-    ==================================================
-    IZOH TALABLARI
-    ==================================================
-
-    explanation:
-
-    - qisqa bo'lsin
-    - tushunarli bo'lsin
-    - yoshga mos bo'lsin
-
-    Izohda:
-
-    to'g'ri javob nima uchun to'g'ri ekanligi
-    tushuntirilsin.
-
-    Keraksiz uzun nazariya yozilmasin.
-
-    ==================================================
-    PEDAGOGIK TALABLAR
-    ==================================================
-
-    Savol:
-
-    - pedagogik jihatdan to'g'ri bo'lsin
-    - o'quv maqsadiga xizmat qilsin
-    - mavzuni baholasin
-    - skillni baholasin
-
-    Savol:
-
-    - mantiqsiz bo'lmasin
-    - chalkash bo'lmasin
-    - noto'g'ri talqin qilinmasin
-
-    ==================================================
-    YAKUNIY TEKSHIRUV
-    ==================================================
-
-    JSON yuborishdan oldin ichki tekshir:
-
-    1. Savol FANga mosmi
-    2. Savol SINFga mosmi
-    3. Savol BOBga mosmi
-    4. Savol BO'LIMga mosmi
-    5. Savol MAVZUga mosmi
-    6. Savol KICHIK MAVZUga mosmi
-    7. Savol SKILLni tekshiryaptimi
-    8. Savol QIYINLIK darajasiga mosmi
-    9. Savol yoshga mosmi
-    10. Savol takror emasmi
-    11. Variantlar mantiqliymi
-    12. To'g'ri javob haqiqatan ham to'g'rimi
-
-    Agar bittasiga ham YO'Q javobi chiqsa,
-    savolni qayta yarat.
-
-    ==================================================
-    NATIJA
-    ==================================================
-
-    FAQAT JSON QAYTAR.
-
-    HECH QANDAY IZOH YOZMA.
-
-    HECH QANDAY MARKDOWN YOZMA.
-
-    HECH QANDAY ```json YOZMA.
+    FAQAT JSON QAYTAR
 
     {{
     "question_type":"",
