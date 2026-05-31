@@ -37,6 +37,36 @@ def build_prompt(
     ENG MUHIM QOIDA
 
     GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
+    QIYINLIK DARAJASI
+
+    oson:
+    - bitta amal
+    - bitta fikr
+    - tez yechiladigan
+
+    o'rta:
+    - 2-3 qadam
+    - tushunish talab qilinadi
+
+    qiyin:
+    - tahlil talab qilinadi
+    - bir nechta bosqich
+
+    murakkab:
+    - mantiqiy fikrlash
+    - bir nechta yechim bosqichi
+
+    HAYOTIYLIK DARAJASI
+
+    0 = oddiy akademik savol
+
+    1 = sodda hayotiy vaziyat
+
+    2 = kundalik hayot bilan bog'langan
+
+    3 = murakkab real vaziyat
+
+    4 = ko'p bosqichli real hayotiy vaziyat
 
     Savol yaratish ketma-ketligi:
 
@@ -198,36 +228,6 @@ def build_prompt(
     - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
     - Tilni aralashtirma.
 
-    QIYINLIK DARAJASI
-
-    oson:
-    - bitta amal
-    - bitta fikr
-    - tez yechiladigan
-
-    o'rta:
-    - 2-3 qadam
-    - tushunish talab qilinadi
-
-    qiyin:
-    - tahlil talab qilinadi
-    - bir nechta bosqich
-
-    murakkab:
-    - mantiqiy fikrlash
-    - bir nechta yechim bosqichi
-
-    HAYOTIYLIK DARAJASI
-
-    0 = oddiy akademik savol
-
-    1 = sodda hayotiy vaziyat
-
-    2 = kundalik hayot bilan bog'langan
-
-    3 = murakkab real vaziyat
-
-    4 = ko'p bosqichli real hayotiy vaziyat
 
     TEST TURLARI
 
