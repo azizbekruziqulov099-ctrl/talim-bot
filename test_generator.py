@@ -140,6 +140,13 @@ def get_best_skill(
 
     text = f"{mavzu} {kichik}".lower()
 
+    text = (
+        text
+        .replace("'", "")
+        .replace("‘", "")
+        .replace("`", "")
+    )
+
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -158,28 +165,25 @@ def get_best_skill(
     cur.close()
     conn.close()
 
-    best_skill = "umumiy"
-    best_score = 0
-
     for skill, keywords in rows:
 
         if not keywords:
             continue
 
-        score = 0
-
         for word in keywords.split(","):
 
-            word = word.strip().lower()
+            word = (
+                word.strip()
+                .lower()
+                .replace("'", "")
+                .replace("‘", "")
+                .replace("`", "")
+            )
 
-            if word in text:
-                score += 1
+            if word and word in text:
+                return skill
 
-        if score > best_score:
-            best_score = score
-            best_skill = skill
-
-    return best_skill
+    return "umumiy"
 
 def get_last_questions(topic_code, limit=80):
 
