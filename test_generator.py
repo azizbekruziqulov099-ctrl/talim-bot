@@ -45,8 +45,6 @@ def save_test(test_data):
 
 topic_code = get_next_topic(1)[0][0]
 
-info = get_topic_info(topic_code)
-
 prompt = build_prompt(
     info,
     difficulty="oson",
