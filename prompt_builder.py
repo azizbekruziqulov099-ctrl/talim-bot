@@ -33,8 +33,13 @@ def build_prompt(
 
     TEST_TURI: {question_type}
 
-    ENG MUHIM QOIDA
 
+
+    ==================================================
+    ENG MUHIM QOIDA
+    ==================================================
+    1. Boshlang;ih (1-4)- sinflarga test tuzishda oddiy misollar tuzish ko'proq. Qolganlarga sinifi va yozshiga qaralsin
+    2. oddiyga asosan 2 yoi 3 so'zli, ko'pida 5 yoki 6 so'zli bolsin boshlang'ih sinflarga 
     GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
     Savol yaratish ketma-ketligi:
