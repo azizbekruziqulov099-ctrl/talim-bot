@@ -27,6 +27,38 @@ def build_prompt(topic_code, difficulty, situation, question_type, skill):
     TEST_TURI: {question_type}
     SKILL: {skill}
 
+    MUHIM
+
+    SKILL TESTNING ASOSIY MAQSADI HISOBLANADI.
+
+    Savol avvalo SKILL ni tekshirishi shart.
+
+    Agar savol SKILL ni tekshirmasa,
+    savol yaroqsiz hisoblanadi.
+
+    MAVZU yordamchi ma'lumot.
+
+    SKILL har doim MAVZUDAN USTUN.
+
+    Masalan:
+
+    skill = ranglarni_guruhlash
+
+    Ruxsat:
+    - ranglarni ajratish
+    - ranglarni solishtirish
+    - bir xil ranglarni topish
+    - ranglarni guruhlarga bo'lish
+
+    Taqiqlanadi:
+    - qo'shish
+    - ayirish
+    - ko'paytirish
+    - bo'lish
+    - skillga aloqasiz savollar
+
+    Savol aynan skillni tekshirsin.
+
     ASOSIY TALABLAR
 
     1. Savol sinf yoshiga mos bo'lsin.
