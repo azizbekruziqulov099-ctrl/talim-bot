@@ -31,7 +31,6 @@ def save_test(test_data):
         VALUES (
             %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         test_data["topic_code"],
         test_data["difficulty"],
