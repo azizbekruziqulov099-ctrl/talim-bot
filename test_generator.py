@@ -6,7 +6,7 @@ from topic_info import get_topic_info
 from prompt_builder import build_prompt
 from openai_client import client
 from rapidfuzz import fuzz
-
+import random
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("1-BOSQICH")
 
@@ -235,12 +235,39 @@ test_types = (
     ["write_answer"] * 3 +
     ["image_question"] * 2
 )
+last_questions = get_last_questions(topic_code)
 
-for question_type in test_types:
+test_types = (
+    ["single_choice"] * 8 +
+    ["multiple_choice"] * 4 +
+    ["true_false"] * 3 +
+    ["write_answer"] * 3 +
+    ["image_question"] * 2
+)
+
+difficulties = (
+    ["oson"] * 10 +
+    ["o'rta"] * 4 +
+    ["qiyin"] * 4 +
+    ["murakkab"] * 2
+)
+
+life_levels = (
+    [0] * 4 +
+    [1] * 4 +
+    [2] * 4 +
+    [3] * 4 +
+    [4] * 4
+)
+
+for i, question_type in enumerate(test_types):
+
+    difficulty = difficulties[i]
+    life_level = life_levels[i]
 
     prompt = build_prompt(
         topic_code,
-        difficulty="oson",
+        difficulty=difficulty,
         situation="oddiy",
         question_type=question_type,
         skill=skill,
@@ -283,8 +310,8 @@ for question_type in test_types:
             test_data["question_type"] = question_type
 
         test_data["topic_code"] = topic_code
-        test_data["difficulty"] = "oson"
-        test_data["situation"] = "oddiy"
+        test_data["difficulty"] = "difficulty"
+        test_data["situation"] = "situation"
         test_data["skill"] = skill
 
         save_test(test_data)
@@ -304,3 +331,4 @@ for question_type in test_types:
 increase_count(topic_code)
 
 print("🎉 MAVZU TUGADI")
+
