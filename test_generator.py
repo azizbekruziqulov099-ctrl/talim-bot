@@ -3,6 +3,8 @@ import psycopg2
 import json
 from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
+from prompt_builder import build_prompt
+
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
