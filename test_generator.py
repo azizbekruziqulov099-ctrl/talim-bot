@@ -4,6 +4,7 @@ import json
 from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
 from prompt_builder import build_prompt
+from openai_client import client
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -59,4 +60,17 @@ prompt = build_prompt(
     situation="oddiy"
 )
 
-print(prompt)
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    temperature=0.7
+)
+
+print(
+    response.choices[0].message.content
+)
