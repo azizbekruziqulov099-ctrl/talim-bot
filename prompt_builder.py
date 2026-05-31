@@ -37,36 +37,6 @@ def build_prompt(
     ENG MUHIM QOIDA
 
     GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
-    QIYINLIK DARAJASI
-
-    oson:
-    - bitta amal
-    - bitta fikr
-    - tez yechiladigan
-
-    o'rta:
-    - 2-3 qadam
-    - tushunish talab qilinadi
-
-    qiyin:
-    - tahlil talab qilinadi
-    - bir nechta bosqich
-
-    murakkab:
-    - mantiqiy fikrlash
-    - bir nechta yechim bosqichi
-
-    HAYOTIYLIK DARAJASI
-
-    0 = oddiy akademik savol
-
-    1 = sodda hayotiy vaziyat
-
-    2 = kundalik hayot bilan bog'langan
-
-    3 = murakkab real vaziyat
-
-    4 = ko'p bosqichli real hayotiy vaziyat
 
     Savol yaratish ketma-ketligi:
 
@@ -219,7 +189,7 @@ def build_prompt(
     8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
     9. O'quvchini fikrlashga undasin.
     10. Noto'g'ri javoblar ham mantiqli bo'lsin.
-    11. Osonlikik darajasi va qilinlik darajasini 1, 2, 3, 4,  osqiha amalga oshirish esdan chiqmasin 
+    
     TIL TALABLARI
 
     - Savol fan tilida yozilsin.
@@ -228,6 +198,35 @@ def build_prompt(
     - O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
     - Tilni aralashtirma.
 
+    QIYINLIK DARAJASI
+
+    oson:
+    - bitta amal
+    - bitta fikr
+    - tez yechiladigan
+
+    o'rta:
+    - 2-3 qadam
+    - tushunish talab qilinadi
+
+    qiyin:
+    - qilinmasin vaqat oson 80% va o'rta 20 % olinsin
+
+
+    murakkab:
+    - qilinmasin vaqat oson 80% va o'rta 20 % olinsin
+
+    HAYOTIYLIK DARAJASI
+
+    0 = oddiy akademik savol
+
+    1 = sodda hayotiy vaziyat
+
+    2 = kundalik hayot bilan bog'langan
+
+    3 = real vaziyat
+
+    4 = real hayotiy vaziyat
 
     TEST TURLARI
 
