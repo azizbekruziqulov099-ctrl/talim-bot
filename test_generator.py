@@ -74,3 +74,14 @@ response = client.chat.completions.create(
 print(
     response.choices[0].message.content
 )
+content = response.choices[0].message.content
+
+test_data = json.loads(content)
+
+test_data["topic_code"] = topic_code
+test_data["difficulty"] = "oson"
+test_data["situation"] = "oddiy"
+
+save_test(test_data)
+
+print("SAQLANDI")
