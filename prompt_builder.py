@@ -1,7 +1,7 @@
 from topic_info import get_topic_info
 
 
-def build_prompt(topic_code, difficulty, situation):
+def build_prompt(topic_code, difficulty, situation, question_type):
 
     info = get_topic_info(topic_code)
 
@@ -23,33 +23,43 @@ Kichik mavzu: {kichik}
 
 Qiyinlik: {difficulty}
 Vaziyat: {situation}
+Test turi: {question_type}
 
-Test turi quyidagilardan biri bo'lsin:
+MUHIM:
 
-1. single_choice
-   - 4 ta variant
-   - 1 ta to'g'ri javob
+1. Savol tili fan tilidan chiqib ketmasin.
+2. Mavzudan chetga chiqma.
+3. Mantiqsiz yoki mavzuga aloqasiz savol yaratma.
+4. Avval yaratilgan savolni takrorlama.
+5. Javob variantlari qisqa bo'lsin (2-5 so'z).
+6. To'g'ri javobni option matni bilan qaytar:
+   Masalan:
+   "correct_answer":"40"
 
-2. multiple_choice
-   - 4 ta variant
-   - 2 yoki undan ko'p to'g'ri javob
+Test turi qat'iy:
+- single_choice → 4 variant, 1 ta to'g'ri javob
+- multiple_choice → 4 variant, 2 yoki undan ko'p to'g'ri javob
+- true_false → To'g'ri/Noto'g'ri
+- write_answer → variantsiz, o'quvchi yozadi
+- image_question → image_prompt to'ldiriladi
 
-3. write_answer
-   - variantlarsiz
-   - o'quvchi javobni o'zi yozadi
+Hayotiy darajalar:
 
-4. image_question
-   - savol uchun rasm kerak bo'lsa
-   - image_prompt maydonini to'ldir
-
-5. true_false
-   - To'g'ri / Noto'g'ri
-
-Agar matematik formula kerak bo'lsa:
-"is_latex": true
+0 = oddiy
+1 = sodda hayotiy vaziyat
+2 = o'rtacha hayotiy vaziyat
+3 = murakkab hayotiy vaziyat
+4 = ko'p bosqichli hayotiy vaziyat
 
 Agar rasm kerak bo'lsa:
-"question_type": "image_question"
+"is_latex": false
+"image_prompt" ni to'ldir.
+
+Agar formula bo'lsa:
+"is_latex": true
+
+Ovozli topshiriq kerak bo'lsa:
+audio_text maydoniga o'qilishi kerak bo'lgan matnni yoz.
 
 Faqat JSON qaytar.
 
