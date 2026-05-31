@@ -1,7 +1,14 @@
 from topic_info import get_topic_info
 
 
-def build_prompt(topic_code, difficulty, situation, question_type, skill):
+def build_prompt(
+    topic_code,
+    difficulty,
+    situation,
+    question_type,
+    skill,
+    last_questions
+):
 
     info = get_topic_info(topic_code)
 
@@ -165,6 +172,19 @@ def build_prompt(topic_code, difficulty, situation, question_type, skill):
 
     - explanation qisqa va tushunarli bo'lsin
     - To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+
+    OXIRGI YARATILGAN SAVOLLAR
+
+    {last_questions}
+
+    YUQORIDAGI SAVOLLARNI TAKRORLAMA.
+
+    MATNINI O'ZGARTIRIB
+    QAYTA YOZMA.
+
+    MAZMUNAN HAM
+    O'XSHASH SAVOL
+    YARATMA.
 
     FAQAT JSON QAYTAR
 
