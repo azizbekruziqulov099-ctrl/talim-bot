@@ -211,13 +211,6 @@ info = get_topic_info(topic_code)
 
 grade, subject, bob, bolim, mavzu, kichik = info
 
-skill = get_best_skill(
-    grade,
-    subject,
-    mavzu,
-    kichik
-)
-
 print("GRADE:", grade)
 print("SUBJECT:", subject)
 print("MAVZU:", mavzu)
@@ -246,18 +239,17 @@ test_types = (
 )
 
 difficulties = (
-    ["oson"] * 10 +
+    ["oson"] * 12 +
     ["o'rta"] * 4 +
     ["qiyin"] * 4 +
-    ["murakkab"] * 2
+    
 )
 
 life_levels = (
-    [0] * 4 +
-    [1] * 4 +
-    [2] * 4 +
-    [3] * 4 +
-    [4] * 4
+    [0] * 11 +
+    [1] * 3 +
+    [2] * 3 +
+    [3] * 3 +
 )
 
 for i, question_type in enumerate(test_types):
@@ -331,4 +323,3 @@ for i, question_type in enumerate(test_types):
 increase_count(topic_code)
 
 print("🎉 MAVZU TUGADI")
-
