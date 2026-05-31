@@ -34,37 +34,57 @@ def build_prompt(
     TEST_TURI: {question_type}
     SKILL: {skill}
 
-    MUHIM
+    ENG MUHIM QOIDA
 
-    SKILL TESTNING ASOSIY MAQSADI HISOBLANADI.
+    GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
-    Savol avvalo SKILL ni tekshirishi shart.
+    SKILL ushbu mavzudan kelib chiqadigan ko'nikma hisoblanadi.
 
-    Agar savol SKILL ni tekshirmasa,
-    savol yaroqsiz hisoblanadi.
+    Savol yaratish ketma-ketligi:
 
-    MAVZU yordamchi ma'lumot.
+    1. FAN aniqlansin
+    2. SINF aniqlansin
+    3. BOB aniqlansin
+    4. BO'LIM aniqlansin
+    5. MAVZU aniqlansin
+    6. KICHIK MAVZU aniqlansin
+    7. SKILL aniqlansin
 
-    SKILL har doim MAVZUDAN USTUN.
+    Shundan keyingina savol yaratiladi.
 
-    Masalan:
+    Agar yaratilgan savol:
 
-    skill = ranglarni_guruhlash
+    - MAVZUga mos kelmasa
+    - KICHIK MAVZUga mos kelmasa
+    - SKILLni tekshirmasa
 
-    Ruxsat:
-    - ranglarni ajratish
-    - ranglarni solishtirish
-    - bir xil ranglarni topish
-    - ranglarni guruhlarga bo'lish
+    savol yaroqsiz hisoblanadi va yaratmaslik kerak.
 
-    Taqiqlanadi:
-    - qo'shish
-    - ayirish
-    - ko'paytirish
-    - bo'lish
-    - skillga aloqasiz savollar
+    TAQIQLANADI:
 
-    Savol aynan skillni tekshirsin.
+    - Sonlarni almashtirib qayta yozish
+    - Ismlarni almashtirib qayta yozish
+    - Oldingi savol qolipidan foydalanish
+    - Mazmunan o'xshash savol yaratish
+    - Bir xil javobga olib keluvchi savol yaratish
+    - Bir xil fikrlash usulidan foydalanish
+
+    Har bir yangi savol:
+
+    - yangi kontekst
+    - yangi vaziyat
+    - yangi fikrlash
+    - yangi yechim
+
+    asosida yaratilishi kerak.
+
+    Agar oldingi savollarga o'xshashlik aniqlansa, yangi savol ishlab chiqilsin.
+
+    MAVZU ustuvor.
+    KICHIK MAVZU ustuvor.
+    SKILL ustuvor.
+
+    Savolni yechish uchun o'quvchi aynan {skill} ko'nikmasidan foydalanishi shart.
 
     ASOSIY TALABLAR
 
