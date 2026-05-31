@@ -37,7 +37,7 @@ def build_prompt(
     ENG MUHIM QOIDA
 
     1.GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin 
-    2. yuqoriagiga moslab skill yarat .
+    2. yuqoriagiga moslab skill yarataddi .
 
     Savol yaratish ketma-ketligi:
 
@@ -66,19 +66,6 @@ def build_prompt(
     Savol ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
 
     ==================================================
-    SKILL TALQINI
-    ==================================================
-
-    SKILL faqat nom emas.
-
-    GPT avval SKILL nimani baholashini tushunishi kerak.
-
-    Savolni yechish uchun o'quvchi aynan SKILLdan foydalanishi shart.
-
-    Agar savol boshqa ko'nikmani baholayotgan bo'lsa,
-    savolni bekor qil va yangisini yarat.
-
-    ==================================================
     MAVZU TALQINI
     ==================================================
 
@@ -100,10 +87,10 @@ def build_prompt(
 
     Har bir savol:
 
-    - yangi vaziyat
-    - yangi kontekst
-    - yangi fikrlash
-    - yangi yondashuv
+    - oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
+    - yangi kontekst oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
+    - yangi fikrlash oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
+    - yangi yondashuv oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
 
     asosida yaratilishi kerak.
 
@@ -129,8 +116,6 @@ def build_prompt(
 
     Keraksiz murakkablik yaratma.
 
-    Keraksiz soddalik yaratma.
-
     ==================================================
     MANTIQIY TEKSHIRUV
     ==================================================
@@ -138,9 +123,8 @@ def build_prompt(
     Savol yaratilgandan keyin ichki tekshir:
 
     1. Savol nimani baholayapti?
-    2. Qaysi skillni tekshirayapti?
-    3. Qaysi mavzuni tekshirayapti?
-    4. O'quvchi bu savolni yechish uchun nima qilishi kerak?
+    2. Qaysi mavzuni tekshirayapti?
+    3. O'quvchi bu savolni yechish uchun nima qilishi kerak?
 
     Agar ushbu savollarga aniq javob bo'lmasa,
     savolni qayta yarat.
@@ -154,7 +138,6 @@ def build_prompt(
 
     TAQIQLANADI:
 
-    - Sonlarni almashtirib qayta yozish
     - Ismlarni almashtirib qayta yozish
     - Oldingi savol qolipidan foydalanish
     - Mazmunan o'xshash savol yaratish
@@ -162,9 +145,6 @@ def build_prompt(
     - Bir xil fikrlash usulidan foydalanish
 
     Har bir yangi savol:
-
-    - yangi kontekst
-    - yangi vaziyat
     - yangi fikrlash
     - yangi yechim
 
@@ -191,7 +171,6 @@ def build_prompt(
     9. Bir xil sonlarni aylantirib yozma.
     10. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
     11. O'quvchini fikrlashga undasin.
-    12. Noto'g'ri javoblar ham mantiqli bo'lsin.
     
     TIL TALABLARI
 
