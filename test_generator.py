@@ -154,7 +154,7 @@ def get_best_skill(
         SELECT skill, keywords
         FROM subject_skills
         WHERE grade=%s
-        AND subject=%s
+        AND LOWER(subject)=LOWER(%s)
     """, (
         str(grade),
         subject
