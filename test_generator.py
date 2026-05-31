@@ -53,39 +53,61 @@ def save_test(test_data):
 
 topic_code = get_next_topic(1)[0][0]
 
-prompt = build_prompt(
-    topic_code,
-    difficulty="oson",
-    situation="oddiy"
+test_types = (
+    ["single_choice"] * 8 +
+    ["multiple_choice"] * 4 +
+    ["true_false"] * 3 +
+    ["write_answer"] * 3 +
+    ["image_question"] * 2
 )
 
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ],
-    temperature=0.7
-)
+for question_type in test_types:
 
-print(
-    response.choices[0].message.content
-)
-content = response.choices[0].message.content
-content = content.replace("```json", "")
-content = content.replace("```", "")
-content = content.strip()
+    prompt = build_prompt(
+        topic_code,
+        difficulty="oson",
+        situation="oddiy",
+        question_type=question_type
+    )
 
-test_data = json.loads(content)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.7
+    )
 
-test_data["topic_code"] = topic_code
-test_data["difficulty"] = "oson"
-test_data["situation"] = "oddiy"
+    content = response.choices[0].message.content
 
-save_test(test_data)
+    content = content.replace("```json", "")
+    content = content.replace("```", "")
+    content = content.strip()
+
+    try:
+        test_data = json.loads(content)
+
+        test_data["topic_code"] = topic_code
+        test_data["difficulty"] = "oson"
+        test_data["situation"] = "oddiy"
+
+        save_test(test_data)
+
+        print(
+            f"✅ SAQLANDI: {question_type}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ XATO: {question_type}"
+        )
+
+        print(e)
 
 increase_count(topic_code)
 
-print("SAQLANDI")
+print("🎉 MAVZU TUGADI")
