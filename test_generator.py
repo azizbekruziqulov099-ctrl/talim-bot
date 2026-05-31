@@ -133,14 +133,13 @@ test_types = (
 
 for question_type in test_types:
 
-    build_prompt(
+    prompt = build_prompt(
         topic_code,
         difficulty="oson",
         situation="oddiy",
         question_type=question_type,
         skill=skill
     )
-
     print("3-BOSQICH")
 
     print("4-BOSQICH GPTGA YUBORILAYAPTI")
