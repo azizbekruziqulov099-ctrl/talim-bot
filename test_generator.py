@@ -12,6 +12,27 @@ def save_test(test_data):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
+    # Dublikat tekshirish
+
+    cur.execute("""
+        SELECT 1
+        FROM generated_tests
+        WHERE topic_code=%s
+        AND question=%s
+        LIMIT 1
+    """, (
+        test_data["topic_code"],
+        test_data["question"]
+    ))
+
+    if cur.fetchone():
+        print("⚠️ DUPLIKAT TEST")
+        cur.close()
+        conn.close()
+        return
+
+    # Saqlash
+
     cur.execute("""
         INSERT INTO generated_tests (
             topic_code,
@@ -48,6 +69,7 @@ def save_test(test_data):
     ))
 
     conn.commit()
+
     cur.close()
     conn.close()
 
