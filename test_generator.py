@@ -47,10 +47,13 @@ def save_test(test_data):
             explanation,
             question_type,
             is_latex,
-            image_url
+            image_url,
+            audio_text,
+            language,
+            life_level
         )
         VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
     """, (
         test_data["topic_code"],
@@ -65,7 +68,10 @@ def save_test(test_data):
         test_data.get("explanation"),
         test_data.get("question_type", "single_choice"),
         test_data.get("is_latex", False),
-        test_data.get("image_url")
+        test_data.get("image_url"),
+        test_data.get("audio_text"),
+        test_data.get("language", "uz"),
+        test_data.get("life_level", 0)
     ))
 
     conn.commit()
