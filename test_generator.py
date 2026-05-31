@@ -131,32 +131,55 @@ def save_test(test_data):
     cur.close()
     conn.close()
 
-def get_best_skill(subject, grade):
+def get_best_skill(
+    grade,
+    subject,
+    mavzu,
+    kichik
+):
 
-    print("GRADE:", grade)
-    print("SUBJECT:", subject)
+    text = f"{mavzu} {kichik}".lower()
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT skill
+        SELECT skill, keywords
         FROM subject_skills
-        WHERE subject=%s
-        AND grade=%s
-        ORDER BY RANDOM()
-        LIMIT 1
-    """, (subject, str(grade)))
+        WHERE grade=%s
+        AND subject=%s
+    """, (
+        str(grade),
+        subject
+    ))
 
-    row = cur.fetchone()
+    rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    if row:
-        return row[0]
+    best_skill = "umumiy"
+    best_score = 0
 
-    return "umumiy"
+    for skill, keywords in rows:
+
+        if not keywords:
+            continue
+
+        score = 0
+
+        for word in keywords.split(","):
+
+            word = word.strip().lower()
+
+            if word in text:
+                score += 1
+
+        if score > best_score:
+            best_score = score
+            best_skill = skill
+
+    return best_skill
 
 def get_last_questions(topic_code, limit=80):
 
@@ -185,15 +208,16 @@ info = get_topic_info(topic_code)
 grade, subject, bob, bolim, mavzu, kichik = info
 
 skill = get_best_skill(
+    grade,
     subject,
-    grade
+    mavzu,
+    kichik
 )
 
-print("BOB:", bob)
-print("BOLIM:", bolim)
+print("GRADE:", grade)
+print("SUBJECT:", subject)
 print("MAVZU:", mavzu)
 print("KICHIK:", kichik)
-
 print("SKILL:", skill)
 
 print("2-BOSQICH")
