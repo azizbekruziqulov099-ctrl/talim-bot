@@ -35,9 +35,8 @@ def build_prompt(
     SKILL: {skill}
 
     ENG MUHIM QOIDA
-
-    1.GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin 
-    2. yuqoriagiga moslab skill yarataddi .
+    Oddiyroq testlar tuz ko‘proq.
+    GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
     Savol yaratish ketma-ketligi:
 
@@ -66,6 +65,19 @@ def build_prompt(
     Savol ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
 
     ==================================================
+    SKILL TALQINI
+    ==================================================
+
+    SKILL faqat nom emas.
+
+    GPT avval SKILL nimani baholashini tushunishi kerak.
+
+    Savolni yechish uchun o'quvchi aynan SKILLdan foydalanishi shart.
+
+    Agar savol boshqa ko'nikmani baholayotgan bo'lsa,
+    savolni bekor qil va yangisini yarat.
+
+    ==================================================
     MAVZU TALQINI
     ==================================================
 
@@ -87,10 +99,10 @@ def build_prompt(
 
     Har bir savol:
 
-    - oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
-    - yangi kontekst oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
-    - yangi fikrlash oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
-    - yangi yondashuv oddiy ikki uch so'zdan eng ko'pi yoshi va faniga bog'liq
+    - yangi vaziyat
+    - yangi kontekst
+    - yangi fikrlash
+    - yangi yondashuv
 
     asosida yaratilishi kerak.
 
@@ -116,6 +128,8 @@ def build_prompt(
 
     Keraksiz murakkablik yaratma.
 
+    Keraksiz soddalik yaratma.
+
     ==================================================
     MANTIQIY TEKSHIRUV
     ==================================================
@@ -123,8 +137,9 @@ def build_prompt(
     Savol yaratilgandan keyin ichki tekshir:
 
     1. Savol nimani baholayapti?
-    2. Qaysi mavzuni tekshirayapti?
-    3. O'quvchi bu savolni yechish uchun nima qilishi kerak?
+    2. Qaysi skillni tekshirayapti?
+    3. Qaysi mavzuni tekshirayapti?
+    4. O'quvchi bu savolni yechish uchun nima qilishi kerak?
 
     Agar ushbu savollarga aniq javob bo'lmasa,
     savolni qayta yarat.
@@ -138,6 +153,7 @@ def build_prompt(
 
     TAQIQLANADI:
 
+    - Sonlarni almashtirib qayta yozish
     - Ismlarni almashtirib qayta yozish
     - Oldingi savol qolipidan foydalanish
     - Mazmunan o'xshash savol yaratish
@@ -145,6 +161,9 @@ def build_prompt(
     - Bir xil fikrlash usulidan foydalanish
 
     Har bir yangi savol:
+
+    - yangi kontekst
+    - yangi vaziyat
     - yangi fikrlash
     - yangi yechim
 
@@ -160,17 +179,16 @@ def build_prompt(
 
     ASOSIY TALABLAR
 
-    1. Javoblarni savlda berma.
-    2. Savol sinf yoshiga mos bo'lsin.
-    3. murakkab maslalar kamroq tuz asosan 60 % oddiy 1, 2 ammali kam gapli bo'ldi.
-    4. Savol mavzudan chetga chiqmasin.
-    5. Savol pedagogik jihatdan to'g'ri bo'lsin.
-    6. Savol tushunarli va ravon yozilsin.
-    7. Mantiqsiz savollar yaratma.
-    8. Takroriy savollar yaratma.
-    9. Bir xil sonlarni aylantirib yozma.
-    10. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
-    11. O'quvchini fikrlashga undasin.
+    1. Savol sinf yoshiga mos bo'lsin.
+    2. Savol mavzudan chetga chiqmasin.
+    3. Savol pedagogik jihatdan to'g'ri bo'lsin.
+    4. Savol tushunarli va ravon yozilsin.
+    5. Mantiqsiz savollar yaratma.
+    6. Takroriy savollar yaratma.
+    7. Bir xil sonlarni aylantirib yozma.
+    8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+    9. O'quvchini fikrlashga undasin.
+    10. Noto'g'ri javoblar ham mantiqli bo'lsin.
     
     TIL TALABLARI
 
@@ -192,11 +210,12 @@ def build_prompt(
     - tushunish talab qilinadi
 
     qiyin:
-    - qilinmasin vaqat oson 80% va o'rta 20 % olinsin
-
+    - tahlil talab qilinadi
+    - bir nechta bosqich
 
     murakkab:
-    - qilinmasin vaqat oson 80% va o'rta 20 % olinsin
+    - mantiqiy fikrlash
+    - bir nechta yechim bosqichi
 
     HAYOTIYLIK DARAJASI
 
@@ -206,9 +225,9 @@ def build_prompt(
 
     2 = kundalik hayot bilan bog'langan
 
-    3 = real vaziyat
+    3 = murakkab real vaziyat
 
-    4 = real hayotiy vaziyat
+    4 = ko'p bosqichli real hayotiy vaziyat
 
     TEST TURLARI
 
@@ -278,14 +297,6 @@ def build_prompt(
     O'XSHASH SAVOL
     YARATMA.
 
-    ENG MUHIM QOIDA
-
-    Savol FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZU asosida yaratilishi shart.
-
-    Savol aynan mavzuda o'rgatilayotgan bilim va ko'nikmani tekshirsin.
-
-    Mavzuga mos kelmagan savol yaratma.
-    
     FAQAT JSON QAYTAR
 
     {{
