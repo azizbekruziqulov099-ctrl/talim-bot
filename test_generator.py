@@ -5,9 +5,24 @@ from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
 from prompt_builder import build_prompt
 from openai_client import client
+from rapidfuzz import fuzz
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("1-BOSQICH")
+
+def is_similar(new_question, old_questions):
+
+    for q in old_questions:
+
+        score = fuzz.ratio(
+            new_question.lower(),
+            q.lower()
+        )
+
+        if score >= 80:
+            return True
+
+    return False
 
 def save_test(test_data):
     conn = psycopg2.connect(DATABASE_URL)
@@ -25,6 +40,20 @@ def save_test(test_data):
         test_data["topic_code"],
         test_data["question"]
     ))
+
+    old_questions = get_last_questions(
+        test_data["topic_code"],
+        limit=100
+    )
+
+    if is_similar(
+        test_data["question"],
+        old_questions
+    ):
+        print("⚠️ O'XSHASH SAVOL")
+        cur.close()
+        conn.close()
+        return
 
     if cur.fetchone():
         print("⚠️ DUPLIKAT TEST")
@@ -102,6 +131,33 @@ def save_test(test_data):
     cur.close()
     conn.close()
 
+def get_best_skill(subject, grade):
+
+    print("GRADE:", grade)
+    print("SUBJECT:", subject)
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT skill
+        FROM subject_skills
+        WHERE subject=%s
+        AND grade=%s
+        ORDER BY RANDOM()
+        LIMIT 1
+    """, (subject, str(grade)))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if row:
+        return row[0]
+
+    return "umumiy"
+
 def get_last_questions(topic_code, limit=80):
 
     conn = psycopg2.connect(DATABASE_URL)
@@ -124,20 +180,19 @@ def get_last_questions(topic_code, limit=80):
 
 topic_code = get_next_topic(1)[0][0]
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
+info = get_topic_info(topic_code)
 
-cur.execute("""
-SELECT skill
-FROM subject_skills
-ORDER BY RANDOM()
-LIMIT 1
-""")
+grade, subject, bob, bolim, mavzu, kichik = info
 
-skill = cur.fetchone()[0]
+skill = get_best_skill(
+    subject,
+    grade
+)
 
-cur.close()
-conn.close()
+print("BOB:", bob)
+print("BOLIM:", bolim)
+print("MAVZU:", mavzu)
+print("KICHIK:", kichik)
 
 print("SKILL:", skill)
 
@@ -152,8 +207,6 @@ test_types = (
     ["write_answer"] * 3 +
     ["image_question"] * 2
 )
-
-last_questions = get_last_questions(topic_code)
 
 for question_type in test_types:
 
