@@ -10,63 +10,136 @@ def build_prompt(topic_code, difficulty, situation, question_type):
 
     grade, subject, bob, bolim, mavzu, kichik = info
 
-    prompt = f"""
-Siz tajribali test tuzuvchisiz.
+prompt = f"""
+Siz professional pedagog, metodist va test tuzuvchisiz.
 
-Sinf: {grade}
-Fan: {subject}
+SINF: {grade}
+FAN: {subject}
 
-Bob: {bob}
-Bo'lim: {bolim}
-Mavzu: {mavzu}
-Kichik mavzu: {kichik}
+BOB: {bob}
+BO'LIM: {bolim}
+MAVZU: {mavzu}
+KICHIK MAVZU: {kichik}
 
-Qiyinlik: {difficulty}
-Vaziyat: {situation}
-Test turi: {question_type}
+QIYINLIK: {difficulty}
+VAZIYAT: {situation}
 
-MUHIM:
+TEST_TURI: {question_type}
 
-1. Savol tili fan tilidan chiqib ketmasin.
-2. Mavzudan chetga chiqma.
-3. Mantiqsiz yoki mavzuga aloqasiz savol yaratma.
-4. Avval yaratilgan savolni takrorlama.
-5. Javob variantlari qisqa bo'lsin (2-5 so'z).
-6. To'g'ri javobni option matni bilan qaytar:
-   Masalan:
-   "correct_answer":"40"
+ASOSIY TALABLAR
 
-Test turi qat'iy:
-- single_choice → 4 variant, 1 ta to'g'ri javob
-- multiple_choice → 4 variant, 2 yoki undan ko'p to'g'ri javob
-- true_false → To'g'ri/Noto'g'ri
-- write_answer → variantsiz, o'quvchi yozadi
-- image_question → image_prompt to'ldiriladi
+1. Savol sinf yoshiga mos bo'lsin.
+2. Savol mavzudan chetga chiqmasin.
+3. Savol pedagogik jihatdan to'g'ri bo'lsin.
+4. Savol tushunarli va ravon yozilsin.
+5. Mantiqsiz savollar yaratma.
+6. Takroriy savollar yaratma.
+7. Bir xil sonlarni aylantirib yozma.
+8. Savol avvalgi savollarga mazmun jihatdan ham o'xshamasin.
+9. O'quvchini fikrlashga undasin.
+10. Noto'g'ri javoblar ham mantiqli bo'lsin.
 
-Hayotiy darajalar:
+TIL TALABLARI
 
-0 = oddiy
+- Savol fan tilida yozilsin.
+- Ingliz tili fanida topshiriq ingliz tilida bo'lsin.
+- Rus tili fanida topshiriq rus tilida bo'lsin.
+- O'zbek tili fanida topshiriq o'zbek tilida bo'lsin.
+- Tilni aralashtirma.
+
+QIYINLIK DARAJASI
+
+oson:
+- bitta amal
+- bitta fikr
+- tez yechiladigan
+
+o'rta:
+- 2-3 qadam
+- tushunish talab qilinadi
+
+qiyin:
+- tahlil talab qilinadi
+- bir nechta bosqich
+
+murakkab:
+- mantiqiy fikrlash
+- bir nechta yechim bosqichi
+
+HAYOTIYLIK DARAJASI
+
+0 = oddiy akademik savol
+
 1 = sodda hayotiy vaziyat
-2 = o'rtacha hayotiy vaziyat
-3 = murakkab hayotiy vaziyat
-4 = ko'p bosqichli hayotiy vaziyat
+
+2 = kundalik hayot bilan bog'langan
+
+3 = murakkab real vaziyat
+
+4 = ko'p bosqichli real hayotiy vaziyat
+
+TEST TURLARI
+
+single_choice:
+- 4 variant
+- 1 ta to'g'ri javob
+
+multiple_choice:
+- 4 variant
+- kamida 2 ta to'g'ri javob
+- correct_answer misol: "A,C"
+
+true_false:
+- option_a = "To'g'ri"
+- option_b = "Noto'g'ri"
+
+write_answer:
+- variantlar bo'lmasin
+
+image_question:
+- image_prompt majburiy
+- rasm orqali javob topilsin
+
+MULTIMEDIA
 
 Agar rasm kerak bo'lsa:
 "is_latex": false
-"image_prompt" ni to'ldir.
+"image_prompt" ni to'ldir
 
-Agar formula bo'lsa:
+Agar formula kerak bo'lsa:
 "is_latex": true
 
-Ovozli topshiriq kerak bo'lsa:
-audio_text maydoniga o'qilishi kerak bo'lgan matnni yoz.
+Agar audio kerak bo'lsa:
+"audio_text" ni to'ldir
 
-Faqat JSON qaytar.
+VARIANT TALABLARI
+
+- Variantlar qisqa bo'lsin
+- Juda uzun gap bo'lmasin
+- Variant oxiri "..." bilan tugamasin
+- Variantlar bir-biridan aniq farq qilsin
+
+JAVOB TALABLARI
+
+- correct_answer da javob MATNI qaytarsin
+- Harf qaytarma
+
+Misol:
+
+"correct_answer":"40"
+
+IZOH
+
+- explanation qisqa va tushunarli bo'lsin
+- To'g'ri javob nima uchun to'g'ri ekanini tushuntirsin
+
+FAQAT JSON QAYTAR
 
 {{
   "question_type":"",
   "is_latex":false,
   "image_prompt":"",
+  "audio_text":"",
   "question":"",
   "option_a":"",
   "option_b":"",
@@ -76,5 +149,4 @@ Faqat JSON qaytar.
   "explanation":""
 }}
 """
-
     return prompt
