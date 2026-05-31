@@ -1,6 +1,7 @@
+import os
 import psycopg2
-from config import DATABASE_URL
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_next_topic(limit=10):
 
