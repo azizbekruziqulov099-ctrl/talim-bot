@@ -439,7 +439,7 @@ def build_prompt(
 
     HECH QANDAY ```json YOZMA.
 
-    {
+    {{
     "question_type":"",
     "is_latex":false,
     "image_prompt":"",
@@ -451,6 +451,6 @@ def build_prompt(
     "option_d":"",
     "correct_answer":"",
     "explanation":""
-    }
+    }}
     """
     return prompt
