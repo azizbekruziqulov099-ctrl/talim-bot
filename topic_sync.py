@@ -1,5 +1,8 @@
+import os
 import psycopg2
-from config import DATABASE_URL
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 
 def sync_topics_from_dts():
