@@ -5,7 +5,6 @@ from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
 from prompt_builder import build_prompt
 
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def save_test(test_data):
@@ -23,7 +22,13 @@ def save_test(test_data):
             option_c,
             option_d,
             correct_answer,
-            explanation
+            explanation,
+            question_type,
+            is_latex,
+            image_url
+        )
+        VALUES (
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
@@ -36,7 +41,10 @@ def save_test(test_data):
         test_data["option_c"],
         test_data["option_d"],
         test_data["correct_answer"],
-        test_data["explanation"]
+        test_data["explanation"],
+        test_data.get("question_type", "single_choice"),
+        test_data.get("is_latex", False),
+        test_data.get("image_url")
     ))
 
     conn.commit()
