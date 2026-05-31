@@ -4,7 +4,6 @@ import json
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-
 def save_test(test_data):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
