@@ -102,6 +102,26 @@ def save_test(test_data):
     cur.close()
     conn.close()
 
+def get_last_questions(topic_code, limit=80):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT question
+        FROM generated_tests
+        WHERE topic_code=%s
+        ORDER BY id DESC
+        LIMIT %s
+    """, (topic_code, limit))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return [r[0] for r in rows]
+
 topic_code = get_next_topic(1)[0][0]
 
 conn = psycopg2.connect(DATABASE_URL)
@@ -123,6 +143,8 @@ print("SKILL:", skill)
 
 print("2-BOSQICH")
 
+last_questions = get_last_questions(topic_code)
+
 test_types = (
     ["single_choice"] * 8 +
     ["multiple_choice"] * 4 +
@@ -131,6 +153,8 @@ test_types = (
     ["image_question"] * 2
 )
 
+last_questions = get_last_questions(topic_code)
+
 for question_type in test_types:
 
     prompt = build_prompt(
@@ -138,7 +162,8 @@ for question_type in test_types:
         difficulty="oson",
         situation="oddiy",
         question_type=question_type,
-        skill=skill
+        skill=skill,
+        last_questions=last_questions
     )
     print("3-BOSQICH")
 
