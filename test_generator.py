@@ -8,6 +8,7 @@ from openai_client import client
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("1-BOSQICH")
+
 def save_test(test_data):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -31,7 +32,22 @@ def save_test(test_data):
         conn.close()
         return
 
-    # Saqlash
+    # Single choice validatsiya
+
+    if test_data.get("question_type") == "single_choice":
+
+        variants = [
+            test_data.get("option_a"),
+            test_data.get("option_b"),
+            test_data.get("option_c"),
+            test_data.get("option_d")
+        ]
+
+        if test_data.get("correct_answer") not in variants:
+            print("❌ JAVOB VARIANTLAR ICHIDA YO'Q")
+            cur.close()
+            conn.close()
+            return
 
     cur.execute("""
         INSERT INTO generated_tests (
@@ -50,10 +66,14 @@ def save_test(test_data):
             image_url,
             audio_text,
             language,
-            life_level
+            life_level,
+            skill,
+            age_group,
+            time_limit
         )
         VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            %s,%s,%s,%s,%s,%s,%s,%s,%s
         )
     """, (
         test_data["topic_code"],
@@ -71,7 +91,10 @@ def save_test(test_data):
         test_data.get("image_url"),
         test_data.get("audio_text"),
         test_data.get("language", "uz"),
-        test_data.get("life_level", 0)
+        test_data.get("life_level", 0),
+        test_data.get("skill"),
+        test_data.get("age_group"),
+        test_data.get("time_limit", 60)
     ))
 
     conn.commit()
@@ -80,6 +103,23 @@ def save_test(test_data):
     conn.close()
 
 topic_code = get_next_topic(1)[0][0]
+
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+
+cur.execute("""
+SELECT skill
+FROM subject_skills
+ORDER BY RANDOM()
+LIMIT 1
+""")
+
+skill = cur.fetchone()[0]
+
+cur.close()
+conn.close()
+
+print("SKILL:", skill)
 
 print("2-BOSQICH")
 
@@ -93,11 +133,12 @@ test_types = (
 
 for question_type in test_types:
 
-    prompt = build_prompt(
+    build_prompt(
         topic_code,
         difficulty="oson",
         situation="oddiy",
-        question_type=question_type
+        question_type=question_type,
+        skill=skill
     )
 
     print("3-BOSQICH")
@@ -125,10 +166,21 @@ for question_type in test_types:
 
     try:
         test_data = json.loads(content)
+        allowed_types = [
+            "single_choice",
+            "multiple_choice",
+            "true_false",
+            "write_answer",
+            "image_question"
+        ]
+
+        if test_data.get("question_type") not in allowed_types:
+            test_data["question_type"] = question_type
 
         test_data["topic_code"] = topic_code
         test_data["difficulty"] = "oson"
         test_data["situation"] = "oddiy"
+        test_data["skill"] = skill
 
         save_test(test_data)
 
