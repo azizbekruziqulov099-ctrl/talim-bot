@@ -674,8 +674,6 @@ async def handle_all(
 
     elif message.text == "⏹ Generatorni to‘xtatish":
 
-        global generator_process
-
         if generator_process and generator_process.poll() is None:
 
             generator_process.terminate()
@@ -691,7 +689,6 @@ async def handle_all(
             )
 
         return
-
     elif message.text == "📊 Generator statistikasi":
 
         conn = psycopg2.connect(DATABASE_URL)
