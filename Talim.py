@@ -633,7 +633,7 @@ async def handle_all(
 
     elif message.text == "🤖 Test generator":
 
-        await message.answer("kli")
+        await start_generator(message)
 
         return
 
