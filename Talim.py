@@ -2988,7 +2988,7 @@ async def handle_all(
             buttons = []
 
             for (subject,) in subjects:
-                buttons.append([subject])
+                buttons.append(subject)
 
             await message.answer(
                 f"{grade}-sinf fanlari",
