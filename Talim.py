@@ -2969,6 +2969,10 @@ async def handle_all(
 
             grade = selected_class.split("-")[0]
 
+            await message.answer(
+                f"Sinf={selected_class}\nGrade={grade}"
+            )
+
             cur.execute("""
                 SELECT DISTINCT subject_name
                 FROM dts_tree
