@@ -185,7 +185,7 @@ def get_best_skill(
 
     return "umumiy"
 
-def get_last_questions(topic_code, limit=80):
+def get_last_questions(topic_code, limit=60):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -236,12 +236,11 @@ test_types = (
     ["image_question"] * 6
 )
 difficulties = (
-    ["oson"] * 10 +
-    ["o'rta"] * 4 +
-    ["qiyin"] * 4 +
-    ["murakkab"] * 2
+    ["oson"] * 30 +
+    ["o'rta"] * 15 +
+    ["qiyin"] * 10 +
+    ["murakkab"] * 5
 )
-
 life_levels = (
     [0] * 20 +
     [1] * 15 +
