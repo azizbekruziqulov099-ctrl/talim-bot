@@ -3987,7 +3987,10 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 f"✍️ Javobni yozing:"
             )
 
-            user_state[call.from_user.id] = "text_answer"
+            set_state(
+                user_id,
+                "subject"
+            )
 
             return
 
@@ -4048,9 +4051,19 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         test = session["questions"][current]
 
-        correct = test[5]
+        if answer == "A":
+            selected = str(a)
 
-        if answer == correct:
+        elif answer == "B":
+            selected = str(b)
+
+        elif answer == "C":
+            selected = str(c)
+
+        else:
+            selected = str(d)
+
+        if selected.strip() == str(correct).strip():
             session["correct"] += 1
             await call.answer("✅ To'g'ri")
         else:
