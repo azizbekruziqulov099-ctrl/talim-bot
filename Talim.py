@@ -3893,7 +3893,14 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 option_b,
                 option_c,
                 option_d,
-                correct_answer
+                correct_answer,
+                explanation,
+                question_type,
+                is_latex,
+                image_url,
+                audio_text,
+                language,
+                time_limit
             FROM generated_tests
             WHERE topic_code IN (
                 SELECT topic_code
@@ -3916,28 +3923,66 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "wrong": 0
         }
 
-        await call.message.answer(
-            f"{len(tests)} ta test topildi"
-        )
-
-        return
-
-        if not test:
+        if not tests:
             await call.message.answer(
                 "❌ Test topilmadi"
             )
             return
 
-        question, a, b, c, d, correct = test
+        test = tests[0]
 
-        await call.message.answer(
-            f"{question}\n\n"
-            f"A) {a}\n"
-            f"B) {b}\n"
-            f"C) {c}\n"
-            f"D) {d}"
+        (
+            question,
+            a,
+            b,
+            c,
+            d,
+            correct,
+            explanation,
+            question_type,
+            is_latex,
+            image_url,
+            audio_text,
+            language,
+            time_limit
+        ) = test
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="A",
+                        callback_data="ans_A"
+                    ),
+                    InlineKeyboardButton(
+                        text="B",
+                        callback_data="ans_B"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="C",
+                        callback_data="ans_C"
+                    ),
+                    InlineKeyboardButton(
+                        text="D",
+                        callback_data="ans_D"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛑 Testni tugatish",
+                        callback_data="test_stop"
+                    )
+                ]
+            ]
         )
 
+        await call.message.answer(
+            f"⏱ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
+        )
         return
 
     elif call.data == "dts_navigator":
@@ -4664,6 +4709,36 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🏠 Bosh menyu",
             reply_markup=get_main_keyboard(role)
         )
+
+@dp.callback_query(
+    F.data == "test_stop"
+)
+async def stop_test(
+    call: CallbackQuery
+):
+
+    session = test_sessions.get(
+        call.from_user.id
+    )
+
+    if not session:
+        return
+
+    await call.message.answer(
+        f"""
+🏁 Test tugatildi
+
+✅ To'g'ri:
+{session['correct']}
+
+❌ Noto'g'ri:
+{session['wrong']}
+"""
+    )
+
+    del test_sessions[
+        call.from_user.id
+    ]
 
 async def question_timer(user_id, limit):
 
