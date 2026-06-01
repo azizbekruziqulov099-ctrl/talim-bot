@@ -593,6 +593,38 @@ async def handle_all(
     elif user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
 
+    elif user_state.get(message.from_user.id) == "text_answer":
+
+        user_answer = message.text.strip()
+
+        session = test_sessions.get(
+            message.from_user.id
+        )
+
+        current = session["current"]
+
+        test = session["questions"][current]
+
+        correct = test[5]
+
+        if user_answer.lower() == str(correct).lower():
+
+            session["correct"] += 1
+
+            await message.answer(
+                "✅ To'g'ri"
+            )
+
+        else:
+
+            session["wrong"] += 1
+
+            await message.answer(
+                f"❌ Noto'g'ri\n\nTo'g'ri javob: {correct}"
+            )
+
+        session["current"] += 1
+
     elif message.text == "👥 Foydalanuvchilar statistikasi":
 
         if message.from_user.id not in ADMINS:
@@ -3981,12 +4013,22 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 ]
             ]
         )
+    if question_type == "text":
+
         await call.message.answer(
-            f"⏱ {time_limit} soniya\n\n"
-            f"{question}",
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}\n\n"
+            f"✍️ Javobni yozing:"
+        )
+
+        user_state[call.from_user.id] = "text_answer"
+
+    else:
+
+        await call.message.answer(
+            f"⏱️ {time_limit} soniya\n\n{question}",
             reply_markup=kb
         )
-        return
 
     if call.data.startswith("ans_"):
 
