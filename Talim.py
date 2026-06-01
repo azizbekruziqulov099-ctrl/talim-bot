@@ -23,6 +23,7 @@ import time
 import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
+import re
 import os
 import subprocess
 with open("regions.json", "r", encoding="utf-8") as f:
@@ -2967,11 +2968,9 @@ async def handle_all(
 
             selected_class = row[0]
 
-            grade = selected_class.split("-")[0]
-
-            await message.answer(
-                f"Sinf={selected_class}\nGrade={grade}"
-            )
+            grade = re.search(r"\d+", selected_class).group()
+            
+            print("GRADE =", grade)
 
             cur.execute("""
                 SELECT DISTINCT subject_name
@@ -2979,6 +2978,8 @@ async def handle_all(
                 WHERE grade=%s
                 ORDER BY subject_name
             """, (grade,))
+
+            print(subjects)
 
             subjects = cur.fetchall()
 
