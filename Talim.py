@@ -2970,8 +2970,6 @@ async def handle_all(
 
             grade = re.search(r"\d+", selected_class).group()
             
-            print("GRADE =", grade)
-
             cur.execute("""
                 SELECT DISTINCT subject_name
                 FROM dts_tree
@@ -2979,6 +2977,7 @@ async def handle_all(
                 ORDER BY subject_name
             """, (grade,))
 
+            print("GRADE =", grade)
             print(subjects)
 
             subjects = cur.fetchall()
