@@ -2978,7 +2978,7 @@ async def handle_all(
             """, (grade,))
 
             print("GRADE =", grade)
-            print("SUBJECTS =", subjects)
+          #   print("SUBJECTS =", subjects)
 
             subjects = cur.fetchall()
 
