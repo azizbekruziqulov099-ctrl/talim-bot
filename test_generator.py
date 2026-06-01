@@ -229,22 +229,12 @@ print("2-BOSQICH")
 last_questions = get_last_questions(topic_code)
 
 test_types = (
-    ["single_choice"] * 8 +
-    ["multiple_choice"] * 4 +
-    ["true_false"] * 3 +
-    ["write_answer"] * 3 +
-    ["image_question"] * 2
+    ["single_choice"] * 24 +
+    ["multiple_choice"] * 12 +
+    ["true_false"] * 9 +
+    ["write_answer"] * 9 +
+    ["image_question"] * 6
 )
-last_questions = get_last_questions(topic_code)
-
-test_types = (
-    ["single_choice"] * 8 +
-    ["multiple_choice"] * 4 +
-    ["true_false"] * 3 +
-    ["write_answer"] * 3 +
-    ["image_question"] * 2
-)
-
 difficulties = (
     ["oson"] * 10 +
     ["o'rta"] * 4 +
@@ -253,11 +243,11 @@ difficulties = (
 )
 
 life_levels = (
-    [0] * 4 +
-    [1] * 4 +
-    [2] * 4 +
-    [3] * 4 +
-    [4] * 4
+    [0] * 20 +
+    [1] * 15 +
+    [2] * 10 +
+    [3] * 10 +
+    [4] * 5
 )
 
 for i, question_type in enumerate(test_types):
