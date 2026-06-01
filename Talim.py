@@ -3907,6 +3907,10 @@ async def handle_all(
 
             return
 
+@dp.message(F.text == "📚 BILIMNI SINASH")
+async def bilimni_sinash(message: Message):
+    await message.answer("Ishladi")
+
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
 
