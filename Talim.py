@@ -3979,6 +3979,19 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             time_limit
         ) = test
 
+        if question_type == "text":
+
+            await call.message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:"
+            )
+
+            user_state[call.from_user.id] = "text_answer"
+
+            return
+
+
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -4013,22 +4026,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 ]
             ]
         )
-    if question_type == "text":
-
         await call.message.answer(
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}\n\n"
-            f"✍️ Javobni yozing:"
-        )
-
-        user_state[call.from_user.id] = "text_answer"
-
-    else:
-
-        await call.message.answer(
-            f"⏱️ {time_limit} soniya\n\n{question}",
+            f"⏱ {time_limit} soniya\n\n"
+            f"{question}",
             reply_markup=kb
         )
+        return
 
     if call.data.startswith("ans_"):
 
