@@ -1,4 +1,5 @@
 from admin_handlers import *
+from generator_handlers import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -628,6 +629,12 @@ async def handle_all(
         await dts_menu(
                 message
             )
+        return
+
+    elif message.text == "🤖 Test generator":
+
+        await message.answer("kli")
+
         return
 
 #   elif message.text == "🤖 AI Generator":
@@ -3188,7 +3195,7 @@ async def handle_all(
                         quarter = data.get("QUARTER", "")
 
                         steam_code = data.get("STEAM", "")
-                        future_skill = data.get("FUTURE_SKILL", "")
+                        future_skill = data.get("SKILL", "")
 
                         age_group = data.get("AGE_GROUP", "")
                         exam_type = data.get("EXAM_TYPE", "")
