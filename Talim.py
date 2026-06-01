@@ -3863,12 +3863,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
-    if call.data.startswith("ans_"):
-        return
-
-    elif call.data == "test_stop":
-        return
-
     elif call.data == "dts_import":
 
         await dts_import(
@@ -3992,6 +3986,114 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             f"{question}",
             reply_markup=kb
         )
+        return
+
+    if call.data.startswith("ans_"):
+
+        user_id = call.from_user.id
+
+        session = test_sessions.get(user_id)
+
+        if not session:
+            return
+
+        answer = call.data.replace("ans_", "")
+
+        current = session["current"]
+
+        test = session["questions"][current]
+
+        correct = test[5]
+
+        if answer == correct:
+            session["correct"] += 1
+            await call.answer("✅ To'g'ri")
+        else:
+            session["wrong"] += 1
+            await call.answer("❌ Noto'g'ri")
+
+        session["current"] += 1
+
+        if session["current"] >= len(session["questions"]):
+
+            total = session["correct"] + session["wrong"]
+
+            percent = round(
+                session["correct"] * 100 / total,
+                1
+            ) if total else 0
+
+            await call.message.answer(
+                f"""
+    🏁 Test tugadi
+
+    ✅ To'g'ri: {session['correct']}
+    ❌ Noto'g'ri: {session['wrong']}
+
+    📊 Natija: {percent}%
+    """
+            )
+
+            del test_sessions[user_id]
+
+            return
+
+        current = session["current"]
+
+        test = session["questions"][current]
+
+        (
+            question,
+            a,
+            b,
+            c,
+            d,
+            correct,
+            explanation,
+            question_type,
+            is_latex,
+            image_url,
+            audio_text,
+            language,
+            time_limit
+        ) = test
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=str(a),
+                        callback_data="ans_A"
+                    ),
+                    InlineKeyboardButton(
+                        text=str(b),
+                        callback_data="ans_B"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=str(c),
+                        callback_data="ans_C"
+                    ),
+                    InlineKeyboardButton(
+                        text=str(d),
+                        callback_data="ans_D"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛑 Testni tugatish",
+                        callback_data="test_stop"
+                    )
+                ]
+            ]
+        )
+
+        await call.message.answer(
+            f"⏱️ {time_limit} soniya\n\n{question}",
+            reply_markup=kb
+        )
+
         return
 
     elif call.data == "dts_navigator":
@@ -4718,167 +4820,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🏠 Bosh menyu",
             reply_markup=get_main_keyboard(role)
         )
-
-@dp.callback_query(
-    F.data == "test_stop"
-)
-async def stop_test(
-    call: CallbackQuery
-):
-
-    session = test_sessions.get(
-        call.from_user.id
-    )
-
-    if not session:
-        return
-
-    await call.message.answer(
-        f"""
-🏁 Test tugatildi
-
-✅ To'g'ri:
-{session['correct']}
-
-❌ Noto'g'ri:
-{session['wrong']}
-"""
-    )
-
-    del test_sessions[
-        call.from_user.id
-    ]
-
-@dp.callback_query(
-    F.data.startswith("ans_")
-)
-async def test_answer(
-    call: CallbackQuery
-):
-
-    user_id = call.from_user.id
-
-    session = test_sessions.get(
-        user_id
-    )
-
-    if not session:
-        return
-
-    answer = call.data.replace(
-        "ans_",
-        ""
-    )
-
-    current = session["current"]
-
-    test = session["questions"][
-        current
-    ]
-
-    correct = test[5]
-
-    if answer == correct:
-
-        session["correct"] += 1
-
-        await call.answer(
-            "✅ To'g'ri"
-        )
-
-    else:
-
-        session["wrong"] += 1
-
-        await call.answer(
-            "❌ Noto'g'ri"
-        )
-
-    session["current"] += 1
-
-    current = session["current"]
-
-    test = session["questions"][current]
-
-    (
-        question,
-        a,
-        b,
-        c,
-        d,
-        correct,
-        explanation,
-        question_type,
-        is_latex,
-        image_url,
-        audio_text,
-        language,
-        time_limit
-    ) = test
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=str(a),
-                    callback_data="ans_A"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(b),
-                    callback_data="ans_B"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(c),
-                    callback_data="ans_C"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(d),
-                    callback_data="ans_D"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🛑 Testni tugatish",
-                    callback_data="test_stop"
-                )
-            ]
-        ]
-    )
-    await call.message.answer(
-        f"⏱ {time_limit} soniya\n\n"
-        f"{question}\n\n"
-        f"A) {a}\n"
-        f"B) {b}\n"
-        f"C) {c}\n"
-        f"D) {d}",
-        reply_markup=kb
-    )
-
-    if session["current"] >= len(
-            session["questions"]
-        ):
-
-            await call.message.answer(
-                f"""
-    🏁 Test tugadi
-
-    ✅ To'g'ri:
-    {session['correct']}
-
-    ❌ Noto'g'ri:
-    {session['wrong']}
-    """
-            )
-
-            del test_sessions[user_id]
-
-            return
 
 async def question_timer(user_id, limit):
 
