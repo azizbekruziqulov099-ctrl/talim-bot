@@ -43,6 +43,7 @@ user_test = {}
 user_locks = {}
 admin_state = {}
 state_history = {}
+test_sessions = {}
 generator_process = None
 
 
@@ -3900,13 +3901,26 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 WHERE grade=%s
             )
             ORDER BY RANDOM()
-            LIMIT 5
+            LIMIT 20
         """, (grade,))
 
-        test = cur.fetchone()
+        tests = cur.fetchall()
 
         cur.close()
         conn.close()
+
+        test_sessions[call.from_user.id] = {
+            "questions": tests,
+            "current": 0,
+            "correct": 0,
+            "wrong": 0
+        }
+
+        await call.message.answer(
+            f"{len(tests)} ta test topildi"
+        )
+
+        return
 
         if not test:
             await call.message.answer(
@@ -3923,8 +3937,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             f"C) {c}\n"
             f"D) {d}"
         )
-
-        return
 
         return
 
