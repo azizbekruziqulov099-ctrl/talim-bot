@@ -716,7 +716,7 @@ async def handle_all(
             f"📝 Testlar: {tests}"
         )
 
-    return
+        return
 
     elif message.text == "📚 DTS":
 
