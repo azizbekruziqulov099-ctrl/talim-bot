@@ -24,6 +24,7 @@ import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
 import os
+import subprocess
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
@@ -41,6 +42,7 @@ user_test = {}
 user_locks = {}
 admin_state = {}
 state_history = {}
+generator_process = None
 
 
 
@@ -633,20 +635,88 @@ async def handle_all(
 
     elif message.text == "🤖 Test generator":
 
-        await start_generator(message)
+        await message.answer(
+            "Generator boshqaruvi",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="▶️ Generatorni boshlash")],
+                    [KeyboardButton(text="⏹ Generatorni to‘xtatish")],
+                    [KeyboardButton(text="📊 Generator statistikasi")],
+                    [KeyboardButton(text="🔙 Ortga")]
+                ],
+                resize_keyboard=True
+            )
+        )
 
         return
 
-#   elif message.text == "🤖 AI Generator":
-#
- #       await state.set_state(
-  #          AIGeneratorState.select_grade
-   #     )
-#
- #       await message.answer(
-  #          "Sinfni tanlang\n\n1-sinf\n2-sinf\n3-sinf ..."
-   #     )
-    #    return
+    elif message.text == "▶️ Generatorni boshlash":
+
+        global generator_process
+
+        if generator_process and generator_process.poll() is None:
+
+            await message.answer(
+                "Generator ishlayapti"
+            )
+
+            return
+
+        generator_process = subprocess.Popen(
+            ["python", "test_generator.py"]
+        )
+
+        await message.answer(
+            "Generator ishga tushdi"
+        )
+
+        return
+
+    elif message.text == "⏹ Generatorni to‘xtatish":
+
+        global generator_process
+
+        if generator_process and generator_process.poll() is None:
+
+            generator_process.terminate()
+
+            await message.answer(
+                "Generator to‘xtatildi"
+            )
+
+        else:
+
+            await message.answer(
+                "Generator ishlamayapti"
+            )
+
+        return
+
+    elif message.text == "📊 Generator statistikasi":
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT COUNT(*) FROM generated_tests"
+        )
+
+        tests = cur.fetchone()[0]
+
+        cur.execute(
+            "SELECT COUNT(*) FROM topic_generation"
+        )
+
+        topics = cur.fetchone()[0]
+
+        conn.close()
+
+        await message.answer(
+            f"📚 Mavzular: {topics}\n"
+            f"📝 Testlar: {tests}"
+        )
+
+    return
 
     elif message.text == "📚 DTS":
 
