@@ -3863,7 +3863,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
-    elif call.data == "dts_import":
+    if call.data == "dts_import":
 
         await dts_import(
             call,
