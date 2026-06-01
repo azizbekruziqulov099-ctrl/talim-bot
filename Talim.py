@@ -2141,152 +2141,25 @@ async def handle_all(
         
         # ===== SUBJECT =====
         elif user_state.get(message.from_user.id) == "subject":
-
             temp_user[message.from_user.id]["subject"] = message.text
-
-            await message.answer(
-                f"📚 {message.text}",
-                reply_markup=base_keyboard([
-                    "⚡ Test boshlash",
-                    "⚙️ Test sozlamalari",
-                    "📚 Choraklar",
-                    "◀️ Ortga"
-                ])
-            )
-
-            set_state(
-                message.from_user.id,
-                "subject_menu"
-            )
-
-            return
-        
-        elif user_state.get(message.from_user.id) == "subject_menu":
-
-            if message.text == "📚 Choraklar":
-
+            set_state(message.from_user.id, "quarter")
+            selected_class = temp_user[message.from_user.id].get("class", "")
+           
+            """
+            if "0-sinf" in selected_class:
                 await message.answer(
-                    "Chorakni tanlang",
-                    reply_markup=base_keyboard([
-                        "1-chorak",
-                        "2-chorak",
-                        "3-chorak",
-                        "4-chorak",
-                        "◀️ Ortga"
-                    ])
+                    "O‘yin turini tanlang:",
+                    reply_markup=base_keyboard(ZERO_TEST_TYPES)
                 )
-
-                set_state(
-                    message.from_user.id,
-                    "quarter"
-                )
-
-                return
-
-        elif user_state.get(message.from_user.id) == "quarter":
-
-            temp_user[message.from_user.id]["quarter"] = message.text
-
-            await message.answer(
-                f"{message.text} tanlandi",
-                reply_markup=base_keyboard([
-                    "📖 Boblar",
-                    "⚡ Test boshlash",
-                    "⚙️ Test sozlamalari",
-                    "◀️ Ortga"
-                ])
-            )
-
-            set_state(
-                message.from_user.id,
-                "quarter_menu"
-            )
-
-            return
-
-        elif user_state.get(message.from_user.id) == "quarter_menu":
-
-            if message.text == "📖 Boblar":
-
-                grade = re.search(
-                    r"\d+",
-                    temp_user[message.from_user.id]["class"]
-                ).group()
-
-                subject = temp_user[
-                    message.from_user.id
-                ]["subject"]
-
-                quarter = temp_user[
-                    message.from_user.id
-                ]["quarter"].replace(
-                    "-chorak",
-                    ""
-                )
-
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                    SELECT DISTINCT bob_name
-                    FROM dts_tree
-                    WHERE grade=%s
-                    AND subject_name=%s
-                    AND quarter=%s
-                    ORDER BY bob_code
-                """, (
-                    grade,
-                    subject.upper(),
-                    quarter
-                ))
-
-                rows = cur.fetchall()
-
-                cur.close()
-                conn.close()
-
-                buttons = []
-
-                for (bob,) in rows:
-                    buttons.append(bob)
-
-                buttons.append("◀️ Ortga")
-
+            else:
                 await message.answer(
-                    "📖 Bobni tanlang",
-                    reply_markup=base_keyboard(
-                        buttons
-                    )
+                    "Test turini tanlang:",
+                    reply_markup=base_keyboard(TEST_TYPES)
                 )
-
-                set_state(
-                    message.from_user.id,
-                    "bob"
-                )
-
-                return
-
-        elif user_state.get(message.from_user.id) == "quarter":
-
-            temp_user[message.from_user.id]["quarter"] = message.text
-
-            await message.answer(
-                f"{message.text} tanlandi",
-                reply_markup=base_keyboard([
-                    "📖 Boblar",
-                    "⚡ Test boshlash",
-                    "⚙️ Test sozlamalari",
-                    "◀️ Ortga"
-                ])
-            )
-
-            set_state(
-                message.from_user.id,
-                "quarter_menu"
-            )
-
             return
-
+            """
+            
+           
         elif user_state.get(message.from_user.id) == "test":
             if message.text not in ["❌ Testni tugatish"]:
                 await message.answer(
@@ -3983,9 +3856,6 @@ async def handle_all(
 
             return
 
-@dp.message(F.text == "📚 BILIMNI SINASH")
-async def bilimni_sinash(message: Message):
-    await message.answer("Ishladi")
 
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
@@ -4000,6 +3870,24 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         )
 
         return
+
+    elif call.data.startswith(
+        "test_grade_"
+    ):
+
+        grade = call.data.replace(
+            "test_grade_",
+            ""
+        )
+
+        await call.answer()
+
+        await call.message.answer(
+            f"{grade}-sinf testi boshlandi"
+        )
+
+        return
+
     elif call.data == "dts_navigator":
 
         await dts_navigator(call)
