@@ -4740,6 +4740,134 @@ async def stop_test(
         call.from_user.id
     ]
 
+@dp.callback_query(
+    F.data.startswith("ans_")
+)
+async def test_answer(
+    call: CallbackQuery
+):
+
+    user_id = call.from_user.id
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    answer = call.data.replace(
+        "ans_",
+        ""
+    )
+
+    current = session["current"]
+
+    test = session["questions"][
+        current
+    ]
+
+    correct = test[5]
+
+    if answer == correct:
+
+        session["correct"] += 1
+
+        await call.answer(
+            "✅ To'g'ri"
+        )
+
+    else:
+
+        session["wrong"] += 1
+
+        await call.answer(
+            "❌ Noto'g'ri"
+        )
+
+    session["current"] += 1
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="A",
+                    callback_data="ans_A"
+                ),
+                InlineKeyboardButton(
+                    text="B",
+                    callback_data="ans_B"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="C",
+                    callback_data="ans_C"
+                ),
+                InlineKeyboardButton(
+                    text="D",
+                    callback_data="ans_D"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛑 Testni tugatish",
+                    callback_data="test_stop"
+                )
+            ]
+        ]
+    )
+
+    await call.message.answer(
+        f"⏱ {time_limit} soniya\n\n"
+        f"{question}\n\n"
+        f"A) {a}\n"
+        f"B) {b}\n"
+        f"C) {c}\n"
+        f"D) {d}",
+        reply_markup=kb
+    )
+
+    if session["current"] >= len(
+            session["questions"]
+        ):
+
+            await call.message.answer(
+                f"""
+    🏁 Test tugadi
+
+    ✅ To'g'ri:
+    {session['correct']}
+
+    ❌ Noto'g'ri:
+    {session['wrong']}
+    """
+            )
+
+            del test_sessions[user_id]
+
+            return
+
 async def question_timer(user_id, limit):
 
     if user_id not in user_test:
