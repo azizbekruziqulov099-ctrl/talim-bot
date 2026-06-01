@@ -2140,60 +2140,44 @@ async def handle_all(
         
         # ===== SUBJECT =====
         elif user_state.get(message.from_user.id) == "subject":
-
-            temp_user[message.from_user.id]["subject"] = message.text
-
-            set_state(message.from_user.id, "test_type")
-
+           temp_user[message.from_user.id]["subject"] = message.text
+            set_state(message.from_user.id, "quarter")
             selected_class = temp_user[message.from_user.id].get("class", "")
-
+           
+            """
             if "0-sinf" in selected_class:
-
                 await message.answer(
                     "O‘yin turini tanlang:",
                     reply_markup=base_keyboard(ZERO_TEST_TYPES)
                 )
-
             else:
-
                 await message.answer(
                     "Test turini tanlang:",
                     reply_markup=base_keyboard(TEST_TYPES)
                 )
-
             return
-
+            """
+            
+           
         elif user_state.get(message.from_user.id) == "test":
-
             if message.text not in ["❌ Testni tugatish"]:
                 await message.answer(
                     "👇 Javobni faqat tugmalar orqali tanlang."
                 )
                 return
-
             test = user_test[message.from_user.id]
-
             user_id = message.from_user.id
-
             test = user_test[user_id]
-
             if test.get("expired"):
                 return
-
             if test.get("answered"):
                 return
-
             test["answered"] = True
-
             q = test["questions"][test["index"]]
-
             difficulty = q[12]
-
             limit = 60
-
             if difficulty == "medium":
                 limit = 90
-
             elif difficulty == "hard":
                 limit = 120
 
@@ -2964,87 +2948,48 @@ async def handle_all(
 
             # ===== TEST =====
         elif action == BTN_TEST:
-
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
 
             cur.execute("""
-            SELECT role FROM users
-            WHERE user_id=%s
+                SELECT class
+                FROM users
+                WHERE user_id=%s
             """, (message.from_user.id,))
 
-            user = cur.fetchone()
+            row = cur.fetchone()
+
+            if not row:
+                await message.answer(
+                    "❌ Sinf topilmadi"
+                )
+                return
+
+            selected_class = row[0]
+
+            grade = selected_class.split("-")[0]
+
+            cur.execute("""
+                SELECT DISTINCT subject_name
+                FROM dts_tree
+                WHERE grade=%s
+                ORDER BY subject_name
+            """, (grade,))
+
+            subjects = cur.fetchall()
+
+            cur.close()
             conn.close()
 
-            if not user:
-                user_state[message.from_user.id] = "role"
+            buttons = []
 
-                await message.answer(
-                    "Kim siz?",
-                    reply_markup=make_keyboard(["O‘quvchi", "O‘qituvchi"])
-                )
-                return
+            for (subject,) in subjects:
+                buttons.append([subject])
 
-            role = user[0]
-
-            temp_user[message.from_user.id] = {
-                "role": role
-            }
-
-            # O‘quvchi
-            if role == "O‘quvchi":
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                SELECT class FROM users
-                WHERE user_id=%s
-                """, (message.from_user.id,))
-
-                row = cur.fetchone()
-
-                conn.close()
-
-                if not row or not row[0]:
-
-                    await message.answer(
-                        "❌ Avval sinfni sozlang.",
-                        reply_markup=get_main_keyboard()
-                    )
-                    return
-
-                selected_class = row[0]
-
-                temp_user[message.from_user.id]["class"] = selected_class
-
-                subjects = SUBJECTS_BY_CLASS.get(selected_class, [])
-
-                flat_subjects = []
-
-                for r in subjects:
-                    flat_subjects.extend(r)
-
-                set_state(message.from_user.id, "subject")
-
-                await message.answer(
-                    "Fan tanlang:",
-                    reply_markup=base_keyboard(flat_subjects)
-                )
-
-                return
-
-            # O‘qituvchi
-            else:
-
-                set_state(message.from_user.id, "subject")
-
-                await message.answer(
-                    "Fan tanlang:",
-                    reply_markup=base_keyboard(["Matematika"])
-                )
-
-                return
-
+            await message.answer(
+                f"{grade}-sinf fanlari",
+                reply_markup=base_keyboard(buttons)
+            )
         # ===== CLASS REGISTER =====
         elif user_state.get(message.from_user.id) == "class_register":
 
