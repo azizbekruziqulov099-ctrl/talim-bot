@@ -3863,7 +3863,13 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
-    if call.data == "dts_import":
+    if call.data.startswith("ans_"):
+        return
+
+    elif call.data == "test_stop":
+        return
+
+    elif call.data == "dts_import":
 
         await dts_import(
             call,
@@ -3951,21 +3957,25 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="A",
+                        text=str(a),
                         callback_data="ans_A"
-                    ),
+                    )
+                ],
+                [
                     InlineKeyboardButton(
-                        text="B",
+                        text=str(b),
                         callback_data="ans_B"
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="C",
+                        text=str(c),
                         callback_data="ans_C"
-                    ),
+                    )
+                ],
+                [
                     InlineKeyboardButton(
-                        text="D",
+                        text=str(d),
                         callback_data="ans_D"
                     )
                 ],
@@ -3977,7 +3987,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 ]
             ]
         )
-
         await call.message.answer(
             f"⏱ {time_limit} soniya\n\n"
             f"{question}",
@@ -4811,21 +4820,25 @@ async def test_answer(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="A",
+                    text=str(a),
                     callback_data="ans_A"
-                ),
+                )
+            ],
+            [
                 InlineKeyboardButton(
-                    text="B",
+                    text=str(b),
                     callback_data="ans_B"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="C",
+                    text=str(c),
                     callback_data="ans_C"
-                ),
+                )
+            ],
+            [
                 InlineKeyboardButton(
-                    text="D",
+                    text=str(d),
                     callback_data="ans_D"
                 )
             ],
@@ -4837,7 +4850,6 @@ async def test_answer(
             ]
         ]
     )
-
     await call.message.answer(
         f"⏱ {time_limit} soniya\n\n"
         f"{question}\n\n"
