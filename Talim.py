@@ -2140,7 +2140,7 @@ async def handle_all(
         
         # ===== SUBJECT =====
         elif user_state.get(message.from_user.id) == "subject":
-           temp_user[message.from_user.id]["subject"] = message.text
+            temp_user[message.from_user.id]["subject"] = message.text
             set_state(message.from_user.id, "quarter")
             selected_class = temp_user[message.from_user.id].get("class", "")
            
