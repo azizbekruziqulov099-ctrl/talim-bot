@@ -4392,20 +4392,41 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         test = session["questions"][current]
 
         question = test[0]
+
         language = test[11]
 
-        from gtts import gTTS
-        from aiogram.types import FSInputFile
+        if language == "uz":
 
-        tts = gTTS(
-            text=question,
-            lang=language or "uz"
+            voice = "uz-UZ-SardorNeural"
+
+        elif language == "ru":
+
+            voice = "ru-RU-DmitryNeural"
+
+        elif language == "en":
+
+            voice = "en-US-GuyNeural"
+
+        else:
+
+            voice = "uz-UZ-SardorNeural"
+
+        filename = (
+            f"voice_"
+            f"{call.from_user.id}.mp3"
         )
 
-        tts.save("question.mp3")
+        communicate = edge_tts.Communicate(
+            text=question,
+            voice=voice
+        )
+
+        await communicate.save(
+            filename
+        )
 
         await call.message.answer_voice(
-            FSInputFile("question.mp3")
+            FSInputFile(filename)
         )
 
         return
