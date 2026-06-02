@@ -4100,7 +4100,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 call.from_user.id,
                 "text_answer"
             )
-            
+
             return
 
         kb = InlineKeyboardMarkup(
@@ -4159,12 +4159,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         test = session["questions"][current]
 
-        if image_url:
-
-            await call.message.answer_photo(
-                photo=image_url
-            )
-
         (
             question,
             a,
@@ -4180,6 +4174,13 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             language,
             time_limit
         ) = test
+
+        if image_url:
+
+            await call.message.answer_photo(
+                photo=image_url
+            )
+
 
         if answer == "A":
             selected = str(a)
