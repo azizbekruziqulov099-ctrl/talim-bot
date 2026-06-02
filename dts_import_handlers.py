@@ -1218,6 +1218,22 @@ async def dts_navigator(
 
     buttons = []
 
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
+
+
     for (grade,) in current_items:
 
         buttons.append([
@@ -1452,6 +1468,22 @@ async def dts_subject(
 
     buttons = []
 
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
+
+
     for (quarter,) in quarters:
 
         buttons.append([
@@ -1547,6 +1579,20 @@ async def dts_quarter(
     rows = cur.fetchall()
 
     buttons = []
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
 
     for code, name in rows:
 
@@ -1651,6 +1697,20 @@ async def dts_bob(
     rows = cur.fetchall()
 
     buttons = []
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
 
     for code, name in rows:
 
@@ -1760,6 +1820,21 @@ async def dts_bolim(
     rows = cur.fetchall()
 
     buttons = []
+
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
 
     for code, name in rows:
 
@@ -1875,6 +1950,22 @@ async def dts_mavzu(
     rows = cur.fetchall()
 
     buttons = []
+
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚡ Test boshlash",
+            callback_data=f"test_grade_{grade}"
+        )
+    ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="⚙️ Test sozlamalari",
+            callback_data=f"settings_grade_{grade}"
+        )
+    ])
+
 
     for code, name, topic_code in rows:
 
