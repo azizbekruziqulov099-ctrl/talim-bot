@@ -38,7 +38,7 @@ def build_prompt(
     ==================================================
     ENG MUHIM QOIDA
     ==================================================
-    1. Boshlang;ih (1-4)- sinflarga test tuzishda oddiy misollar tuzish ko'proq. Qolganlarga sinifi va yozshiga qaralsin
+    1. Boshlang;ih (1-4)- sinflarga test tuzishda oddiy misollar tuzish ko'proq. Qolganlarga sinfi va yoshiga qaralsin.
     2. oddiyga asosan 2 yoi 3 so'zli, ko'pida 5 yoki 6 so'zli bolsin boshlang'ih sinflarga 
     GPT avval FAN, SINF, BOB, BO'LIM, MAVZU va KICHIK MAVZUni tahlil qilsin.
 
@@ -50,7 +50,7 @@ def build_prompt(
     4. BO'LIM aniqlansin
     5. MAVZU aniqlansin
     6. KICHIK MAVZU aniqlansin
-    7. SKILL aniqlansin
+    7. SKILL aniqlansin va mustaqil qarorda yozilsin o'zi
 
     Shundan keyingina savol yaratiladi.
 
@@ -64,8 +64,9 @@ def build_prompt(
     2. SINF darajasini aniqla
     3. MAVZU maqsadini aniqla
     4. KICHIK MAVZU maqsadini aniqla
-
-    Savol ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
+    5.Savollar manova mazmun jixatdan umuman qatiyan takrorlanishsiz yoziladi 
+    
+    Savollar ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
 
     ==================================================
     MAVZU TALQINI
@@ -83,6 +84,30 @@ def build_prompt(
 
     Mavzuning mohiyatini tekshir.
 
+    Bolalar uchun va boshlang‘ich sinf darajasidagi ta'limiy rasm yarat.
+
+    Faqat:
+    - mevalar
+    - sabzavotlar
+    - geometrik shakllar
+    - hayvonlar
+    - o‘quv qurollari
+    - sonlar
+    - maktab buyumlari
+    - transport vositalari
+
+    Ishlatilsin.
+
+    Taqiqlanadi:
+    - odam tanasi yoki yarim yalang‘och tasvirlar
+    - zo‘ravonlik
+    - qon
+    - qo‘rqinchli mavjudotlar
+    - siyosiy yoki diniy targ‘ibot
+    - kattalar uchun mo‘ljallangan har qanday kontent
+
+    Rasm sodda, oq fonli, tushunarli va bolalar uchun xavfsiz bo‘lsin.
+    
     ==================================================
     YANGILIK QOIDASI
     ==================================================
