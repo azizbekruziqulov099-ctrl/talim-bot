@@ -21,6 +21,7 @@ import json
 import random
 import time
 import edge_tts
+from gtts import gTTS
 from aiogram.types import FSInputFile
 import psycopg2
 import re
@@ -705,10 +706,14 @@ async def handle_all(
                 ],
                 [
                     InlineKeyboardButton(
+                        text="🔊 Eshitish",
+                        callback_data="speak_question"
+                    ),
+                    InlineKeyboardButton(
                         text="🛑 Testni tugatish",
                         callback_data="test_stop"
                     )
-                ]
+                ],
             ]
         )
 
@@ -4131,10 +4136,14 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 ],
                 [
                     InlineKeyboardButton(
+                        text="🔊 Eshitish",
+                        callback_data="speak_question"
+                    ),
+                    InlineKeyboardButton(
                         text="🛑 Testni tugatish",
                         callback_data="test_stop"
                     )
-                ]
+                ],
             ]
         )
         await call.message.answer(
@@ -4180,6 +4189,33 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await call.message.answer_photo(
                 photo=image_url
             )
+
+        if question_type == "write_answer":
+
+                    if image_url:
+
+                        await call.message.answer_photo(
+                            photo=image_url,
+                            caption=
+                            f"⏱️ {time_limit} soniya\n\n"
+                            f"{question}\n\n"
+                            f"✍️ Javobni yozing:"
+                        )
+
+                    else:
+
+                        await call.message.answer(
+                            f"⏱️ {time_limit} soniya\n\n"
+                            f"{question}\n\n"
+                            f"✍️ Javobni yozing:"
+                        )
+
+                    set_state(
+                        call.from_user.id,
+                        "text_answer"
+                    )
+
+                    return
 
 
         if answer == "A":
@@ -4289,6 +4325,10 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 ],
                 [
                     InlineKeyboardButton(
+                        text="🔊 Eshitish",
+                        callback_data="speak_question"
+                    ),
+                    InlineKeyboardButton(
                         text="🛑 Testni tugatish",
                         callback_data="test_stop"
                     )
@@ -4336,6 +4376,38 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         del test_sessions[
             call.from_user.id
         ]
+
+        return
+
+    if call.data == "speak_question":
+
+        session = test_sessions.get(
+            call.from_user.id
+        )
+
+        if not session:
+            return
+
+        current = session["current"]
+
+        test = session["questions"][current]
+
+        question = test[0]
+        language = test[11]
+
+        from gtts import gTTS
+        from aiogram.types import FSInputFile
+
+        tts = gTTS(
+            text=question,
+            lang=language or "uz"
+        )
+
+        tts.save("question.mp3")
+
+        await call.message.answer_voice(
+            FSInputFile("question.mp3")
+        )
 
         return
 
