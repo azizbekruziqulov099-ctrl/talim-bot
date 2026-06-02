@@ -34,7 +34,6 @@ def build_prompt(
 
     QIYINLIK: {difficulty}
     VAZIYAT: {situation}
-    SKILL: {skill}
     TEST_TURI: {question_type}
 
     ==================================================
