@@ -96,13 +96,12 @@ def save_test(test_data):
             audio_text,
             language,
             life_level,
-            skill,
             age_group,
             time_limit
         )
         VALUES (
             %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-            %s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s
         )
     """, (
         test_data["topic_code"],
@@ -121,7 +120,6 @@ def save_test(test_data):
         test_data.get("audio_text"),
         test_data.get("language", "uz"),
         test_data.get("life_level", 0),
-        test_data.get("skill"),
         test_data.get("age_group"),
         test_data.get("time_limit", 60)
     ))
@@ -131,12 +129,6 @@ def save_test(test_data):
     cur.close()
     conn.close()
 
-def get_best_skill(
-    grade,
-    subject,
-    mavzu,
-    kichik
-):
 
     text = f"{mavzu} {kichik}".lower()
 
@@ -146,42 +138,6 @@ def get_best_skill(
         .replace("‘", "")
         .replace("`", "")
     )
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT skill, keywords
-        FROM subject_skills
-        WHERE grade=%s
-        AND LOWER(subject)=LOWER(%s)
-    """, (
-        str(grade),
-        subject
-    ))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    for skill, keywords in rows:
-
-        if not keywords:
-            continue
-
-        for word in keywords.split(","):
-
-            word = (
-                word.strip()
-                .lower()
-                .replace("'", "")
-                .replace("‘", "")
-                .replace("`", "")
-            )
-
-            if word and word in text:
-                return skill
 
     return "umumiy"
 
@@ -251,7 +207,6 @@ for i, question_type in enumerate(test_types):
         difficulty=difficulty,
         situation="oddiy",
         question_type=question_type,
-        skill=skill,
         last_questions=last_questions
     )
     print("3-BOSQICH")
@@ -289,7 +244,6 @@ for i, question_type in enumerate(test_types):
         test_data["topic_code"] = topic_code
         test_data["difficulty"] = "difficulty"
         test_data["situation"] = "situation"
-        test_data["skill"] = skill
 
         print(test_data)
 
