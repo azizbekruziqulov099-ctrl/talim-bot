@@ -215,7 +215,6 @@ print("GRADE:", grade)
 print("SUBJECT:", subject)
 print("MAVZU:", mavzu)
 print("KICHIK:", kichik)
-print("SKILL:", skill)
 
 print("2-BOSQICH")
 
