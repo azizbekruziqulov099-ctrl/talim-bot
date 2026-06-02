@@ -213,12 +213,22 @@ for i, question_type in enumerate(test_types):
 
     print("4-BOSQICH GPTGA YUBORILAYAPTI")
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=1.2,
-        top_p=0.95
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=1.2,
+            top_p=0.95
+        )
+
+    except Exception as e:
+        print(f"GPT XATO: {e}")
+        continue
 
     print("5-BOSQICH GPT JAVOB BERDI")
 
