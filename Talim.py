@@ -4051,6 +4051,22 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         test = session["questions"][current]
 
+        (
+            question,
+            a,
+            b,
+            c,
+            d,
+            correct,
+            explanation,
+            question_type,
+            is_latex,
+            image_url,
+            audio_text,
+            language,
+            time_limit
+        ) = test
+
         if answer == "A":
             selected = str(a)
 
