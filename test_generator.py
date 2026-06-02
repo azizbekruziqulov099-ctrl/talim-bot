@@ -240,6 +240,21 @@ for i, question_type in enumerate(test_types):
 
     try:
         test_data = json.loads(content)
+
+        if test_data.get("question_type") == "image_question":
+
+            print("🖼 RASM YARATILAYAPTI")
+
+            image_prompt = test_data.get("image_prompt")
+
+            image = client.images.generate(
+                model="gpt-image-1",
+                prompt=image_prompt,
+                size="1024x1024"
+            )
+
+            print(image)
+
         allowed_types = [
             "single_choice",
             "multiple_choice",
