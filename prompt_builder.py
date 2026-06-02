@@ -5,7 +5,7 @@ def build_prompt(
     topic_code,
     difficulty,
     situation,
-    question_type
+    question_type,
     last_questions
 ):
 
