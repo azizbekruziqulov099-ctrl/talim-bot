@@ -601,6 +601,9 @@ async def handle_all(
             message.from_user.id
         )
 
+        if not session:
+            return
+
         current = session["current"]
 
         test = session["questions"][current]
@@ -625,87 +628,95 @@ async def handle_all(
 
         session["current"] += 1
 
-    elif session["current"] >= len(session["questions"]):
+        if session["current"] >= len(
+            session["questions"]
+        ):
 
-        await message.answer(
-            f"""
+            await message.answer(
+                f"""
     🏁 Test tugadi
 
     ✅ To'g'ri: {session['correct']}
     ❌ Noto'g'ri: {session['wrong']}
     """
+            )
+
+            del test_sessions[
+                message.from_user.id
+            ]
+
+            return
+
+        current = session["current"]
+
+        test = session["questions"][current]
+
+        (
+            question,
+            a,
+            b,
+            c,
+            d,
+            correct,
+            explanation,
+            question_type,
+            is_latex,
+            image_url,
+            audio_text,
+            language,
+            time_limit
+        ) = test
+
+        if question_type == "write_answer":
+
+            await message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:"
+            )
+
+            return
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=str(a),
+                        callback_data="ans_A"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=str(b),
+                        callback_data="ans_B"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=str(c),
+                        callback_data="ans_C"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=str(d),
+                        callback_data="ans_D"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🛑 Testni tugatish",
+                        callback_data="test_stop"
+                    )
+                ]
+            ]
         )
-
-        del test_sessions[
-            message.from_user.id
-        ]
-
-        return
-
-    current = session["current"]
-
-    test = session["questions"][current]
-
-    (
-        question,
-        a,
-        b,
-        c,
-        d,
-        correct,
-        explanation,
-        question_type,
-        is_latex,
-        image_url,
-        audio_text,
-        language,
-        time_limit
-    ) = test
-
-    if question_type == "write_answer":
 
         await message.answer(
             f"⏱️ {time_limit} soniya\n\n"
-            f"{question}\n\n"
-            f"✍️ Javobni yozing:"
+            f"{question}",
+            reply_markup=kb
         )
-
-        return
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=str(a),
-                    callback_data="ans_A"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(b),
-                    callback_data="ans_B"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(c),
-                    callback_data="ans_C"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=str(d),
-                    callback_data="ans_D"
-                )
-            ]
-        ]
-    )
-
-    await message.answer(
-        f"⏱️ {time_limit} soniya\n\n"
-        f"{question}",
-        reply_markup=kb
-    )
 
     if message.text == "👥 Foydalanuvchilar statistikasi":
 
@@ -4295,6 +4306,42 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             f"⏱️ {time_limit} soniya\n\n{question}",
             reply_markup=kb
         )
+
+        return
+
+    elif call.data == "test_stop":
+
+        session = test_sessions.get(
+            call.from_user.id
+        )
+
+        if not session:
+            return
+
+        total = (
+            session["correct"] +
+            session["wrong"]
+        )
+
+        percent = round(
+            session["correct"] * 100 / total,
+            1
+        ) if total else 0
+
+        await call.message.answer(
+            f"""
+    🏁 Test tugatildi
+
+    ✅ To'g'ri: {session['correct']}
+    ❌ Noto'g'ri: {session['wrong']}
+
+    📊 Natija: {percent}%
+    """
+        )
+
+        del test_sessions[
+            call.from_user.id
+        ]
 
         return
 
