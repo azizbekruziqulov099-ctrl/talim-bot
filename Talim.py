@@ -707,7 +707,7 @@ async def handle_all(
         reply_markup=kb
     )
 
-    elif message.text == "👥 Foydalanuvchilar statistikasi":
+    if message.text == "👥 Foydalanuvchilar statistikasi":
 
         if message.from_user.id not in ADMINS:
             return
@@ -4045,6 +4045,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         test = tests[0]
 
+        if image_url:
+
+            await call.message.answer_photo(
+                photo=image_url
+            )
+
         (
             question,
             a,
@@ -4149,6 +4155,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         test = session["questions"][current]
 
+        if image_url:
+
+            await call.message.answer_photo(
+                photo=image_url
+            )
+
         (
             question,
             a,
@@ -4213,6 +4225,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         current = session["current"]
 
         test = session["questions"][current]
+
+        if image_url:
+
+            await call.message.answer_photo(
+                photo=image_url
+            )
 
         (
             question,
