@@ -625,6 +625,88 @@ async def handle_all(
 
         session["current"] += 1
 
+    elif session["current"] >= len(session["questions"]):
+
+        await message.answer(
+            f"""
+    🏁 Test tugadi
+
+    ✅ To'g'ri: {session['correct']}
+    ❌ Noto'g'ri: {session['wrong']}
+    """
+        )
+
+        del test_sessions[
+            message.from_user.id
+        ]
+
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
+
+    if question_type == "write_answer":
+
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}\n\n"
+            f"✍️ Javobni yozing:"
+        )
+
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=str(a),
+                    callback_data="ans_A"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(b),
+                    callback_data="ans_B"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(c),
+                    callback_data="ans_C"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(d),
+                    callback_data="ans_D"
+                )
+            ]
+        ]
+    )
+
+    await message.answer(
+        f"⏱️ {time_limit} soniya\n\n"
+        f"{question}",
+        reply_markup=kb
+    )
+
     elif message.text == "👥 Foydalanuvchilar statistikasi":
 
         if message.from_user.id not in ADMINS:
