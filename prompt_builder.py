@@ -50,7 +50,6 @@ def build_prompt(
     4. BO'LIM aniqlansin
     5. MAVZU aniqlansin
     6. KICHIK MAVZU aniqlansin
-    7. SKILL aniqlansin va mustaqil qarorda yozilsin o'zi
 
     Shundan keyingina savol yaratiladi.
 
@@ -64,9 +63,8 @@ def build_prompt(
     2. SINF darajasini aniqla
     3. MAVZU maqsadini aniqla
     4. KICHIK MAVZU maqsadini aniqla
-    5.Savollar manova mazmun jixatdan umuman qatiyan takrorlanishsiz yoziladi 
     
-    Savollar ushbu 5 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
+    Savollar ushbu 4 ta elementning umumiy kesishgan nuqtasida yaratilishi shart.
 
     ==================================================
     MAVZU TALQINI
@@ -183,7 +181,7 @@ def build_prompt(
 
     asosida yaratilishi kerak.
 
-    Agar oldingi savollarga o'xshashlik aniqlansa, yangi savol ishlab chiqilsin.
+    Agar oldingi savollarga o'xshashlik aniqlansa, yangi savol ishlab chiqilsin mazmuni tub negizi bir xil bo'lmagan.
 
     MAVZU ustuvor.
     KICHIK MAVZU ustuvor.
