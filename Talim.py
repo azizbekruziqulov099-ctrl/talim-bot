@@ -4048,7 +4048,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "wrong": 0
         }
 
-
         test = tests[0]
 
         if image_url:
@@ -4073,7 +4072,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             time_limit
         ) = test
 
-        
         if not tests:
             await call.message.answer(
                 "❌ Test topilmadi"
