@@ -4083,6 +4083,18 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             time_limit
         ) = test
 
+        if question_type == "write_answer":
+
+            user_state[user_id] = "text_answer"
+
+            await call.message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:"
+            )
+
+            return
+
         if answer == "A":
             selected = str(a)
 
