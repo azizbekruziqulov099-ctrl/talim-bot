@@ -4048,11 +4048,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "wrong": 0
         }
 
-        if not tests:
-            await call.message.answer(
-                "❌ Test topilmadi"
-            )
-            return
 
         test = tests[0]
 
@@ -4077,6 +4072,13 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             language,
             time_limit
         ) = test
+
+        
+        if not tests:
+            await call.message.answer(
+                "❌ Test topilmadi"
+            )
+            return
 
         if question_type == "write_answer":
 
