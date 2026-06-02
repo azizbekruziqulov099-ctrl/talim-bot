@@ -785,26 +785,39 @@ async def handle_all(
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
-        cur.execute(
-            "SELECT COUNT(*) FROM generated_tests"
-        )
+        cur.execute("SELECT COUNT(*) FROM dts_tree")
+        total_topics = cur.fetchone()[0]
 
-        tests = cur.fetchone()[0]
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM dts_tree
+            WHERE generated_count > 0
+        """)
+        completed_topics = cur.fetchone()[0]
 
-        cur.execute(
-            "SELECT COUNT(*) FROM topic_generation"
-        )
+        remaining_topics = total_topics - completed_topics
 
-        topics = cur.fetchone()[0]
+        progress = round(
+            completed_topics * 100 / total_topics,
+            1
+        ) if total_topics else 0
 
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM generated_tests
+        """)
+        total_tests = cur.fetchone()[0]
+
+        cur.close()
         conn.close()
 
-        await message.answer(
-            f"📚 Mavzular: {topics}\n"
-            f"📝 Testlar: {tests}"
+        text = (
+            f"📚 Jami mavzular: {total_topics}\n"
+            f"✅ Tayyor mavzular: {completed_topics}\n"
+            f"❌ Qolgan mavzular: {remaining_topics}\n"
+            f"📝 Jami testlar: {total_tests}\n"
+            f"📈 Progress: {progress}%"
         )
-
-        return
 
     elif message.text == "📚 DTS":
 
