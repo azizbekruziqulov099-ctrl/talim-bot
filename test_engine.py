@@ -276,7 +276,8 @@ async def check_text_answer(
         await show_question(
             message.from_user.id,
             message
-
+        )
+        
         await message.answer(
             f"✅ To'g'ri\n\n📖 {explanation}"
         )
