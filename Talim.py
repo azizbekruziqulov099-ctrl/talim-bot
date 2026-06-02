@@ -1,5 +1,6 @@
 from admin_handlers import *
 from generator_handlers import *
+from test_engine import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -502,6 +503,84 @@ async def save_image(message: types.Message):
         f"✅ Saqlandi: {name}"
     )
 
+async def show_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
+
+    if question_type == "write_answer":
+
+        user_state[user_id] = "text_answer"
+
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}\n\n"
+            f"✍️ Javobni yozing:"
+        )
+
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=str(a),
+                    callback_data="ans_A"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(b),
+                    callback_data="ans_B"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(c),
+                    callback_data="ans_C"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(d),
+                    callback_data="ans_D"
+                )
+            ]
+        ]
+    )
+
+    await message.answer(
+        f"⏱️ {time_limit} soniya\n\n{question}",
+        reply_markup=kb
+    )
+
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
 
@@ -595,132 +674,13 @@ async def handle_all(
 
     elif user_state.get(message.from_user.id) == "text_answer":
 
-        user_answer = message.text.strip()
-
-        session = test_sessions.get(
-            message.from_user.id
+        await check_text_answer(
+            message.from_user.id,
+            message.text,
+            message
         )
 
-        if not session:
-            return
-
-        current = session["current"]
-
-        test = session["questions"][current]
-
-        correct = test[5]
-
-        if user_answer.lower() == str(correct).lower():
-
-            session["correct"] += 1
-
-            await message.answer(
-                "✅ To'g'ri"
-            )
-
-        else:
-
-            session["wrong"] += 1
-
-            await message.answer(
-                f"❌ Noto'g'ri\n\nTo'g'ri javob: {correct}"
-            )
-
-        session["current"] += 1
-
-        if session["current"] >= len(
-            session["questions"]
-        ):
-
-            await message.answer(
-                f"""
-    🏁 Test tugadi
-
-    ✅ To'g'ri: {session['correct']}
-    ❌ Noto'g'ri: {session['wrong']}
-    """
-            )
-
-            del test_sessions[
-                message.from_user.id
-            ]
-
-            return
-
-        current = session["current"]
-
-        test = session["questions"][current]
-
-        (
-            question,
-            a,
-            b,
-            c,
-            d,
-            correct,
-            explanation,
-            question_type,
-            is_latex,
-            image_url,
-            audio_text,
-            language,
-            time_limit
-        ) = test
-
-        if question_type == "write_answer":
-
-            await message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
-                f"✍️ Javobni yozing:"
-            )
-
-            return
-
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=str(a),
-                        callback_data="ans_A"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=str(b),
-                        callback_data="ans_B"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=str(c),
-                        callback_data="ans_C"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=str(d),
-                        callback_data="ans_D"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="🔊 Eshitish",
-                        callback_data="speak_question"
-                    ),
-                    InlineKeyboardButton(
-                        text="🛑 Testni tugatish",
-                        callback_data="test_stop"
-                    )
-                ],
-            ]
-        )
-
-        await message.answer(
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}",
-            reply_markup=kb
-        )
+        return
 
     if message.text == "👥 Foydalanuvchilar statistikasi":
 
@@ -3271,7 +3231,6 @@ async def handle_all(
                         subtopic = ""
 
                         framework = ""
-                        skill = ""
 
                         grade = ""
                         quarter = ""
@@ -4154,279 +4113,33 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data.startswith("ans_"):
 
-        user_id = call.from_user.id
-
-        session = test_sessions.get(user_id)
-
-        if not session:
-            return
-
-        answer = call.data.replace("ans_", "")
-
-        current = session["current"]
-
-        test = session["questions"][current]
-
-        (
-            question,
-            a,
-            b,
-            c,
-            d,
-            correct,
-            explanation,
-            question_type,
-            is_latex,
-            image_url,
-            audio_text,
-            language,
-            time_limit
-        ) = test
-
-        if image_url:
-
-            await call.message.answer_photo(
-                photo=image_url
-            )
-
-        if question_type == "write_answer":
-
-                    if image_url:
-
-                        await call.message.answer_photo(
-                            photo=image_url,
-                            caption=
-                            f"⏱️ {time_limit} soniya\n\n"
-                            f"{question}\n\n"
-                            f"✍️ Javobni yozing:"
-                        )
-
-                    else:
-
-                        await call.message.answer(
-                            f"⏱️ {time_limit} soniya\n\n"
-                            f"{question}\n\n"
-                            f"✍️ Javobni yozing:"
-                        )
-
-                    set_state(
-                        call.from_user.id,
-                        "text_answer"
-                    )
-
-                    return
-
-
-        if answer == "A":
-            selected = str(a)
-
-        elif answer == "B":
-            selected = str(b)
-
-        elif answer == "C":
-            selected = str(c)
-
-        else:
-            selected = str(d)
-
-        if selected.strip() == str(correct).strip():
-            session["correct"] += 1
-            await call.answer("✅ To'g'ri")
-        else:
-            session["wrong"] += 1
-            await call.answer("❌ Noto'g'ri")
-
-        session["current"] += 1
-
-        if session["current"] >= len(session["questions"]):
-
-            total = session["correct"] + session["wrong"]
-
-            percent = round(
-                session["correct"] * 100 / total,
-                1
-            ) if total else 0
-
-            await call.message.answer(
-                f"""
-    🏁 Test tugadi
-
-    ✅ To'g'ri: {session['correct']}
-    ❌ Noto'g'ri: {session['wrong']}
-
-    📊 Natija: {percent}%
-    """
-            )
-
-            del test_sessions[user_id]
-
-            return
-
-        current = session["current"]
-
-        test = session["questions"][current]
-
-        if image_url:
-
-            await call.message.answer_photo(
-                photo=image_url
-            )
-
-        (
-            question,
-            a,
-            b,
-            c,
-            d,
-            correct,
-            explanation,
-            question_type,
-            is_latex,
-            image_url,
-            audio_text,
-            language,
-            time_limit
-        ) = test
-
-        if question_type == "write_answer":
-
-            user_state[user_id] = "text_answer"
-
-            await call.message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
-                f"✍️ Javobni yozing:"
-            )
-
-            return
-
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=str(a),
-                        callback_data="ans_A"
-                    ),
-                    InlineKeyboardButton(
-                        text=str(b),
-                        callback_data="ans_B"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=str(c),
-                        callback_data="ans_C"
-                    ),
-                    InlineKeyboardButton(
-                        text=str(d),
-                        callback_data="ans_D"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="🔊 Eshitish",
-                        callback_data="speak_question"
-                    ),
-                    InlineKeyboardButton(
-                        text="🛑 Testni tugatish",
-                        callback_data="test_stop"
-                    )
-                ]
-            ]
+        answer = call.data.replace(
+            "ans_",
+            ""
         )
 
-        await call.message.answer(
-            f"⏱️ {time_limit} soniya\n\n{question}",
-            reply_markup=kb
+        await check_button_answer(
+            call.from_user.id,
+            answer,
+            call.message
         )
 
         return
 
-    elif call.data == "test_stop":
+    if call.data == "test_stop":
 
-        session = test_sessions.get(
-            call.from_user.id
+        await stop_test(
+            call.from_user.id,
+            call.message
         )
-
-        if not session:
-            return
-
-        total = (
-            session["correct"] +
-            session["wrong"]
-        )
-
-        percent = round(
-            session["correct"] * 100 / total,
-            1
-        ) if total else 0
-
-        await call.message.answer(
-            f"""
-    🏁 Test tugatildi
-
-    ✅ To'g'ri: {session['correct']}
-    ❌ Noto'g'ri: {session['wrong']}
-
-    📊 Natija: {percent}%
-    """
-        )
-
-        del test_sessions[
-            call.from_user.id
-        ]
 
         return
 
     if call.data == "speak_question":
 
-        session = test_sessions.get(
-            call.from_user.id
-        )
-
-        if not session:
-            return
-
-        current = session["current"]
-
-        test = session["questions"][current]
-
-        question = test[0]
-
-        language = test[11]
-
-        if language == "uz":
-
-            voice = "uz-UZ-SardorNeural"
-
-        elif language == "ru":
-
-            voice = "ru-RU-DmitryNeural"
-
-        elif language == "en":
-
-            voice = "en-US-GuyNeural"
-
-        else:
-
-            voice = "uz-UZ-SardorNeural"
-
-        filename = (
-            f"voice_"
-            f"{call.from_user.id}.mp3"
-        )
-
-        communicate = edge_tts.Communicate(
-            text=question,
-            voice=voice
-        )
-
-        await communicate.save(
-            filename
-        )
-
-        await call.message.answer_voice(
-            FSInputFile(filename)
+        await speak_question(
+            call.from_user.id,
+            call.message
         )
 
         return
