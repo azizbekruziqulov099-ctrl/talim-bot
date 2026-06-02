@@ -21,7 +21,6 @@ import json
 import random
 import time
 import edge_tts
-from gtts import gTTS
 from aiogram.types import FSInputFile
 import psycopg2
 import re
