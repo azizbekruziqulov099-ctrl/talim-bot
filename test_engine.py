@@ -266,18 +266,6 @@ async def check_text_answer(
 
         session["correct"] += 1
 
-        if session["current"] >= len(session["questions"]):
-            await finish_test(
-                message.from_user.id,
-                message
-            )
-            return
-
-        await show_question(
-            message.from_user.id,
-            message
-        )
-        
         await message.answer(
             f"✅ To'g'ri\n\n📖 {explanation}"
         )
@@ -325,7 +313,7 @@ async def next_question(
     await show_question(
         user_id,
         message
-    )
+    )    
 
 async def finish_test(
     user_id,
