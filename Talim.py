@@ -4048,13 +4048,13 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "wrong": 0
         }
 
-        test = tests[0]
-
-        if image_url:
-
-            await call.message.answer_photo(
-                photo=image_url
+        if not tests:
+            await call.message.answer(
+                "❌ Test topilmadi"
             )
+            return
+
+        test = tests[0]
 
         (
             question,
@@ -4072,43 +4072,36 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             time_limit
         ) = test
 
-        if not tests:
-            await call.message.answer(
-                "❌ Test topilmadi"
-            )
-            return
-
-        if question_type == "write_answer":
-
-            await call.message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
-                f"✍️ Javobni yozing:"
-            )
-
-            user_state[call.from_user.id] = "text_answer"
-
-            return
-
         await call.message.answer(
             f"TYPE = {question_type}"
         )
 
         if question_type == "write_answer":
 
-            await call.message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
-                f"✍️ Javobni yozing:"
-            )
+            if image_url:
+
+                await call.message.answer_photo(
+                    photo=image_url,
+                    caption=
+                    f"⏱️ {time_limit} soniya\n\n"
+                    f"{question}\n\n"
+                    f"✍️ Javobni yozing:"
+                )
+
+            else:
+
+                await call.message.answer(
+                    f"⏱️ {time_limit} soniya\n\n"
+                    f"{question}\n\n"
+                    f"✍️ Javobni yozing:"
+                )
 
             set_state(
                 call.from_user.id,
                 "text_answer"
             )
-
+            
             return
-
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
