@@ -19,7 +19,7 @@ def is_similar(new_question, old_questions):
             q.lower()
         )
 
-        if score >= 80:
+        if score >= 300:
             return True
 
     return False
@@ -43,7 +43,7 @@ def save_test(test_data):
 
     old_questions = get_last_questions(
         test_data["topic_code"],
-        limit=100
+        limit=300
     )
 
     if is_similar(
@@ -211,13 +211,6 @@ info = get_topic_info(topic_code)
 
 grade, subject, bob, bolim, mavzu, kichik = info
 
-skill = get_best_skill(
-    grade,
-    subject,
-    mavzu,
-    kichik
-)
-
 print("GRADE:", grade)
 print("SUBJECT:", subject)
 print("MAVZU:", mavzu)
@@ -268,13 +261,9 @@ for i, question_type in enumerate(test_types):
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.7
+        messages=[{"role": "user", "content": prompt}],
+        temperature=1.2,
+        top_p=0.95
     )
 
     print("5-BOSQICH GPT JAVOB BERDI")
@@ -302,6 +291,8 @@ for i, question_type in enumerate(test_types):
         test_data["difficulty"] = "difficulty"
         test_data["situation"] = "situation"
         test_data["skill"] = skill
+
+        print(test_data)
 
         save_test(test_data)
 
