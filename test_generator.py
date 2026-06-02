@@ -19,7 +19,7 @@ def is_similar(new_question, old_questions):
             q.lower()
         )
 
-        if score >= 300:
+        if score >= 100:
             return True
 
     return False
@@ -43,7 +43,7 @@ def save_test(test_data):
 
     old_questions = get_last_questions(
         test_data["topic_code"],
-        limit=300
+        limit=100
     )
 
     if is_similar(
