@@ -3979,7 +3979,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             time_limit
         ) = test
 
-        if question_type == "text":
+        if question_type == "write_answer":
 
             await call.message.answer(
                 f"⏱️ {time_limit} soniya\n\n"
@@ -3988,8 +3988,8 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             )
 
             set_state(
-                user_id,
-                "subject"
+                call.from_user.id,
+                "text_answer"
             )
 
             return
