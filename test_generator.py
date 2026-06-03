@@ -154,7 +154,7 @@ def generate_tests():
 
     input("START bosish uchun Enter bosing...")
 
-    for i in range(10):
+    for i in range(1):
 
         print(i+1)
 
