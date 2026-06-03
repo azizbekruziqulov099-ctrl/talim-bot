@@ -173,119 +173,85 @@ print("MAVZU:", mavzu)
 print("KICHIK:", kichik)
 
 print("2-BOSQICH")
+def generate_tests(topic_code):
 
-last_questions = get_last_questions(topic_code)
+    last_questions = get_last_questions(topic_code)
 
-test_types = (
-    ["single_choice"] * 24 +
-    ["multiple_choice"] * 12 +
-    ["true_false"] * 9 +
-    ["write_answer"] * 9 +
-    ["image_question"] * 6
-)
-difficulties = (
-    ["oson"] * 30 +
-    ["o'rta"] * 15 +
-    ["qiyin"] * 10 +
-    ["murakkab"] * 5
-)
-life_levels = (
-    [0] * 20 +
-    [1] * 15 +
-    [2] * 10 +
-    [3] * 10 +
-    [4] * 5
-)
-
-for i, question_type in enumerate(test_types):
-
-    difficulty = difficulties[i]
-    life_level = life_levels[i]
-
-    prompt = build_prompt(
-        topic_code,
-        difficulty=difficulty,
-        situation="oddiy",
-        question_type=question_type,
-        last_questions=last_questions
+    test_types = (
+        ["single_choice"] * 30 +
+        ["multiple_choice"] * 8 +
+        ["true_false"] * 7 +
+        ["write_answer"] * 15 +
+        ["image_question"] * 0
     )
-    print("3-BOSQICH")
 
-    print("4-BOSQICH GPTGA YUBORILAYAPTI")
+    difficulties = (
+        ["oson"] * 30 +
+        ["o'rta"] * 15 +
+        ["qiyin"] * 10 +
+        ["murakkab"] * 5
+    )
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=1.2,
-            top_p=0.95
+    life_levels = (
+        [0] * 20 +
+        [1] * 15 +
+        [2] * 10 +
+        [3] * 10 +
+        [4] * 5
+    )
+
+    for i, question_type in enumerate(test_types):
+
+        difficulty = difficulties[i]
+        life_level = life_levels[i]
+
+        prompt = build_prompt(
+            topic_code,
+            difficulty=difficulty,
+            situation="oddiy",
+            question_type=question_type,
+            last_questions=last_questions
         )
 
-    except Exception as e:
-        print(f"GPT XATO: {e}")
-        continue
+        print("3-BOSQICH")
+        print("4-BOSQICH GPTGA YUBORILAYAPTI")
 
-    print("5-BOSQICH GPT JAVOB BERDI")
-
-    content = response.choices[0].message.content
-
-    content = content.replace("```json", "")
-    content = content.replace("```", "")
-    content = content.strip()
-
-    try:
-        test_data = json.loads(content)
-
-        if test_data.get("question_type") == "image_question":
-
-            print("🖼 RASM YARATILAYAPTI")
-
-            image_prompt = test_data.get("image_prompt")
-
-            image = client.images.generate(
-                model="gpt-image-1",
-                prompt=image_prompt,
-                size="1024x1024"
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=1.2,
+                top_p=0.95
             )
 
-            print(image)
+        except Exception as e:
+            print(f"GPT XATO: {e}")
+            continue
 
-        allowed_types = [
-            "single_choice",
-            "multiple_choice",
-            "true_false",
-            "write_answer",
-            "image_question"
-        ]
+        print("5-BOSQICH GPT JAVOB BERDI")
 
-        if test_data.get("question_type") not in allowed_types:
-            test_data["question_type"] = question_type
+        content = response.choices[0].message.content
 
-        test_data["topic_code"] = topic_code
-        test_data["difficulty"] = "difficulty"
-        test_data["situation"] = "situation"
+        content = content.replace("```json", "")
+        content = content.replace("```", "")
+        content = content.strip()
 
-        print(test_data)
+        try:
+            test_data = json.loads(content)
 
-        save_test(test_data)
+            # BU YERDAN PASTDAGI KODLARING HAM
+            # XUDDI SHU USULDA 4 TA PROBEL ICHKARIGA KIRADI
 
-        print(
-            f"✅ SAQLANDI: {question_type}"
-        )
+        except Exception as e:
 
-    except Exception as e:
+            print(f"❌ XATO: {question_type}")
+            print(e)
 
-        print(
-            f"❌ XATO: {question_type}"
-        )
+    increase_count(topic_code)
 
-        print(e)
-
-increase_count(topic_code)
-
-print("🎉 MAVZU TUGADI")
+    print("🎉 MAVZU TUGADI")            
