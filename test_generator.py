@@ -1,14 +1,17 @@
 import os
-import psycopg2
 import json
+import psycopg2
+from rapidfuzz import fuzz
+
 from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
 from prompt_builder import build_prompt
 from openai_client import client
-from rapidfuzz import fuzz
-import random
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 print("1-BOSQICH")
+
 
 def is_similar(new_question, old_questions):
 
@@ -24,11 +27,31 @@ def is_similar(new_question, old_questions):
 
     return False
 
-def save_test(test_data):
+
+def get_last_questions(topic_code, limit=60):
+
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
-    # Dublikat tekshirish
+    cur.execute("""
+        SELECT question
+        FROM generated_tests
+        WHERE topic_code=%s
+        ORDER BY id DESC
+        LIMIT %s
+    """, (topic_code, limit))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return [r[0] for r in rows]
+
+def save_test(test_data):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
     cur.execute("""
         SELECT 1
@@ -60,8 +83,6 @@ def save_test(test_data):
         cur.close()
         conn.close()
         return
-
-    # Single choice validatsiya
 
     if test_data.get("question_type") == "single_choice":
 
@@ -128,39 +149,6 @@ def save_test(test_data):
 
     cur.close()
     conn.close()
-
-
-    text = f"{mavzu} {kichik}".lower()
-
-    text = (
-        text
-        .replace("'", "")
-        .replace("‘", "")
-        .replace("`", "")
-    )
-
-    return "umumiy"
-
-def get_last_questions(topic_code, limit=60):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT question
-        FROM generated_tests
-        WHERE topic_code=%s
-        ORDER BY id DESC
-        LIMIT %s
-    """, (topic_code, limit))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return [r[0] for r in rows]
-
 
 def generate_tests():
 
@@ -229,6 +217,7 @@ def generate_tests():
             print("4-BOSQICH GPTGA YUBORILAYAPTI")
 
             try:
+
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
@@ -242,6 +231,7 @@ def generate_tests():
                 )
 
             except Exception as e:
+
                 print(f"GPT XATO: {e}")
                 continue
 
@@ -253,6 +243,7 @@ def generate_tests():
             content = content.strip()
 
             try:
+
                 test_data = json.loads(content)
 
                 if test_data.get("question_type") == "image_question":
@@ -300,5 +291,5 @@ def generate_tests():
         print("🎉 MAVZU TUGADI")
 
 
-if name == "main":
+if name == "__main__":
     generate_tests()
