@@ -71,28 +71,6 @@ async def show_question(
         time_limit
     ) = test
 
-    if is_latex:
-
-        image_file = (
-            f"latex_{user_id}.png"
-        )
-
-        latex_to_image(
-            question,
-            image_file
-        )
-
-        await message.answer_photo(
-            photo=FSInputFile(
-                image_file
-            )
-        )
-
-        await message.answer(
-            "Savolni rasmda ko‘ring",
-            reply_markup=kb
-        )
-
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -172,6 +150,30 @@ async def show_question(
             ]
         ]
     )
+
+
+    if is_latex:
+
+        image_file = (
+            f"latex_{user_id}.png"
+        )
+
+        latex_to_image(
+            question,
+            image_file
+        )
+
+        await message.answer_photo(
+            photo=FSInputFile(
+                image_file
+            )
+        )
+
+        await message.answer(
+            "Savolni rasmda ko‘ring",
+            reply_markup=kb
+        )
+
 
     if image_url:
 
