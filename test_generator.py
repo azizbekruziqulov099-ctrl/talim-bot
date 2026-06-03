@@ -289,7 +289,3 @@ def generate_tests():
         increase_count(topic_code)
 
         print("🎉 MAVZU TUGADI")
-
-
-if name == "__main__":
-    generate_tests()
