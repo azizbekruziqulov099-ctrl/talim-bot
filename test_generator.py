@@ -152,7 +152,11 @@ def save_test(test_data):
 
 def generate_tests():
 
-    while True:
+    input("START bosish uchun Enter bosing...")
+
+    for i in range(10):
+
+        print(i+1)
 
         topics = get_next_topic(1)
 
