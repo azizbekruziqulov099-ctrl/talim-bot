@@ -161,97 +161,144 @@ def get_last_questions(topic_code, limit=60):
 
     return [r[0] for r in rows]
 
-topic_code = get_next_topic(1)[0][0]
 
-info = get_topic_info(topic_code)
+def generate_tests():
 
-grade, subject, bob, bolim, mavzu, kichik = info
+    while True:
 
-print("GRADE:", grade)
-print("SUBJECT:", subject)
-print("MAVZU:", mavzu)
-print("KICHIK:", kichik)
+        topics = get_next_topic(1)
 
-print("2-BOSQICH")
-def generate_tests(topic_code):
+        if not topics:
+            print("HAMMA MAVZULAR TUGADI")
+            break
 
-    last_questions = get_last_questions(topic_code)
+        topic_code = topics[0][0]
 
-    test_types = (
-        ["single_choice"] * 30 +
-        ["multiple_choice"] * 8 +
-        ["true_false"] * 7 +
-        ["write_answer"] * 15 +
-        ["image_question"] * 0
-    )
+        info = get_topic_info(topic_code)
 
-    difficulties = (
-        ["oson"] * 30 +
-        ["o'rta"] * 15 +
-        ["qiyin"] * 10 +
-        ["murakkab"] * 5
-    )
+        grade, subject, bob, bolim, mavzu, kichik = info
 
-    life_levels = (
-        [0] * 20 +
-        [1] * 15 +
-        [2] * 10 +
-        [3] * 10 +
-        [4] * 5
-    )
+        print("GRADE:", grade)
+        print("SUBJECT:", subject)
+        print("MAVZU:", mavzu)
+        print("KICHIK:", kichik)
 
-    for i, question_type in enumerate(test_types):
+        print("2-BOSQICH")
 
-        difficulty = difficulties[i]
-        life_level = life_levels[i]
-
-        prompt = build_prompt(
-            topic_code,
-            difficulty=difficulty,
-            situation="oddiy",
-            question_type=question_type,
-            last_questions=last_questions
+        test_types = (
+            ["single_choice"] * 30 +
+            ["multiple_choice"] * 5 +
+            ["true_false"] * 5 +
+            ["write_answer"] * 20
         )
 
-        print("3-BOSQICH")
-        print("4-BOSQICH GPTGA YUBORILAYAPTI")
+        difficulties = (
+            ["oson"] * 30 +
+            ["o'rta"] * 15 +
+            ["qiyin"] * 10 +
+            ["murakkab"] * 5
+        )
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=1.2,
-                top_p=0.95
+        life_levels = (
+            [0] * 20 +
+            [1] * 15 +
+            [2] * 10 +
+            [3] * 10 +
+            [4] * 5
+        )
+
+        for i, question_type in enumerate(test_types):
+
+            last_questions = get_last_questions(
+                topic_code,
+                limit=60
             )
 
-        except Exception as e:
-            print(f"GPT XATO: {e}")
-            continue
+            difficulty = difficulties[i]
+            life_level = life_levels[i]
 
-        print("5-BOSQICH GPT JAVOB BERDI")
+            prompt = build_prompt(
+                topic_code,
+                difficulty=difficulty,
+                situation="oddiy",
+                question_type=question_type,
+                last_questions=last_questions
+            )
 
-        content = response.choices[0].message.content
+            print("3-BOSQICH")
+            print("4-BOSQICH GPTGA YUBORILAYAPTI")
 
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
-        content = content.strip()
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=1.2,
+                    top_p=0.95
+                )
 
-        try:
-            test_data = json.loads(content)
+            except Exception as e:
+                print(f"GPT XATO: {e}")
+                continue
 
-            # BU YERDAN PASTDAGI KODLARING HAM
-            # XUDDI SHU USULDA 4 TA PROBEL ICHKARIGA KIRADI
+            print("5-BOSQICH GPT JAVOB BERDI")
 
-        except Exception as e:
+            content = response.choices[0].message.content
 
-            print(f"❌ XATO: {question_type}")
-            print(e)
+            content = content.replace("\n", "")
+            content = content.strip()
 
-    increase_count(topic_code)
+            try:
+                test_data = json.loads(content)
 
-    print("🎉 MAVZU TUGADI")            
+                if test_data.get("question_type") == "image_question":
+
+                    print("🖼 RASM YARATILAYAPTI")
+
+                    image_prompt = test_data.get("image_prompt")
+
+                    image = client.images.generate(
+                        model="gpt-image-1",
+                        prompt=image_prompt,
+                        size="1024x1024"
+                    )
+
+                    print(image)
+
+                allowed_types = [
+                    "single_choice",
+                    "multiple_choice",
+                    "true_false",
+                    "write_answer",
+                    "image_question"
+                ]
+
+                if test_data.get("question_type") not in allowed_types:
+                    test_data["question_type"] = question_type
+
+                test_data["topic_code"] = topic_code
+                test_data["difficulty"] = difficulty
+                test_data["situation"] = "oddiy"
+
+                print(test_data)
+
+                save_test(test_data)
+
+                print(f"✅ SAQLANDI: {question_type}")
+
+            except Exception as e:
+
+                print(f"❌ XATO: {question_type}")
+                print(e)
+
+        increase_count(topic_code)
+
+        print("🎉 MAVZU TUGADI")
+
+
+if name == "main":
+    generate_tests()
