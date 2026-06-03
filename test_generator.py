@@ -12,9 +12,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 print("1-BOSQICH")
 
-
+return
 def is_similar(new_question, old_questions):
-
+    
     for q in old_questions:
 
         score = fuzz.ratio(
@@ -29,7 +29,7 @@ def is_similar(new_question, old_questions):
 
 
 def get_last_questions(topic_code, limit=60):
-
+    
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -154,7 +154,7 @@ def generate_tests():
 
     input("START bosish uchun Enter bosing...")
 
-    for i in range(0):
+    for i in range(10):
 
         print(i+1)
 
@@ -164,7 +164,7 @@ def generate_tests():
             print("HAMMA MAVZULAR TUGADI")
             break
 
-        topic_code = topics[0][0](1)
+        topic_code = topics[0][0]
 
         info = get_topic_info(topic_code)
 
