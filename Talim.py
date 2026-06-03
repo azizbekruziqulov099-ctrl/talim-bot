@@ -738,7 +738,7 @@ async def handle_all(
         )
 
         return
-
+    """
     elif message.text == "▶️ Generatorni boshlash":
 
         global generator_process
@@ -783,15 +783,23 @@ async def handle_all(
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
-        cur.execute("SELECT COUNT(*) FROM dts_tree")
-        total_topics = cur.fetchone()[0]
-
         cur.execute("""
             SELECT COUNT(*)
             FROM dts_tree
-            WHERE generated_count > 0
+        """)
+        total_topics = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT topic_code)
+            FROM generated_tests
         """)
         completed_topics = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM generated_tests
+        """)
+        total_tests = cur.fetchone()[0]
 
         remaining_topics = total_topics - completed_topics
 
@@ -800,23 +808,18 @@ async def handle_all(
             1
         ) if total_topics else 0
 
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM generated_tests
-        """)
-        total_tests = cur.fetchone()[0]
-
         cur.close()
         conn.close()
 
-        text = (
+        await message.answer(
             f"📚 Jami mavzular: {total_topics}\n"
-            f"✅ Tayyor mavzular: {completed_topics}\n"
+            f"✅ Test yaratilgan mavzular: {completed_topics}\n"
             f"❌ Qolgan mavzular: {remaining_topics}\n"
             f"📝 Jami testlar: {total_tests}\n"
             f"📈 Progress: {progress}%"
         )
 
+        """
     elif message.text == "📚 DTS":
 
         await message.answer(
