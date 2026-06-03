@@ -154,7 +154,7 @@ def generate_tests():
 
     input("START bosish uchun Enter bosing...")
 
-    for i in range(1):
+    for i in range(0):
 
         print(i+1)
 
@@ -164,7 +164,7 @@ def generate_tests():
             print("HAMMA MAVZULAR TUGADI")
             break
 
-        topic_code = topics[0][0]
+        topic_code = topics[0][0](1)
 
         info = get_topic_info(topic_code)
 
