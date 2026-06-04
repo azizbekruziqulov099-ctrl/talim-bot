@@ -14,7 +14,7 @@ print("1-BOSQICH")
 
 
 def is_similar(new_question, old_questions):
-    return
+
     for q in old_questions:
 
         score = fuzz.ratio(
@@ -29,7 +29,7 @@ def is_similar(new_question, old_questions):
 
 
 def get_last_questions(topic_code, limit=60):
-    return
+
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -49,7 +49,7 @@ def get_last_questions(topic_code, limit=60):
     return [r[0] for r in rows]
 
 def save_test(test_data):
-    return
+
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -151,7 +151,7 @@ def save_test(test_data):
     conn.close()
 
 def generate_tests():
-    return
+
     input("START bosish uchun Enter bosing...")
 
     for i in range(10):
