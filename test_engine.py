@@ -1,299 +1,469 @@
-import os
-import psycopg2
-import json
-from topic_generation import get_next_topic, increase_count
-from topic_info import get_topic_info
-from prompt_builder import build_prompt
-from openai_client import client
-from rapidfuzz import fuzz
-import random
-DATABASE_URL = os.getenv("DATABASE_URL")
-print("1-BOSQICH")
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    FSInputFile
+)
+import edge_tts
+import asyncio
+import matplotlib.pyplot as plt
 
-def is_similar(new_question, old_questions):
 
-    for q in old_questions:
+test_sessions = {}
+user_state = {}
 
-        score = fuzz.ratio(
-            new_question.lower(),
-            q.lower()
+
+async def start_test(
+    user_id,
+    tests,
+    message
+):
+
+    if not tests:
+
+        await message.answer(
+            "❌ Test topilmadi"
         )
 
-        if score >= 100:
-            return True
+        return
 
-    return False
+    test_sessions[user_id] = {
+        "questions": tests,
+        "current": 0,
+        "correct": 0,
+        "wrong": 0,
+        "timer_task": None
+    }
 
-def save_test(test_data):
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    # Dublikat tekshirish
-
-    cur.execute("""
-        SELECT 1
-        FROM generated_tests
-        WHERE topic_code=%s
-        AND question=%s
-        LIMIT 1
-    """, (
-        test_data["topic_code"],
-        test_data["question"]
-    ))
-
-    old_questions = get_last_questions(
-        test_data["topic_code"],
-        limit=100
+    await show_question(
+        user_id,
+        message
     )
 
-    if is_similar(
-        test_data["question"],
-        old_questions
-    ):
-        print("⚠️ O'XSHASH SAVOL")
-        cur.close()
-        conn.close()
+async def show_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
         return
 
-    if cur.fetchone():
-        print("⚠️ DUPLIKAT TEST")
-        cur.close()
-        conn.close()
-        return
+    current = session["current"]
 
-    # Single choice validatsiya
+    test = session["questions"][current]
 
-    if test_data.get("question_type") == "single_choice":
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
 
-        variants = [
-            test_data.get("option_a"),
-            test_data.get("option_b"),
-            test_data.get("option_c"),
-            test_data.get("option_d")
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_question"
+                ),
+                InlineKeyboardButton(
+                    text="🛑 Tugatish",
+                    callback_data="test_stop"
+                )
+            ]
         ]
-
-        if test_data.get("correct_answer") not in variants:
-            print("❌ JAVOB VARIANTLAR ICHIDA YO'Q")
-            cur.close()
-            conn.close()
-            return
-
-    cur.execute("""
-        INSERT INTO generated_tests (
-            topic_code,
-            difficulty,
-            situation,
-            question,
-            option_a,
-            option_b,
-            option_c,
-            option_d,
-            correct_answer,
-            explanation,
-            question_type,
-            is_latex,
-            image_url,
-            audio_text,
-            language,
-            life_level,
-            age_group,
-            time_limit
-        )
-        VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-            %s,%s,%s,%s,%s,%s,%s,%s
-        )
-    """, (
-        test_data["topic_code"],
-        test_data["difficulty"],
-        test_data["situation"],
-        test_data["question"],
-        test_data.get("option_a"),
-        test_data.get("option_b"),
-        test_data.get("option_c"),
-        test_data.get("option_d"),
-        test_data["correct_answer"],
-        test_data.get("explanation"),
-        test_data.get("question_type", "single_choice"),
-        test_data.get("is_latex", False),
-        test_data.get("image_url"),
-        test_data.get("audio_text"),
-        test_data.get("language", "uz"),
-        test_data.get("life_level", 0),
-        test_data.get("age_group"),
-        test_data.get("time_limit", 60)
-    ))
-
-    conn.commit()
-
-    cur.close()
-    conn.close()
-
-
-    text = f"{mavzu} {kichik}".lower()
-
-    text = (
-        text
-        .replace("'", "")
-        .replace("‘", "")
-        .replace("`", "")
     )
 
-    return "umumiy"
+    if question_type == "write_answer":
 
-def get_last_questions(topic_code, limit=60):
+        user_state[user_id] = "text_answer"
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+        if image_url:
 
-    cur.execute("""
-        SELECT question
-        FROM generated_tests
-        WHERE topic_code=%s
-        ORDER BY id DESC
-        LIMIT %s
-    """, (topic_code, limit))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return [r[0] for r in rows]
-
-
-while True:
-
-    topics = get_next_topic(1)
-
-    if not topics:
-        print("HAMMA MAVZULAR TUGADI")
-        break
-
-    topic_code = topics[0][0]
-
-    info = get_topic_info(topic_code)
-
-    grade, subject, bob, bolim, mavzu, kichik = info
-
-    print("GRADE:", grade)
-    print("SUBJECT:", subject)
-    print("MAVZU:", mavzu)
-    print("KICHIK:", kichik)
-
-    print("2-BOSQICH")
-
-    test_types = (
-        ["single_choice"] * 30 +
-        ["multiple_choice"] * 5 +
-        ["true_false"] * 5 +
-        ["write_answer"] * 20
-        # ["image_question"] * 0
-    )
-
-    difficulties = (
-        ["oson"] * 30 +
-        ["o'rta"] * 15 +
-        ["qiyin"] * 10 +
-        ["murakkab"] * 5
-    )
-
-    life_levels = (
-        [0] * 20 +
-        [1] * 15 +
-        [2] * 10 +
-        [3] * 10 +
-        [4] * 5
-    )
-
-    for i, question_type in enumerate(test_types):
-
-        last_questions = get_last_questions(
-            topic_code,
-            limit=60
-        )
-
-        difficulty = difficulties[i]
-        life_level = life_levels[i]
-
-        prompt = build_prompt(
-            topic_code,
-            difficulty=difficulty,
-            situation="oddiy",
-            question_type=question_type,
-            last_questions=last_questions
-        )
-
-        print("3-BOSQICH")
-        print("4-BOSQICH GPTGA YUBORILAYAPTI")
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=1.2,
-                top_p=0.95
+            await message.answer_photo(
+                photo=image_url,
+                caption=
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:",
+                reply_markup=kb
             )
 
-        except Exception as e:
-            print(f"GPT XATO: {e}")
-            continue
+        else:
 
-        print("5-BOSQICH GPT JAVOB BERDI")
+            await message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:",
+                reply_markup=kb
+            )
 
-        content = response.choices[0].message.content
+        return
 
-        content = content.replace("\n", "")
-        content = content.strip()
-
-        try:
-            test_data = json.loads(content)
-
-            if test_data.get("question_type") == "image_question":
-
-                print("🖼 RASM YARATILAYAPTI")
-
-                image_prompt = test_data.get("image_prompt")
-
-                image = client.images.generate(
-                    model="gpt-image-1",
-                    prompt=image_prompt,
-                    size="1024x1024"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_question"
+                ),
+                InlineKeyboardButton(
+                    text="🛑 Tugatish",
+                    callback_data="test_stop"
                 )
-
-                print(image)
-
-            allowed_types = [
-                "single_choice",
-                "multiple_choice",
-                "true_false",
-                "write_answer",
-                "image_question"
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(a),
+                    callback_data="ans_A"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(b),
+                    callback_data="ans_B"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(c),
+                    callback_data="ans_C"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(d),
+                    callback_data="ans_D"
+                )
             ]
+        ]
+    )
 
-            if test_data.get("question_type") not in allowed_types:
-                test_data["question_type"] = question_type
 
-            test_data["topic_code"] = topic_code
-            test_data["difficulty"] = difficulty
-            test_data["situation"] = "oddiy"
+    if is_latex:
 
-            print(test_data)
+        image_file = (
+            f"latex_{user_id}.png"
+        )
 
-            save_test(test_data)
+        latex_to_image(
+            question,
+            image_file
+        )
 
-            print(f"✅ SAQLANDI: {question_type}")
+        await message.answer_photo(
+            photo=FSInputFile(
+                image_file
+            )
+        )
 
-        except Exception as e:
+        await message.answer(
+            "Savolni rasmda ko‘ring",
+            reply_markup=kb
+        )
 
-            print(f"❌ XATO: {question_type}")
-            print(e)
 
-    increase_count(topic_code)
+    if image_url:
 
-    print("🎉 MAVZU TUGADI")
+        await message.answer_photo(
+            photo=image_url,
+            caption=
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
+        )
+
+    else:
+
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
+        )
+
+async def check_button_answer(
+    user_id,
+    answer,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
+
+    if answer == "A":
+        selected = str(a)
+
+    elif answer == "B":
+        selected = str(b)
+
+    elif answer == "C":
+        selected = str(c)
+
+    else:
+        selected = str(d)
+
+    if selected.strip() == str(correct).strip():
+
+        session["correct"] += 1
+
+        await message.answer(
+            f"✅ To'g'ri\n\n📖 {explanation}"
+        )
+
+    else:
+
+        session["wrong"] += 1
+
+        await message.answer(
+            f"❌ Noto'g'ri\n\n"
+            f"To'g'ri javob: {correct}\n\n"
+            f"📖 {explanation}"
+        )
+
+    await next_question(
+        user_id,
+        message
+    )
+    
+async def check_text_answer(
+    user_id,
+    user_answer,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    correct = str(
+        test[5]
+    ).strip().lower()
+
+    user_answer = str(
+        user_answer
+    ).strip().lower()
+
+    explanation = test[6]
+
+    if user_answer == correct:
+
+        session["correct"] += 1
+
+        await message.answer(
+            f"✅ To'g'ri\n\n📖 {explanation}"
+        )
+
+    else:
+
+        session["wrong"] += 1
+
+        await message.answer(
+            f"❌ Noto'g'ri\n\n"
+            f"To'g'ri javob: {test[5]}\n\n"
+            f"📖 {explanation}"
+        )
+
+    await next_question(
+        user_id,
+        message
+    )
+
+async def next_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    session["current"] += 1
+
+    if session["current"] >= len(
+        session["questions"]
+    ):
+
+        await finish_test(
+            user_id,
+            message
+        )
+
+        return
+
+    await show_question(
+        user_id,
+        message
+    )    
+
+async def finish_test(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    total = (
+        session["correct"]
+        +
+        session["wrong"]
+    )
+
+    percent = round(
+        session["correct"]
+        * 100
+        / total,
+        1
+    ) if total else 0
+
+    await message.answer(
+        f"""
+🏁 Test tugadi
+
+✅ To'g'ri: {session['correct']}
+❌ Noto'g'ri: {session['wrong']}
+
+📊 Natija: {percent}%
+"""
+    )
+
+    if user_id in user_state:
+        del user_state[user_id]
+
+    del test_sessions[user_id]
+
+async def stop_test(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    await finish_test(
+        user_id,
+        message
+    )
+
+async def speak_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    question = test[0]
+
+    language = test[11]
+
+    if language == "uz":
+        voice = "uz-UZ-SardorNeural"
+
+    elif language == "ru":
+        voice = "ru-RU-DmitryNeural"
+
+    elif language == "en":
+        voice = "en-US-GuyNeural"
+
+    else:
+        voice = "uz-UZ-SardorNeural"
+
+    filename = (
+        f"voice_{user_id}.mp3"
+    )
+
+    communicate = edge_tts.Communicate(
+        text=question,
+        voice=voice
+    )
+
+    await communicate.save(
+        filename
+    )
+
+    await message.answer_voice(
+        FSInputFile(filename)
+    )
+
+def latex_to_image(latex_text, filename):
+
+    fig = plt.figure()
+
+    plt.text(
+        0.05,
+        0.5,
+        f"${latex_text}$",
+        fontsize=24
+    )
+
+    plt.axis("off")
+
+    plt.savefig(
+        filename,
+        bbox_inches="tight"
+    )
+
+    plt.close()
