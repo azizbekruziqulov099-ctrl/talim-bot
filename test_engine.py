@@ -90,7 +90,11 @@ async def show_question(
 
         user_state[user_id] = "text_answer"
 
-        if image_url:
+        if (
+            image_url
+            and str(image_url).lower() != "nan"
+            and str(image_url).strip() != ""
+        ):
 
             await message.answer_photo(
                 photo=image_url,
@@ -175,7 +179,11 @@ async def show_question(
         )
 
 
-    if image_url:
+    if (
+        image_url
+        and str(image_url).lower() != "nan"
+        and str(image_url).strip() != ""
+    ):
 
         await message.answer_photo(
             photo=image_url,
