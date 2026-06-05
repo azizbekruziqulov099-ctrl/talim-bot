@@ -4,6 +4,6 @@ psycopg2-binary
 openpyxl
 openai
 rapidfuzz
+pandas
 edge-tts
 matplotlib
-pandas
