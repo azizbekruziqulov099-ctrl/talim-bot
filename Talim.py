@@ -1603,10 +1603,20 @@ async def handle_all(
         and message.document
     ):
 
-        await dts_import_file(
+        await dts_excel_import(
             message,
-            bot,
-            user_id
+            state
+        )
+
+        return
+
+    elif (
+        admin_state.get(user_id) == "test_import"
+        and message.document
+    ):
+
+        await import_tests_excel(
+            message
         )
 
         return
