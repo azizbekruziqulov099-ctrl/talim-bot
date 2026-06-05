@@ -1256,36 +1256,7 @@ async def handle_all(
 
         return
 
-    elif (
-        user_id in topic_stats_state
-        and "grade" in topic_stats_state[user_id]
-        and message.text not in [
-            "➡️ Keyingi",
-            "⬅️ Oldingi",
-            "🔍 Mavzu qidirish",
-            "🔙 Ortga"
-        ]
-    ):
 
-        grade = topic_stats_state[user_id]["grade"]
-
-        subject_name = message.text
-
-        topics = get_topics_by_grade_subject(
-            grade,
-            subject_name
-        )
-
-        topic_stats_state[user_id]["subject"] = subject_name
-        topic_stats_state[user_id]["topics"] = topics
-        topic_stats_state[user_id]["page"] = 0
-
-        await show_topics_page(
-            message,
-            user_id
-        )
-
-        return
 
     elif message.text == "➡️ Keyingi":
 
@@ -1311,6 +1282,56 @@ async def handle_all(
 
         return
 
+    elif (
+        user_id in topic_stats_state
+        and f"topic_{message.text}" in topic_stats_state[user_id]
+    ):
+
+        topic_code = topic_stats_state[user_id][
+            f"topic_{message.text}"
+        ]
+
+        info = get_topic_name(topic_code)
+        stats = get_topic_statistics(topic_code)
+
+        await message.answer(
+            f"🔑 {topic_code}\n\n"
+            f"📖 {info[0]}\n"
+            f"📌 {info[1]}\n\n"
+            f"📊 Jami test: {stats[0]}\n"
+            f"🟢 Oson: {stats[1] or 0}\n"
+            f"🟡 O'rta: {stats[2] or 0}\n"
+            f"🟠 Qiyin: {stats[3] or 0}\n"
+            f"🔴 Murakkab: {stats[4] or 0}"
+        )
+
+        return
+
+    elif (
+        user_id in topic_stats_state
+        and "grade" in topic_stats_state[user_id]
+        and "topics" not in topic_stats_state[user_id]
+    ):
+
+        grade = topic_stats_state[user_id]["grade"]
+
+        subject_name = message.text
+
+        topics = get_topics_by_grade_subject(
+            grade,
+            subject_name
+        )
+
+        topic_stats_state[user_id]["subject"] = subject_name
+        topic_stats_state[user_id]["topics"] = topics
+        topic_stats_state[user_id]["page"] = 0
+
+        await show_topics_page(
+            message,
+            user_id
+        )
+
+        return
 
     elif message.text == "⬅️ Oldingi":
 
