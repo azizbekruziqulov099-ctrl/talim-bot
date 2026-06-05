@@ -1,2868 +1,477 @@
-from aiogram.types import Message
-from loader import dp, bot
-from difflib import SequenceMatcher
-from openpyxl import load_workbook
-from openpyxl import Workbook
-import psycopg2
-import os
-import re
-from aiogram import F
-from aiogram.fsm.context import (
-    FSMContext
-)
-from difflib import SequenceMatcher
-from aiogram.types import FSInputFile
 from aiogram.types import (
-    Message,
-    CallbackQuery,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    FSInputFile
 )
-from aiogram.fsm.state import (
-    State,
-    StatesGroup
-)
-class DTSImportState(
-    StatesGroup
-):
-    waiting_excel = State()
-DATABASE_URL = os.getenv("DATABASE_URL")
-dts_import_cache = {}
-def normalize_text(text):
+import edge_tts
+import asyncio
+import matplotlib.pyplot as plt
 
-    if text is None:
-        return ""
 
-    text = str(text)
+test_sessions = {}
+user_state = {}
 
-    text = text.lower()
 
-    text = text.replace("ʻ", "'")
-    text = text.replace("`", "'")
-    text = text.replace("ʼ", "'")
-
-    text = text.replace("–", "-")
-    text = text.replace("—", "-")
-
-    text = text.replace("_", " ")
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip()
-
-def normalize_grade(
-
-    grade
-
-):
-
-    grade = normalize_text(
-        grade
-    )
-
-    grade = grade.replace(
-        "-sinf",
-        ""
-    )
-
-    grade = grade.replace(
-        "sinf",
-        ""
-    )
-
-    grade = grade.replace(
-        " ",
-        ""
-    )
-
-    return grade
-
-def validate_grade(
-
-    grade
-
-):
-
-    if len(grade) < 1:
-        return False
-
-    return True
-
-def get_grade_code(
-
-    grade
-
-):
-
-    grade = normalize_grade(
-        grade
-    )
-
-    if not validate_grade(
-        grade
-    ):
-
-        raise Exception(
-            "Noto‘g‘ri level"
-        )
-
-    return grade
-
-
-def get_subject_code(
-
-    cur,
-
-    grade,
-
-    subject_name
-
-):
-
-    grade = normalize_text(
-        grade
-    )
-
-    subject_name = normalize_text(
-        subject_name
-    ).upper()
-
-    cur.execute("""
-    SELECT subject_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_name=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject_name
-    ))
-
-    row = cur.fetchone()
-
-    if row:
-
-        return row[0]
-
-    cur.execute("""
-    SELECT MAX(
-        CAST(subject_code AS INTEGER)
-    )
-    FROM dts_tree
-    WHERE grade=%s
-    """, (
-        grade,
-    ))
-
-    last_code = cur.fetchone()[0]
-
-    next_code = str(
-        (last_code or 0) + 1
-    ).zfill(2)
-
-    return next_code
-def normalize_quarter(
-
-    quarter
-
-):
-
-    quarter = normalize_text(
-        quarter
-    )
-
-    quarter = quarter.replace(
-        "chorak",
-        ""
-    )
-
-    quarter = quarter.replace(
-        "-",
-        ""
-    )
-
-    quarter = quarter.replace(
-        " ",
-        ""
-    )
-
-    return quarter
-
-def validate_quarter(
-
-    quarter
-
-):
-
-    if len(quarter) < 1:
-        return False
-
-    return True
-
-def get_quarter_code(
-
-    quarter
-
-):
-
-    quarter = normalize_quarter(
-        quarter
-    )
-
-    if not validate_quarter(
-        quarter
-    ):
-
-        raise Exception(
-            "Noto‘g‘ri chorak"
-        )
-
-    return quarter
-
-def get_bob_code(
-
-    cur,
-
-    grade,
-
-    subject_code,
-
-    quarter_code,
-
-    bob_name
-
-):
-
-    bob_name = normalize_text(
-        bob_name
-    )
-
-    cur.execute("""
-    SELECT bob_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_name=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject_code,
-        quarter_code,
-        bob_name
-    ))
-
-    row = cur.fetchone()
-
-    if row:
-
-        return row[0]
-
-    cur.execute("""
-    SELECT MAX(
-        CAST(bob_code AS INTEGER)
-    )
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    """, (
-        grade,
-        subject_code,
-        quarter_code
-    ))
-
-    last_code = cur.fetchone()[0]
-
-    next_code = str(
-        (last_code or 0) + 1
-    ).zfill(2)
-
-    return next_code
-
-def get_bolim_code(
-
-    cur,
-
-    grade,
-
-    subject_code,
-
-    quarter_code,
-
-    bob_code,
-
-    bolim_name
-
-):
-
-    grade = get_grade_code(
-        grade
-    )
-
-    quarter_code = get_quarter_code(
-        quarter_code
-    )
-
-    bolim_name = normalize_text(
-        bolim_name
-    )
-
-    cur.execute("""
-
-    SELECT bolim_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_name=%s
-    LIMIT 1
-
-    """, (
-
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code,
-        bolim_name
-
-    ))
-
-    row = cur.fetchone()
-
-    if row:
-
-        return row[0]
-
-    cur.execute("""
-
-    SELECT MAX(
-        CAST(bolim_code AS INTEGER)
-    )
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-
-    """, (
-
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code
-
-    ))
-
-    last_code = cur.fetchone()[0]
-
-    if last_code is None:
-
-        return "01"
-
-    new_code = int(last_code) + 1
-
-    return str(new_code).zfill(2)
-
-def get_mavzu_code(
-
-    cur,
-
-    grade,
-
-    subject_code,
-
-    quarter_code,
-
-    bob_code,
-
-    bolim_code,
-
-    mavzu_name
-
-):
-
-    grade = get_grade_code(
-        grade
-    )
-
-    quarter_code = get_quarter_code(
-        quarter_code
-    )
-
-    mavzu_name = normalize_text(
-        mavzu_name
-    )
-
-    cur.execute("""
-    SELECT mavzu_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_name=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code,
-        bolim_code,
-        mavzu_name
-    ))
-
-    row = cur.fetchone()
-
-    if row:
-
-        return row[0]
-
-    cur.execute("""
-    SELECT MAX(
-        CAST(mavzu_code AS INTEGER)
-    )
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    """, (
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code,
-        bolim_code
-    ))
-
-    last_code = cur.fetchone()[0]
-
-    next_code = str(
-        (last_code or 0) + 1
-    ).zfill(2)
-
-    return next_code
-
-def get_kichik_code(
-
-    cur,
-
-    grade,
-
-    subject_code,
-
-    quarter_code,
-
-    bob_code,
-
-    bolim_code,
-
-    mavzu_code,
-
-    kichik_name
-
-):
-
-    grade = get_grade_code(
-        grade
-    )
-
-    quarter_code = get_quarter_code(
-        quarter_code
-    )
-
-    kichik_name = normalize_text(
-        kichik_name
-    )
-
-    cur.execute("""
-    SELECT kichik_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_code=%s
-    AND kichik_name=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code,
-        bolim_code,
-        mavzu_code,
-        kichik_name
-    ))
-
-    row = cur.fetchone()
-
-    if row:
-
-        return row[0]
-
-    cur.execute("""
-    SELECT MAX(
-        CAST(kichik_code AS INTEGER)
-    )
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_code=%s
-    """, (
-        grade,
-        subject_code,
-        quarter_code,
-        bob_code,
-        bolim_code,
-        mavzu_code
-    ))
-
-    last_code = cur.fetchone()[0]
-
-    next_code = str(
-        (last_code or 0) + 1
-    ).zfill(3)
-
-    return next_code
-
-def build_topic_code(
-
-    grade,
-
-    subject_code,
-
-    quarter_code,
-
-    bob_code,
-
-    bolim_code,
-
-    mavzu_code,
-
-    kichik_code
-
-):
-
-    grade = get_grade_code(
-        grade
-    )
-
-    quarter_code = get_quarter_code(
-        quarter_code
-    )
-
-    return (
-
-        f"{grade}-"
-
-        f"{subject_code}-"
-
-        f"{quarter_code}-"
-
-        f"{bob_code}-"
-
-        f"{bolim_code}-"
-
-        f"{mavzu_code}-"
-
-        f"{kichik_code}"
-
-    )
-
-def insert_row(
-
-    cur,
-    row
-
-):
-
-    grade = get_grade_code(
-        row[0]
-    )
-
-    subject_name = normalize_text(
-        row[1]
-    ).upper()
-
-    quarter_code = get_quarter_code(
-        row[2]
-    )
-
-    bob_name = normalize_text(
-        row[3]
-    )
-
-    bolim_name = normalize_text(
-        row[4]
-    )
-
-    mavzu_name = normalize_text(
-        row[5]
-    )
-
-    kichik_name = normalize_text(
-        row[6]
-    )
-
-    subject_code = get_subject_code(
-
-        cur,
-
-        grade,
-
-        subject_name
-
-    )
-
-    bob_code = get_bob_code(
-
-        cur,
-
-        grade,
-
-        subject_code,
-
-        quarter_code,
-
-        bob_name
-
-    )
-
-    bolim_code = get_bolim_code(
-
-        cur,
-
-        grade,
-
-        subject_code,
-
-        quarter_code,
-
-        bob_code,
-
-        bolim_name
-
-    )
-
-    mavzu_code = get_mavzu_code(
-
-        cur,
-
-        grade,
-
-        subject_code,
-
-        quarter_code,
-
-        bob_code,
-
-        bolim_code,
-
-        mavzu_name
-
-    )
-
-    kichik_code = get_kichik_code(
-
-        cur,
-
-        grade,
-
-        subject_code,
-
-        quarter_code,
-
-        bob_code,
-
-        bolim_code,
-
-        mavzu_code,
-
-        kichik_name
-
-    )
-
-    topic_code = build_topic_code(
-
-        grade,
-
-        subject_code,
-
-        quarter_code,
-
-        bob_code,
-
-        bolim_code,
-
-        mavzu_code,
-
-        kichik_code
-
-    )
-
-    cur.execute("""
-    SELECT 1
-    FROM dts_tree
-    WHERE topic_code=%s
-    LIMIT 1
-    """, (
-        topic_code,
-    ))
-
-    exists = cur.fetchone()
-
-    if exists:
-
-        return {
-
-            "status": "exists",
-
-            "topic_code": topic_code
-
-        }
-
-    cur.execute("""
-    INSERT INTO dts_tree (
-
-        topic_code,
-
-        grade,
-
-        subject_code,
-        subject_name,
-
-        quarter,
-
-        bob_code,
-        bob_name,
-
-        bolim_code,
-        bolim_name,
-
-        mavzu_code,
-        mavzu_name,
-
-        kichik_code,
-        kichik_name
-
-    )
-    VALUES (
-
-        %s,
-
-        %s,
-
-        %s,
-        %s,
-
-        %s,
-
-        %s,
-        %s,
-
-        %s,
-        %s,
-
-        %s,
-        %s,
-
-        %s,
-        %s
-
-    )
-    """, (
-
-        topic_code,
-
-        grade,
-
-        subject_code,
-        subject_name,
-
-        quarter_code,
-
-        bob_code,
-        bob_name,
-
-        bolim_code,
-        bolim_name,
-
-        mavzu_code,
-        mavzu_name,
-
-        kichik_code,
-        kichik_name
-
-    ))
-
-    return {
-
-        "status": "inserted",
-
-        "topic_code": topic_code
-
-    }
-def analyze_import(
-
-    cur,
-    rows
-
-):
-
-    error_rows = []
-    duplicate_rows = []
-    existing_rows = []
-    valid_rows = []
-
-    seen = set()
-
-    for i, row in enumerate(
-
-        rows,
-        start=2
-
-    ):
-
-        try:
-
-            if len(row) < 7:
-
-                error_rows.append({
-
-                    "row_no": i,
-
-                    "reason": (
-                        "Ustunlar soni yetarli emas"
-                    )
-
-                })
-
-                continue
-
-            grade = get_grade_code(
-                row[0]
-            )
-
-            subject_name = normalize_text(
-                row[1]
-            ).upper()
-
-            quarter_code = get_quarter_code(
-                row[2]
-            )
-
-            bob_name = normalize_text(
-                row[3]
-            )
-
-            bolim_name = normalize_text(
-                row[4]
-            )
-
-            mavzu_name = normalize_text(
-                row[5]
-            )
-
-            kichik_name = normalize_text(
-                row[6]
-            )
-
-            if not all([
-
-                grade,
-
-                subject_name,
-
-                quarter_code,
-
-                bob_name,
-
-                bolim_name,
-
-                mavzu_name,
-
-                kichik_name
-
-            ]):
-
-                error_rows.append({
-
-                    "row_no": i,
-
-                    "bob": bob_name,
-                    "bolim": bolim_name,
-                    "mavzu": mavzu_name,
-                    "kichik": kichik_name,
-
-                    "reason": "Bo‘sh ustun bor"
-
-                })
-
-                continue
-
-            subject_code = get_subject_code(
-
-                cur,
-
-                grade,
-
-                subject_name
-
-            )
-
-            bob_code = get_bob_code(
-
-                cur,
-
-                grade,
-
-                subject_code,
-
-                quarter_code,
-
-                bob_name
-
-            )
-
-            bolim_code = get_bolim_code(
-
-                cur,
-
-                grade,
-
-                subject_code,
-
-                quarter_code,
-
-                bob_code,
-
-                bolim_name
-
-            )
-
-            mavzu_code = get_mavzu_code(
-
-                cur,
-
-                grade,
-
-                subject_code,
-
-                quarter_code,
-
-                bob_code,
-
-                bolim_code,
-
-                mavzu_name
-
-            )
-
-            kichik_code = get_kichik_code(
-
-                cur,
-
-                grade,
-
-                subject_code,
-
-                quarter_code,
-
-                bob_code,
-
-                bolim_code,
-
-                mavzu_code,
-
-                kichik_name
-
-            )
-
-            topic_code = build_topic_code(
-
-                grade,
-
-                subject_code,
-
-                quarter_code,
-
-                bob_code,
-
-                bolim_code,
-
-                mavzu_code,
-
-                kichik_code
-
-            )
-
-            tree_key = (
-
-                grade,
-
-                subject_name,
-
-                quarter_code,
-
-                bob_name,
-
-                bolim_name,
-
-                mavzu_name,
-
-                kichik_name
-
-            )
-
-            if tree_key in seen:
-
-                duplicate_rows.append({
-
-                    "row_no": i,
-
-                    "topic_code": topic_code,
-
-                    "bob": bob_name,
-                    "bolim": bolim_name,
-                    "mavzu": mavzu_name,
-                    "kichik": kichik_name,
-
-                    "reason": "Excel ichida takroriy"
-
-                })
-
-                continue
-            
-            seen.add(tree_key)
-
-            cur.execute("""
-            SELECT 1
-            FROM dts_tree
-            WHERE topic_code=%s
-            LIMIT 1
-            """, (
-                topic_code,
-            ))
-
-            exists = cur.fetchone()
-
-            if exists:
-
-                existing_rows.append({
-
-                    "row_no": i,
-
-                    "topic_code": topic_code,
-
-                    "bob": bob_name,
-                    "bolim": bolim_name,
-                    "mavzu": mavzu_name,
-                    "kichik": kichik_name,
-
-                    "reason": "Bazada mavjud"
-
-                })
-
-                continue
-
-            valid_rows.append({
-
-                "row_no": i,
-
-                "row": row,
-
-                "topic_code": topic_code
-
-            })
-
-        except Exception as e:
-
-            error_rows.append({
-
-                "row_no": i,
-
-                "bob": locals().get("bob_name", ""),
-                "bolim": locals().get("bolim_name", ""),
-                "mavzu": locals().get("mavzu_name", ""),
-                "kichik": locals().get("kichik_name", ""),
-
-                "reason": str(e)
-
-            })
-
-    return {
-
-        "error_rows": error_rows,
-
-        "duplicate_rows": duplicate_rows,
-        
-        "existing_rows": existing_rows,
-
-        "valid_rows": valid_rows
-
-    }
-
-def confirm_import(
-
-    cur,
-    valid_rows
-
-):
-
-    inserted_count = 0
-
-    inserted_rows = []
-    failed_rows = []
-
-    for item in valid_rows:
-
-        try:
-
-            row = item["row"]
-            row_no = item.get("row_no")
-            topic_code = item.get("topic_code")
-
-            result = insert_row(
-                cur,
-                row
-            )
-
-            if result.get("status") == "inserted":
-
-                inserted_count += 1
-
-                inserted_rows.append({
-
-                    "row_no": row_no,
-                    "topic_code": topic_code
-
-                })
-
-            else:
-
-                failed_rows.append({
-
-                    "row_no": row_no,
-                    "topic_code": topic_code,
-                    "reason": result.get(
-                        "reason",
-                        "Insert bajarilmadi"
-                    )
-
-                })
-
-        except Exception as e:
-
-            failed_rows.append({
-
-                "row_no": item.get("row_no"),
-                "topic_code": item.get("topic_code"),
-                "reason": str(e)
-
-            })
-
-    return {
-
-        "inserted_count": inserted_count,
-
-        "inserted_rows": inserted_rows,
-
-        "failed_rows": failed_rows
-
-    }
-
-async def dts_navigator(
-
-    call: CallbackQuery,
-
-    page=0
-
-):
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT grade
-    FROM dts_tree
-    WHERE is_deleted=FALSE
-    ORDER BY grade
-    """)
-
-    grades = cur.fetchall()
-
-    page_size = 10
-
-    start = page * page_size
-
-    end = start + page_size
-
-    current_items = grades[
-        start:end
-    ]
-
-    buttons = []
-
-    for (grade,) in current_items:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"🏫 {grade}-sinf",
-
-                callback_data=(
-                    f"dts_grade_{grade}"
-                )
-
-            )
-
-        ])
-
-    nav_buttons = []
-
-    if page > 0:
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="⬅️",
-
-                callback_data=(
-                    f"dts_nav_{page - 1}"
-                )
-
-            )
-
-        )
-        
-
-    total_pages = (
-        len(grades) - 1
-    ) // page_size + 1
-
-    nav_buttons.append(
-
-        InlineKeyboardButton(
-
-            text=(
-                f"{page + 1}/{total_pages}"
-            ),
-
-            callback_data="ignore"
-
-        )
-
-    )
-
-    if end < len(grades):
-
-        nav_buttons.append(
-
-            InlineKeyboardButton(
-
-                text="➡️",
-
-                callback_data=(
-                    f"dts_nav_{page + 1}"
-                )
-
-            )
-
-        )
-
-    buttons.append(nav_buttons)
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        "📚 DTS Navigator",
-
-        reply_markup=kb
-
-    )
-
-# =========================
-# dts_grade
-# =========================
-
-async def dts_grade(
-
-    call: CallbackQuery
-
-):
-
-    grade = call.data.replace(
-        "dts_grade_",
-        ""
-    )
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        subject_code,
-        subject_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND is_deleted=FALSE
-    ORDER BY subject_code
-    """, (
-        grade,
-    ))
-
-    subjects = cur.fetchall()
-
-    buttons = []
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"settings_grade_{grade}"
-        )
-    ])
-
-    for code, name in subjects:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📚 {name} [{code}]",
-
-                callback_data=(
-                    f"dts_subject_"
-                    f"{grade}_"
-                    f"{code}"
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data="dts_navigator"
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"🏫 {grade}-sinf fanlari",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-
-# =========================
-# dts_subject
-# =========================
-
-async def dts_subject(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        quarter
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND is_deleted=FALSE
-    ORDER BY quarter
-    """, (
-        grade,
-        subject_code
-    ))
-
-    quarters = cur.fetchall()
-
-    cur.execute("""
-    SELECT subject_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    LIMIT 1
-    """, (
-        grade,
-        subject_code
-    ))
-
-    subject_name = cur.fetchone()[0]
-
-    buttons = []
-
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"test_subject_{grade}_{subject_code}"
-        )
-    ])
-
-
-    for (quarter,) in quarters:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"🗓 {quarter}-chorak",
-
-                callback_data=(
-
-                    f"dts_quarter_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-                f"dts_grade_{grade}"
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"📚 {subject_name} [{subject_code}]",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-
-# =========================
-# dts_quarter
-# =========================
-
-async def dts_quarter(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        bob_code,
-        bob_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND is_deleted=FALSE
-    ORDER BY bob_code
-    """, (
-        grade,
-        subject_code,
-        quarter
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_mavzu_{grade}_{subject_code}_{quarter}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"settings_grade_{grade}"
-        )
-    ])
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📖 {name} [{code}]",
-
-                callback_data=(
-
-                    f"dts_bob_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_subject_"
-                f"{grade}_"
-                f"{subject_code}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"🗓 {quarter}-chorak",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-
-# =========================
-# dts_bob
-# =========================
-
-async def dts_bob(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        bolim_code,
-        bolim_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND is_deleted=FALSE
-    ORDER BY bolim_code
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_mavzu_{grade}_{subject_code}_{quarter}_{bob_code}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"settings_grade_{grade}"
-        )
-    ])
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📑 {name} [{code}]",
-
-                callback_data=(
-
-                    f"dts_bolim_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_quarter_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"📖 Bob [{bob_code}]",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-
-# =========================
-# dts_bolim
-# =========================
-
-async def dts_bolim(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        mavzu_code,
-        mavzu_name
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND is_deleted=FALSE
-    ORDER BY mavzu_code
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_mavzu_{grade}_{subject_code}_{quarter}_{bob_code}_{bolim_code}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"settings_grade_{grade}"
-        )
-    ])
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📝 {name} [{code}]",
-
-                callback_data=(
-
-                    f"dts_mavzu_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{bolim_code}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_bob_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}_"
-                f"{bob_code}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"📑 Bo‘lim [{bolim_code}]",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-
-# =========================
-# dts_mavzu
-# =========================
-
-async def dts_mavzu(
-
-    call: CallbackQuery
-
-):
-
-    (
-        _,
-        _,
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code
-
-    ) = call.data.split("_")
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT DISTINCT
-        kichik_code,
-        kichik_name,
-        topic_code
-    FROM dts_tree
-    WHERE grade=%s
-    AND subject_code=%s
-    AND quarter=%s
-    AND bob_code=%s
-    AND bolim_code=%s
-    AND mavzu_code=%s
-    AND is_deleted=FALSE
-    ORDER BY kichik_code
-    """, (
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code,
-        mavzu_code
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚡ Test boshlash",
-            callback_data=f"test_mavzu_{grade}_{subject_code}_{quarter}_{bob_code}_{bolim_code}_{mavzu_code}"
-        )
-    ])
-
-    buttons.append([
-        InlineKeyboardButton(
-            text="⚙️ Test sozlamalari",
-            callback_data=f"settings_grade_{grade}"
-        )
-    ])
-
-
-    for code, name, topic_code in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"🔹 {name} [{code}]",
-
-                callback_data=(
-                    f"dts_small_{topic_code}"
-                )
-
-            )
-
-        ])
-
-    buttons.append([
-
-        InlineKeyboardButton(
-
-            text="⬅️ Orqaga",
-
-            callback_data=(
-
-                f"dts_bolim_"
-                f"{grade}_"
-                f"{subject_code}_"
-                f"{quarter}_"
-                f"{bob_code}_"
-                f"{bolim_code}"
-
-            )
-
-        )
-
-    ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
-
-    await call.message.edit_text(
-
-        f"📝 Mavzu [{mavzu_code}]",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-async def dts_menu(
-
+async def start_test(
+    user_id,
+    tests,
     message
-
 ):
+
+    if not tests:
+
+        await message.answer(
+            "❌ Test topilmadi"
+        )
+
+        return
+
+    test_sessions[user_id] = {
+        "questions": tests,
+        "current": 0,
+        "correct": 0,
+        "wrong": 0,
+        "timer_task": None
+    }
+
+    await show_question(
+        user_id,
+        message
+    )
+
+async def show_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-
             [
-
                 InlineKeyboardButton(
-
-                    text="📥 Import DTS",
-
-                    callback_data="dts_import"
-
-                )
-
-            ],
-
-            [
-
+                    text="🔊 Eshitish",
+                    callback_data="speak_question"
+                ),
                 InlineKeyboardButton(
-
-                    text="🧭 DTS Navigator",
-
-                    callback_data="dts_navigator"
-
+                    text="🛑 Tugatish",
+                    callback_data="test_stop"
                 )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-
-                    text="🔎 DTS Qidiruv",
-
-                    callback_data="dts_search"
-
-                )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-
-                    text="📤 Export DTS",
-
-                    callback_data="dts_export"
-
-                )
-
             ]
-
         ]
     )
 
-    await message.answer(
+    if question_type == "write_answer":
 
-        "📚 DTS Boshqaruv Paneli",
+        user_state[user_id] = "text_answer"
 
-        reply_markup=kb
+        if (
+            image_url
+            and str(image_url).lower() != "nan"
+            and str(image_url).strip() != ""
+        ):
 
-    )
+            await message.answer_photo(
+                photo=image_url,
+                caption=
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:",
+                reply_markup=kb
+            )
 
-async def dts_import(
+        else:
 
-    call: CallbackQuery,
+            await message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}\n\n"
+                f"✍️ Javobni yozing:",
+                reply_markup=kb
+            )
 
-    state: FSMContext
-
-):
-
-    await state.set_state(
-        DTSImportState.waiting_excel
-    )
+        return
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-
             [
-
                 InlineKeyboardButton(
-
-                    text="⬅️ Orqaga",
-
-                    callback_data="dts_menu"
-
+                    text="🔊 Eshitish",
+                    callback_data="speak_question"
+                ),
+                InlineKeyboardButton(
+                    text="🛑 Tugatish",
+                    callback_data="test_stop"
                 )
-
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(a),
+                    callback_data="ans_A"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(b),
+                    callback_data="ans_B"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(c),
+                    callback_data="ans_C"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=str(d),
+                    callback_data="ans_D"
+                )
             ]
-
         ]
     )
-    await call.message.edit_text(
 
-        """
 
-    📥 DTS Excel Import
+    if is_latex:
 
-    ━━━━━━━━━━━━━━━
+        image_file = (
+            f"latex_{user_id}.png"
+        )
 
-    Excel fayl yuboring.
+        latex_to_image(
+            question,
+            image_file
+        )
 
-    Kerakli ustunlar:
+        await message.answer_photo(
+            photo=FSInputFile(
+                image_file
+            )
+        )
 
-    1. Sinf
-    2. Fan
-    3. Chorak
-    4. Bob
-    5. Bo‘lim
-    6. Mavzu
-    7. Kichik mavzu
+        await message.answer(
+            "Savolni rasmda ko‘ring",
+            reply_markup=kb
+        )
 
-    ━━━━━━━━━━━━━━━
 
-    """,
-
-        reply_markup=kb
-
-    )
-
-@dp.message(
-    DTSImportState.waiting_excel,
-    F.document
-)
-async def dts_excel_import(
-    message: Message,
-    state: FSMContext
-):
-    current_state = await state.get_state()
-
-    if current_state != (
-        DTSImportState.waiting_excel.state
+    if (
+        image_url
+        and str(image_url).lower() != "nan"
+        and str(image_url).strip() != ""
     ):
 
-        return
-
-    document = message.document
-
-    if not document:
-        await message.answer(
-            "❌ Excel yuboring"
-        )
-        return
-
-    os.makedirs(
-        "temp",
-        exist_ok=True
-    )
-
-    file_path = (
-        f"temp/{document.file_name}"
-    )
-
-    await bot.download(
-        document,
-        destination=file_path
-    )
-
-    await message.answer(
-        "📥 Fayl yuklab olindi"
-    )
-
-    wb = load_workbook(
-        file_path
-    )
-
-    ws = wb.active
-
-    rows = list(
-        ws.iter_rows(
-            min_row=2,
-            values_only=True
-        )
-    )
-
-    try:
-
-        conn = psycopg2.connect(
-            DATABASE_URL
+        await message.answer_photo(
+            photo=image_url,
+            caption=
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
         )
 
-        cur = conn.cursor()
-
-    except Exception as e:
+    else:
 
         await message.answer(
-            f"❌ DB ERROR:\n{e}"
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
         )
 
-        return
-
-    result = analyze_import(
-        cur,
-        rows
-    )
-
-    user_id = message.from_user.id
-
-    dts_import_cache[user_id] = result
-
-    text = f"""
-📥 DTS Import Tahlili
-
-━━━━━━━━━━━━━━━
-
-📄 Jami qator:
-{len(rows)}
-
-✅ Import qilinadi:
-{len(result["valid_rows"])}
-
-⚠️ Excel ichida takroriy:
-{len(result["duplicate_rows"])}
-
-📦 Bazada mavjud:
-{len(result["existing_rows"])}
-
-❌ Xatolar:
-{len(result["error_rows"])}
-
-━━━━━━━━━━━━━━━
-"""
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-
-            [
-
-                InlineKeyboardButton(
-                    text="✅ Import qilish",
-                    callback_data="dts_confirm_import"
-                )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-                    text="📊 Muammolar tahlili",
-                    callback_data="dts_problems"
-                )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-                    text="📥 Xatolarni yuklab olish",
-                    callback_data="dts_download_errors"
-                )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-                    text="❌ Bekor qilish",
-                    callback_data="dts_cancel_import"
-                )
-
-            ],
-
-            [
-
-                InlineKeyboardButton(
-                    text="⬅️ Menu",
-                    callback_data="dts_menu"
-                )
-
-            ]
-
-        ]
-    )
-
-    await message.answer(
-        text,
-        reply_markup=kb
-    )
-
-    cur.close()
-    conn.close()
-
-    await state.clear()
-
-async def dts_confirm_import(
-
-    call: CallbackQuery
-
+async def check_button_answer(
+    user_id,
+    answer,
+    message
 ):
 
-    await call.answer()
-
-    user_id = call.from_user.id
-
-    cache = dts_import_cache.get(
+    session = test_sessions.get(
         user_id
     )
 
-    if not cache:
-
-        await call.answer(
-            "❌ Cache topilmadi"
-        )
-
+    if not session:
         return
 
-    valid_rows = cache[
-        "valid_rows"
-    ]
+    current = session["current"]
 
-    try:
+    test = session["questions"][current]
 
-        conn = psycopg2.connect(
-            DATABASE_URL
+    (
+        question,
+        a,
+        b,
+        c,
+        d,
+        correct,
+        explanation,
+        question_type,
+        is_latex,
+        image_url,
+        audio_text,
+        language,
+        time_limit
+    ) = test
+
+    if answer == "A":
+        selected = str(a)
+
+    elif answer == "B":
+        selected = str(b)
+
+    elif answer == "C":
+        selected = str(c)
+
+    else:
+        selected = str(d)
+
+    if selected.strip() == str(correct).strip():
+
+        session["correct"] += 1
+
+        await message.answer(
+            f"✅ To'g'ri\n\n📖 {explanation}"
         )
 
-        cur = conn.cursor()
+    else:
 
-        result = confirm_import(
-            cur,
-            valid_rows
+        session["wrong"] += 1
+
+        await message.answer(
+            f"❌ Noto'g'ri\n\n"
+            f"To'g'ri javob: {correct}\n\n"
+            f"📖 {explanation}"
         )
 
-        conn.commit()
+    await next_question(
+        user_id,
+        message
+    )
+    
+async def check_text_answer(
+    user_id,
+    user_answer,
+    message
+):
 
-        inserted_count = result[
-            "inserted_count"
-        ]
+    session = test_sessions.get(
+        user_id
+    )
 
-        failed_rows = result[
-            "failed_rows"
-        ]
+    if not session:
+        return
 
-        text = f"""
-✅ DTS import tugadi
+    current = session["current"]
 
-━━━━━━━━━━━━━━━
+    test = session["questions"][current]
 
-📥 Qo‘shildi:
-{inserted_count}
+    correct = str(
+        test[5]
+    ).strip().lower()
 
-❌ Xatolar:
-{len(failed_rows)}
+    user_answer = str(
+        user_answer
+    ).strip().lower()
 
-━━━━━━━━━━━━━━━
-"""
+    explanation = test[6]
 
-        await call.message.edit_text(
-            text
+    if user_answer == correct:
+
+        session["correct"] += 1
+
+        await message.answer(
+            f"✅ To'g'ri\n\n📖 {explanation}"
         )
 
-        dts_import_cache.pop(
+    else:
+
+        session["wrong"] += 1
+
+        await message.answer(
+            f"❌ Noto'g'ri\n\n"
+            f"To'g'ri javob: {test[5]}\n\n"
+            f"📖 {explanation}"
+        )
+
+    await next_question(
+        user_id,
+        message
+    )
+
+async def next_question(
+    user_id,
+    message
+):
+
+    session = test_sessions.get(
+        user_id
+    )
+
+    if not session:
+        return
+
+    session["current"] += 1
+
+    if session["current"] >= len(
+        session["questions"]
+    ):
+
+        await finish_test(
             user_id,
-            None
+            message
         )
 
-    except Exception as e:
+        return
 
-        await call.message.answer(
-            f"❌ Import xatosi:\n{e}"
-        )
+    await show_question(
+        user_id,
+        message
+    )    
 
-    finally:
-
-        cur.close()
-        conn.close()
-
-async def dts_problems(
-    call: CallbackQuery
+async def finish_test(
+    user_id,
+    message
 ):
 
-    await call.answer()
-
-    user_id = call.from_user.id
-
-    cache = dts_import_cache.get(
+    session = test_sessions.get(
         user_id
     )
 
-    if not cache:
-
-        await call.answer(
-            "❌ Cache topilmadi"
-        )
-
+    if not session:
         return
 
-    text = "📊 DTS Import Muammolari\n\n"
-
-    for row in cache["duplicate_rows"]:
-
-        text += (
-            f"⚠️ TAKRORIY\n\n"
-            f"Qator: {row['row_no']}\n"
-            f"Code: {row['topic_code']}\n"
-            f"Bob: {row.get('bob','')}\n"
-            f"Bo'lim: {row.get('bolim','')}\n"
-            f"Mavzu: {row.get('mavzu','')}\n"
-            f"Kichik mavzu: {row.get('kichik','')}\n"
-            f"Sabab: {row['reason']}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-        )
-
-    for row in cache["existing_rows"]:
-
-        text += (
-            f"📦 BAZADA MAVJUD\n\n"
-            f"Qator: {row['row_no']}\n"
-            f"Code: {row['topic_code']}\n"
-            f"Bob: {row.get('bob','')}\n"
-            f"Bo'lim: {row.get('bolim','')}\n"
-            f"Mavzu: {row.get('mavzu','')}\n"
-            f"Kichik mavzu: {row.get('kichik','')}\n"
-            f"Sabab: {row['reason']}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-        )
-
-    for row in cache["error_rows"]:
-
-        text += (
-            f"❌ Xato\n"
-            f"Qator: {row['row_no']}\n"
-            f"{row['reason']}\n\n"
-        )
-
-    if text == "📊 DTS Import Muammolari\n\n":
-
-        text += "✅ Muammo yo‘q"
-
-    await call.message.answer(
-        text[:4000]
+    total = (
+        session["correct"]
+        +
+        session["wrong"]
     )
 
-async def dts_download_errors(
-    call: CallbackQuery
-):
-
-    await call.answer()
-
-    user_id = call.from_user.id
-
-    cache = dts_import_cache.get(
-        user_id
-    )
-
-    if not cache:
-
-        await call.answer(
-            "❌ Cache topilmadi"
-        )
-
-        return
-
-    text = "DTS IMPORT XATOLARI\n\n"
-
-    for row in cache["duplicate_rows"]:
-
-        text += (
-            f"TAKRORIY\n\n"
-            f"Qator: {row['row_no']}\n"
-            f"Code: {row['topic_code']}\n"
-            f"Bob: {row.get('bob','')}\n"
-            f"Bo'lim: {row.get('bolim','')}\n"
-            f"Mavzu: {row.get('mavzu','')}\n"
-            f"Kichik mavzu: {row.get('kichik','')}\n"
-            f"Sabab: {row['reason']}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-        )
-
-    for row in cache["existing_rows"]:
-
-        text += (
-            f"BAZADA MAVJUD\n\n"
-            f"Qator: {row['row_no']}\n"
-            f"Code: {row['topic_code']}\n"
-            f"Bob: {row.get('bob','')}\n"
-            f"Bo'lim: {row.get('bolim','')}\n"
-            f"Mavzu: {row.get('mavzu','')}\n"
-            f"Kichik mavzu: {row.get('kichik','')}\n"
-            f"Sabab: {row['reason']}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-        )
-
-    for row in cache["error_rows"]:
-
-        text += (
-            f"XATO\n\n"
-            f"Qator: {row['row_no']}\n"
-            f"Bob: {row.get('bob','')}\n"
-            f"Bo'lim: {row.get('bolim','')}\n"
-            f"Mavzu: {row.get('mavzu','')}\n"
-            f"Kichik mavzu: {row.get('kichik','')}\n"
-            f"Sabab: {row['reason']}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-        )
-
-    if text == "DTS IMPORT XATOLARI\n\n":
-
-        text += "Xatolar yo‘q"
-
-    os.makedirs(
-        "temp",
-        exist_ok=True
-    )
-
-    file_path = (
-        f"temp/errors_{user_id}.txt"
-    )
-
-    with open(
-        file_path,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        f.write(text)
-
-    await call.message.answer_document(
-        FSInputFile(file_path)
-    )
-
-async def dts_cancel_import(
-    call: CallbackQuery
-):
-
-    await call.answer()
-
-    user_id = call.from_user.id
-
-    if user_id in dts_import_cache:
-
-        del dts_import_cache[user_id]
-
-    await call.message.edit_text(
-        "❌ DTS import bekor qilindi"
-    )
-# =========================
-# DTS SEARCH MENU
-# =========================
-
-class DTSSearchState(StatesGroup):
-
-    waiting_fast_search = State()
-
-    select_grade = State()
-    select_subject = State()
-    select_quarter = State()
-    select_bob = State()
-    select_bolim = State()
-    select_mavzu = State()
-
-
-async def dts_search(
-    call: CallbackQuery
-):
-
-    kb = InlineKeyboardMarkup(
-
-        inline_keyboard=[
-
-            [
-                InlineKeyboardButton(
-                    text="⚡ Tezkor qidiruv",
-                    callback_data="dts_fast_search"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    text="🧭 Kengaytirilgan qidiruv",
-                    callback_data="dts_adv_search"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Orqaga",
-                    callback_data="dts_menu"
-                )
-            ]
-
-        ]
-
-    )
-
-    await call.message.edit_text(
-
-        "🔎 DTS Qidiruv",
-
-        reply_markup=kb
-
-    )
-
-# =========================
-# FAST SEARCH
-# =========================
-
-async def dts_fast_search(
-    call: CallbackQuery,
-    state: FSMContext
-):
-
-    await state.set_state(
-        DTSSearchState.waiting_fast_search
-    )
-
-    await call.message.edit_text(
-        "🔎 Mavzu nomini kiriting:"
-    )
-@dp.message(
-    DTSSearchState.waiting_fast_search
-)
-async def dts_fast_search_text(
-    message: Message,
-    state: FSMContext
-):
-
-    text = message.text.strip()
-
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
-
-    cur.execute("""
-
-    SELECT DISTINCT
-
-        mavzu_code,
-        mavzu_name,
-
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-
-    FROM dts_tree
-
-    WHERE is_deleted=FALSE
-
-    AND (
-        LOWER(mavzu_name) LIKE LOWER(%s)
-        OR LOWER(kichik_name) LIKE LOWER(%s)
-    )
-
-    ORDER BY mavzu_name
-
-    LIMIT 50
-
-    """, (
-
-        f"%{text}%",
-        f"%{text}%"
-
-    ))
-
-    rows = cur.fetchall()
-
-    if not rows:
-
-        await message.answer(
-            "❌ Topilmadi"
-        )
-
-        return
-
-    buttons = []
-
-    for (
-
-        mavzu_code,
-        mavzu_name,
-
-        grade,
-        subject_code,
-        quarter,
-        bob_code,
-        bolim_code
-
-    ) in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📝 {mavzu_name} [{mavzu_code}]",
-
-                callback_data=(
-
-                    f"dts_mavzu_"
-                    f"{grade}_"
-                    f"{subject_code}_"
-                    f"{quarter}_"
-                    f"{bob_code}_"
-                    f"{bolim_code}_"
-                    f"{mavzu_code}"
-
-                )
-
-            )
-
-        ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
-    )
+    percent = round(
+        session["correct"]
+        * 100
+        / total,
+        1
+    ) if total else 0
 
     await message.answer(
+        f"""
+🏁 Test tugadi
 
-        "🔎 Natijalar",
+✅ To'g'ri: {session['correct']}
+❌ Noto'g'ri: {session['wrong']}
 
-        reply_markup=kb
-
+📊 Natija: {percent}%
+"""
     )
 
-    await state.clear()
+    if user_id in user_state:
+        del user_state[user_id]
 
-    cur.close()
-    conn.close()
+    del test_sessions[user_id]
 
-# =========================
-# ADV SEARCH
-# =========================
-
-async def dts_adv_search(
-    call: CallbackQuery
+async def stop_test(
+    user_id,
+    message
 ):
 
-    conn = psycopg2.connect(
-        DATABASE_URL
+    session = test_sessions.get(
+        user_id
     )
 
-    cur = conn.cursor()
+    if not session:
+        return
 
-    cur.execute("""
-
-    SELECT DISTINCT grade
-
-    FROM dts_tree
-
-    WHERE is_deleted=FALSE
-
-    ORDER BY grade
-
-    """)
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    for (grade,) in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"🏫 {grade}-sinf",
-
-                callback_data=(
-                    f"dts_adv_grade_{grade}"
-                )
-
-            )
-
-        ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
+    await finish_test(
+        user_id,
+        message
     )
 
-    await call.message.edit_text(
-
-        "🏫 Sinfni tanlang",
-
-        reply_markup=kb
-
-    )
-
-    cur.close()
-    conn.close()
-
-# =========================
-# ADV GRADE
-# =========================
-
-async def dts_adv_grade(
-    call: CallbackQuery
+async def speak_question(
+    user_id,
+    message
 ):
 
-    grade = call.data.replace(
-        "dts_adv_grade_",
-        ""
+    session = test_sessions.get(
+        user_id
     )
 
-    conn = psycopg2.connect(
-        DATABASE_URL
+    if not session:
+        return
+
+    current = session["current"]
+
+    test = session["questions"][current]
+
+    question = test[0]
+
+    language = test[11]
+
+    if language == "uz":
+        voice = "uz-UZ-SardorNeural"
+
+    elif language == "ru":
+        voice = "ru-RU-DmitryNeural"
+
+    elif language == "en":
+        voice = "en-US-GuyNeural"
+
+    else:
+        voice = "uz-UZ-SardorNeural"
+
+    filename = (
+        f"voice_{user_id}.mp3"
     )
 
-    cur = conn.cursor()
-
-    cur.execute("""
-
-    SELECT DISTINCT
-        subject_code,
-        subject_name
-
-    FROM dts_tree
-
-    WHERE grade=%s
-    AND is_deleted=FALSE
-
-    ORDER BY subject_code
-
-    """, (
-
-        grade,
-
-    ))
-
-    rows = cur.fetchall()
-
-    buttons = []
-
-    for code, name in rows:
-
-        buttons.append([
-
-            InlineKeyboardButton(
-
-                text=f"📚 {name}",
-
-                callback_data=(
-
-                    f"dts_subject_"
-                    f"{grade}_"
-                    f"{code}"
-
-                )
-
-            )
-
-        ])
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=buttons
+    communicate = edge_tts.Communicate(
+        text=question,
+        voice=voice
     )
 
-    await call.message.edit_text(
-
-        f"🏫 {grade}-sinf",
-
-        reply_markup=kb
-
+    await communicate.save(
+        filename
     )
 
-    cur.close()
-    conn.close()
+    await message.answer_voice(
+        FSInputFile(filename)
+    )
+
+def latex_to_image(latex_text, filename):
+
+    fig = plt.figure()
+
+    plt.text(
+        0.05,
+        0.5,
+        f"${latex_text}$",
+        fontsize=24
+    )
+
+    plt.axis("off")
+
+    plt.savefig(
+        filename,
+        bbox_inches="tight"
+    )
+
+    plt.close()
