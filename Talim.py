@@ -654,6 +654,24 @@ def get_topic_name(topic_code):
 
     return row
 
+def get_topic_test_count(topic_code):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM generated_tests
+        WHERE topic_code=%s
+    """, (topic_code,))
+
+    count = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+
+    return count
+
 def get_topic_statistics(topic_code):
 
     conn = psycopg2.connect(DATABASE_URL)
@@ -753,22 +771,28 @@ async def show_topics_page(
 
     current_topics = topics[start:end]
 
+    keyboard = []
+
     text = "📚 MAVZULAR\n\n"
 
-    for i, row in enumerate(
-        current_topics,
-        start=start + 1
-    ):
+    for row in current_topics:
 
         topic_code = row[0]
         kichik_name = row[1]
 
-        text += (
-            f"{i}. {topic_code}\n"
-            f"{kichik_name}\n\n"
+        count = get_topic_test_count(
+            topic_code
         )
 
-    keyboard = []
+        keyboard.append([
+            KeyboardButton(
+                text=f"{kichik_name} ({count})"
+            )
+        ])
+
+        topic_stats_state[user_id][
+            f"topic_{kichik_name} ({count})"
+        ] = topic_code
 
     keyboard.append([
         KeyboardButton(text="⬅️ Oldingi"),
@@ -1235,6 +1259,12 @@ async def handle_all(
     elif (
         user_id in topic_stats_state
         and "grade" in topic_stats_state[user_id]
+        and message.text not in [
+            "➡️ Keyingi",
+            "⬅️ Oldingi",
+            "🔍 Mavzu qidirish",
+            "🔙 Ortga"
+        ]
     ):
 
         grade = topic_stats_state[user_id]["grade"]
