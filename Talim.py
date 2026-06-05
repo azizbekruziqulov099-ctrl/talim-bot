@@ -1269,6 +1269,8 @@ async def handle_all(
         info = get_topic_name(topic_code)
         stats = get_topic_statistics(topic_code)
 
+        topic_stats_state[user_id]["selected_topic"] = topic_code
+
         await message.answer(
             f"🔑 {topic_code}\n\n"
             f"📖 {info[0]}\n"
@@ -1277,7 +1279,15 @@ async def handle_all(
             f"🟢 Oson: {stats[1] or 0}\n"
             f"🟡 O'rta: {stats[2] or 0}\n"
             f"🟠 Qiyin: {stats[3] or 0}\n"
-            f"🔴 Murakkab: {stats[4] or 0}"
+            f"🔴 Murakkab: {stats[4] or 0}",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="📄 Excel shablon")],
+                    [KeyboardButton(text="📥 Test import qilish")],
+                    [KeyboardButton(text="⬅️ Ortga")]
+                ],
+                resize_keyboard=True
+            )
         )
 
         return
@@ -1404,18 +1414,32 @@ async def handle_all(
 
         elif level == "subjects":
 
-            del topic_stats_state[user_id]
+            grade = topic_stats_state[user_id]["grade"]
+
+            subjects = get_subjects_by_grade(
+                grade
+            )
+
+            keyboard = []
+
+            for subject in subjects:
+
+                keyboard.append([
+                    KeyboardButton(
+                        text=subject
+                    )
+                ])
+
+            keyboard.append([
+                KeyboardButton(
+                    text="🔙 Ortga"
+                )
+            ])
 
             await message.answer(
-                "📚 Sinfni tanlang",
+                "📖 Fanni tanlang",
                 reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[
-                        [KeyboardButton(text="1-sinf")],
-                        [KeyboardButton(text="2-sinf")],
-                        [KeyboardButton(text="3-sinf")],
-                        [KeyboardButton(text="4-sinf")],
-                        [KeyboardButton(text="5-sinf")]
-                    ],
+                    keyboard=keyboard,
                     resize_keyboard=True
                 )
             )
@@ -2478,8 +2502,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             show_alert=True
         )
         return
-
-
 
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
