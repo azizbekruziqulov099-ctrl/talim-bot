@@ -1102,11 +1102,25 @@ async def handle_all(
     except:
         pass
 
-    if message.document:
+    if (
+        admin_state.get(user_id) == "dts_import"
+        and message.document
+    ):
 
         await dts_excel_import(
             message,
             state
+        )
+
+        return
+
+    if (
+        admin_state.get(user_id) == "test_import"
+        and message.document
+    ):
+
+        await import_tests_excel(
+            message
         )
 
         return
@@ -1309,29 +1323,6 @@ async def handle_all(
             message,
             admin_state,
             user_id
-        )
-
-        return
-
-    elif (
-        admin_state.get(user_id) == "dts_import"
-        and message.document
-    ):
-
-        await dts_excel_import(
-            message,
-            state
-        )
-
-        return
-
-    elif (
-        admin_state.get(user_id) == "test_import"
-        and message.document
-    ):
-
-        await import_tests_excel(
-            message
         )
 
         return
