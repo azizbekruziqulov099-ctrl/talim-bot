@@ -1200,9 +1200,7 @@ async def handle_all(
 
     elif message.text.endswith("-sinf"):
 
-        grade = int(
-            message.text.replace("-sinf", "")
-        )
+        grade = message.text.replace("-sinf", "")
 
         topic_stats_state[user_id] = {
             "grade": grade
