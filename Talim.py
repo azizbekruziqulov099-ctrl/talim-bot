@@ -1292,6 +1292,50 @@ async def handle_all(
 
         return
 
+
+    elif message.text == "📥 Test import qilish":
+
+        admin_state[user_id] = "test_import"
+
+        await message.answer(
+            "Excel fayl yuboring"
+        )
+
+        return
+
+    elif message.text == "📥 DTS import":
+
+        await dts_import_menu(
+            message,
+            admin_state,
+            user_id
+        )
+
+        return
+
+    elif (
+        admin_state.get(user_id) == "dts_import"
+        and message.document
+    ):
+
+        await dts_excel_import(
+            message,
+            state
+        )
+
+        return
+
+    elif (
+        admin_state.get(user_id) == "test_import"
+        and message.document
+    ):
+
+        await import_tests_excel(
+            message
+        )
+
+        return
+
     elif (
         user_id in topic_stats_state
         and "grade" in topic_stats_state[user_id]
@@ -1577,60 +1621,6 @@ async def handle_all(
             f"📝 Jami testlar: {total_tests}\n"
             f"📈 Progress: {progress}%"
         )
-
-    elif message.text == "📥 Test import qilish":
-
-        admin_state[user_id] = "test_import"
-
-        await message.answer(
-            "Excel fayl yuboring"
-        )
-
-        return
-
-    elif message.text == "📥 DTS import":
-
-        await dts_import_menu(
-            message,
-            admin_state,
-            user_id
-        )
-
-        return
-
-    elif (
-        admin_state.get(user_id) == "dts_import"
-        and message.document
-    ):
-
-        await dts_excel_import(
-            message,
-            state
-        )
-
-        return
-
-    elif (
-        admin_state.get(user_id) == "test_import"
-        and message.document
-    ):
-
-        await import_tests_excel(
-            message
-        )
-
-        return
-
-    elif (
-        admin_state.get(user_id) == "test_import"
-        and message.document
-    ):
-
-        await import_tests_excel(
-            message
-        )
-
-        return
 
     elif message.text == "⬅ Ortga":
 
