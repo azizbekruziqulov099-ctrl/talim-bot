@@ -2426,6 +2426,56 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    elif call.data.startswith(
+        "test_grade_"
+    ):
+
+        grade = call.data.replace(
+            "test_grade_",
+            ""
+        )
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question,
+                option_a,
+                option_b,
+                option_c,
+                option_d,
+                correct_answer,
+                explanation,
+                question_type,
+                is_latex,
+                image_url,
+                audio_text,
+                language,
+                time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (grade,))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
     elif call.data == "dts_menu":
 
         await dts_menu(call.message)
