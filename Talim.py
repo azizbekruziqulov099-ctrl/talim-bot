@@ -2540,6 +2540,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             quarter
         ) = call.data.split("_")
 
+        print("CALL:", call.data)
+        print("PARAMS:", grade, subject_code, quarter)
+
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
