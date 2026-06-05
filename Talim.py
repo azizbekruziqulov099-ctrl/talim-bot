@@ -1227,7 +1227,8 @@ async def handle_all(
         grade = message.text.replace("-sinf", "")
 
         topic_stats_state[user_id] = {
-            "grade": grade
+            "grade": grade,
+            "level": "subjects"
         }
 
         subjects = get_subjects_by_grade(
@@ -1256,37 +1257,11 @@ async def handle_all(
 
         return
 
-
-
-    elif message.text == "➡️ Keyingi":
-
-        if user_id not in topic_stats_state:
-            return
-
-        total = len(
-            topic_stats_state[user_id]["topics"]
-        )
-
-        current_page = topic_stats_state[user_id]["page"]
-
-        max_page = (total - 1) // 10
-
-        if current_page < max_page:
-
-            topic_stats_state[user_id]["page"] += 1
-
-        await show_topics_page(
-            message,
-            user_id
-        )
-
-        return
-
     elif (
         user_id in topic_stats_state
         and f"topic_{message.text}" in topic_stats_state[user_id]
     ):
-
+        topic_stats_state[user_id]["level"] = "topic_stats"
         topic_code = topic_stats_state[user_id][
             f"topic_{message.text}"
         ]
@@ -1325,6 +1300,7 @@ async def handle_all(
         topic_stats_state[user_id]["subject"] = subject_name
         topic_stats_state[user_id]["topics"] = topics
         topic_stats_state[user_id]["page"] = 0
+        topic_stats_state[user_id]["level"] = "topics"
 
         await show_topics_page(
             message,
@@ -1348,6 +1324,103 @@ async def handle_all(
         )
 
         return
+
+    elif message.text == "➡️ Keyingi":
+
+        if user_id not in topic_stats_state:
+            return
+
+        total = len(
+            topic_stats_state[user_id]["topics"]
+        )
+
+        current_page = topic_stats_state[user_id]["page"]
+
+        max_page = (total - 1) // 10
+
+        if current_page < max_page:
+
+            topic_stats_state[user_id]["page"] += 1
+
+        await show_topics_page(
+            message,
+            user_id
+        )
+
+        return
+
+    elif message.text == "🔙 Ortga":
+
+        if user_id not in topic_stats_state:
+            return
+
+        level = topic_stats_state[user_id].get("level")
+
+        if level == "topic_stats":
+
+            topic_stats_state[user_id]["level"] = "topics"
+
+            await show_topics_page(
+                message,
+                user_id
+            )
+
+            return
+
+        elif level == "topics":
+
+            grade = topic_stats_state[user_id]["grade"]
+
+            keyboards = []
+
+            subjects = get_subjects_by_grade(
+                grade
+            )
+
+            for subject in subjects:
+                keyboards.append([
+                    KeyboardButton(
+                        text=subject
+                    )
+                ])
+
+            keyboards.append([
+                KeyboardButton(
+                    text="🔙 Ortga"
+                )
+            ])
+
+            topic_stats_state[user_id]["level"] = "subjects"
+
+            await message.answer(
+                "📖 Fanni tanlang",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=keyboards,
+                    resize_keyboard=True
+                )
+            )
+
+            return
+
+        elif level == "subjects":
+
+            del topic_stats_state[user_id]
+
+            await message.answer(
+                "📚 Sinfni tanlang",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="1-sinf")],
+                        [KeyboardButton(text="2-sinf")],
+                        [KeyboardButton(text="3-sinf")],
+                        [KeyboardButton(text="4-sinf")],
+                        [KeyboardButton(text="5-sinf")]
+                    ],
+                    resize_keyboard=True
+                )
+            )
+
+            return
 
     elif "-" in message.text:
 
