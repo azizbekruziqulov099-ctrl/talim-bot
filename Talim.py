@@ -2476,6 +2476,278 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    elif call.data.startswith("test_subject_"):
+
+        (
+            _,
+            _,
+            grade,
+            subject_code
+        ) = call.data.split("_")
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question,
+                option_a,
+                option_b,
+                option_c,
+                option_d,
+                correct_answer,
+                explanation,
+                question_type,
+                is_latex,
+                image_url,
+                audio_text,
+                language,
+                time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+                AND subject_code=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (
+            grade,
+            subject_code
+        ))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
+    elif call.data.startswith("test_quarter_"):
+
+        (
+            _,
+            _,
+            grade,
+            subject_code,
+            quarter
+        ) = call.data.split("_")
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question, option_a, option_b,
+                option_c, option_d,
+                correct_answer, explanation,
+                question_type, is_latex,
+                image_url, audio_text,
+                language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+                AND subject_code=%s
+                AND quarter=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (
+            grade,
+            subject_code,
+            quarter
+        ))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
+    elif call.data.startswith("test_bob_"):
+
+        (
+            _,
+            _,
+            grade,
+            subject_code,
+            quarter,
+            bob_code
+        ) = call.data.split("_")
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question, option_a, option_b,
+                option_c, option_d,
+                correct_answer, explanation,
+                question_type, is_latex,
+                image_url, audio_text,
+                language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+                AND subject_code=%s
+                AND quarter=%s
+                AND bob_code=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (
+            grade,
+            subject_code,
+            quarter,
+            bob_code
+        ))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
+    elif call.data.startswith("test_bolim_"):
+
+        (
+            _,
+            _,
+            grade,
+            subject_code,
+            quarter,
+            bob_code,
+            bolim_code
+        ) = call.data.split("_")
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question, option_a, option_b,
+                option_c, option_d,
+                correct_answer, explanation,
+                question_type, is_latex,
+                image_url, audio_text,
+                language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+                AND subject_code=%s
+                AND quarter=%s
+                AND bob_code=%s
+                AND bolim_code=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (
+            grade,
+            subject_code,
+            quarter,
+            bob_code,
+            bolim_code
+        ))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
+    elif call.data.startswith("test_mavzu_"):
+
+        (
+            _,
+            _,
+            grade,
+            subject_code,
+            quarter,
+            bob_code,
+            bolim_code,
+            mavzu_code
+        ) = call.data.split("_")
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                question, option_a, option_b,
+                option_c, option_d,
+                correct_answer, explanation,
+                question_type, is_latex,
+                image_url, audio_text,
+                language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code
+                FROM dts_tree
+                WHERE grade=%s
+                AND subject_code=%s
+                AND quarter=%s
+                AND bob_code=%s
+                AND bolim_code=%s
+                AND mavzu_code=%s
+            )
+            ORDER BY RANDOM()
+            LIMIT 20
+        """, (
+            grade,
+            subject_code,
+            quarter,
+            bob_code,
+            bolim_code,
+            mavzu_code
+        ))
+
+        tests = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        await start_test(
+            call.from_user.id,
+            tests,
+            call.message
+        )
+
+        return
+
     elif call.data == "dts_menu":
 
         await dts_menu(call.message)
