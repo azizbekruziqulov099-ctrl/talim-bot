@@ -6,3 +6,4 @@ openai
 rapidfuzz
 edge-tts
 matplotlib
+pandas
