@@ -929,10 +929,17 @@ async def show_question(
         ]
     )
 
-    await message.answer(
-        f"⏱️ {time_limit} soniya\n\n{question}",
-        reply_markup=kb
-    )
+    if is_latex:
+        await message.answer_photo(
+            photo=image_url,
+            caption=f"⏱️ {time_limit} soniya",
+            reply_markup=kb
+        )
+    else:
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n{question}",
+            reply_markup=kb
+        )
 
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
