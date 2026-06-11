@@ -1010,24 +1010,24 @@ async def import_tests_excel(message):
         try:
 
             test_data = {
-                "topic_code": row["topic_code"],
-                "difficulty": row["difficulty"],
-                "situation": row["situation"],
-                "question": row["question"],
-                "option_a": row["option_a"],
-                "option_b": row["option_b"],
-                "option_c": row["option_c"],
-                "option_d": row["option_d"],
-                "correct_answer": row["correct_answer"],
-                "explanation": row["explanation"],
-                "question_type": row["question_type"],
-                "is_latex": row["is_latex"],
-                "image_url": row["image_url"],
-                "audio_text": row["audio_text"],
-                "language": row["language"],
-                "life_level": row["life_level"],
-                "age_group": row["age_group"],
-                "time_limit": row["time_limit"]
+                "topic_code": str(row["topic_code"]).strip(),
+                "difficulty": str(row["difficulty"]).strip(),
+                "situation": "" if pd.isna(row["situation"]) else str(row["situation"]),
+                "question": str(row["question"]).strip(),
+                "option_a": "" if pd.isna(row["option_a"]) else str(row["option_a"]),
+                "option_b": "" if pd.isna(row["option_b"]) else str(row["option_b"]),
+                "option_c": "" if pd.isna(row["option_c"]) else str(row["option_c"]),
+                "option_d": "" if pd.isna(row["option_d"]) else str(row["option_d"]),
+                "correct_answer": str(row["correct_answer"]).strip(),
+                "explanation": "" if pd.isna(row["explanation"]) else str(row["explanation"]),
+                "question_type": str(row["question_type"]).strip(),
+                "is_latex": False if pd.isna(row["is_latex"]) else row["is_latex"],
+                "image_url": None if pd.isna(row["image_url"]) else str(row["image_url"]),
+                "audio_text": None if pd.isna(row["audio_text"]) else str(row["audio_text"]),
+                "language": "uz" if pd.isna(row["language"]) else str(row["language"]),
+                "life_level": 1 if pd.isna(row["life_level"]) else int(row["life_level"]),
+                "age_group": None if pd.isna(row["age_group"]) else str(row["age_group"]),
+                "time_limit": 60 if pd.isna(row["time_limit"]) else int(row["time_limit"])
             }
 
             result = save_test(test_data)
