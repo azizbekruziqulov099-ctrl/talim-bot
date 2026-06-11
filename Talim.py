@@ -640,6 +640,11 @@ def get_topic_name(topic_code):
 
     cur.execute("""
         SELECT
+            grade,
+            subject_name,
+            quarter,
+            bob_name,
+            bolim_name,
             mavzu_name,
             kichik_name
         FROM dts_tree
@@ -1287,8 +1292,15 @@ async def handle_all(
 
         await message.answer(
             f"🔑 {topic_code}\n\n"
-            f"📖 {info[0]}\n"
-            f"📌 {info[1]}\n\n"
+
+            f"🎓 Sinf: {info[0]}\n"
+            f"📚 Fan: {info[1]}\n"
+            f"🗓 Chorak: {info[2]}\n"
+            f"📖 Bob: {info[3]}\n"
+            f"📂 Bo'lim: {info[4]}\n"
+            f"📘 Mavzu: {info[5]}\n"
+            f"📌 Kichik mavzu: {info[6]}\n\n"
+
             f"📊 Jami test: {stats[0]}\n"
             f"🟢 Oson: {stats[1] or 0}\n"
             f"🟡 O'rta: {stats[2] or 0}\n"
@@ -1298,7 +1310,7 @@ async def handle_all(
                 keyboard=[
                     [KeyboardButton(text="📄 Excel shablon")],
                     [KeyboardButton(text="📥 Test import qilish")],
-                    [KeyboardButton(text="⬅️ Ortga")]
+                    [KeyboardButton(text="🔙 Ortga")]
                 ],
                 resize_keyboard=True
             )
