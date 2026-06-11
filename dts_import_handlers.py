@@ -1456,10 +1456,9 @@ async def dts_subject(
     buttons.append([
         InlineKeyboardButton(
             text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
+            callback_data=f"test_subject_{grade}_{subject_code}"
         )
     ])
-
     buttons.append([
         InlineKeyboardButton(
             text="⚙️ Test sozlamalari",
@@ -1567,7 +1566,7 @@ async def dts_quarter(
     buttons.append([
         InlineKeyboardButton(
             text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
+            callback_data=f"test_quarter_{grade}_{subject_code}_{quarter}"
         )
     ])
 
@@ -1685,7 +1684,7 @@ async def dts_bob(
     buttons.append([
         InlineKeyboardButton(
             text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
+            callback_data=f"test_bob_{grade}_{subject_code}_{quarter}_{bob_code}"
         )
     ])
 
@@ -1809,7 +1808,7 @@ async def dts_bolim(
     buttons.append([
         InlineKeyboardButton(
             text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
+            callback_data=f"test_bolim_{grade}_{subject_code}_{quarter}_{bob_code}_{bolim_code}"
         )
     ])
 
@@ -1939,7 +1938,7 @@ async def dts_mavzu(
     buttons.append([
         InlineKeyboardButton(
             text="⚡ Test boshlash",
-            callback_data=f"test_grade_{grade}"
+            callback_data=f"test_mavzu_{grade}_{subject_code}_{quarter}_{bob_code}_{bolim_code}_{mavzu_code}"
         )
     ])
 
