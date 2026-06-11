@@ -86,6 +86,20 @@ def save_test(test_data):
 
     if test_data.get("question_type") == "single_choice":
 
+        ca = str(test_data.get("correct_answer")).strip()
+
+        if ca == "A":
+            test_data["correct_answer"] = test_data.get("option_a")
+
+        elif ca == "B":
+            test_data["correct_answer"] = test_data.get("option_b")
+
+        elif ca == "C":
+            test_data["correct_answer"] = test_data.get("option_c")
+
+        elif ca == "D":
+            test_data["correct_answer"] = test_data.get("option_d")
+
         variants = [
             test_data.get("option_a"),
             test_data.get("option_b"),
