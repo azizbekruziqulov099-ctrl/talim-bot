@@ -997,7 +997,7 @@ async def import_tests_excel(message):
         path
     )
 
-    df = pd.read_excel(path)
+    df = pd.read_excel(path,sheet_name="TESTLAR")
 
     success = 0
     duplicates = 0
@@ -1046,7 +1046,7 @@ async def import_tests_excel(message):
                 })
 
             else:
-                success += 1
+                errors += 1
 
         except Exception as e:
 
