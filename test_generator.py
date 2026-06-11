@@ -76,13 +76,13 @@ def save_test(test_data):
         print("⚠️ O'XSHASH SAVOL")
         cur.close()
         conn.close()
-        return
+        return "duplicate"
 
     if cur.fetchone():
         print("⚠️ DUPLIKAT TEST")
         cur.close()
         conn.close()
-        return
+        return "duplicate"
 
     if test_data.get("question_type") == "single_choice":
 
@@ -97,7 +97,7 @@ def save_test(test_data):
             print("❌ JAVOB VARIANTLAR ICHIDA YO'Q")
             cur.close()
             conn.close()
-            return
+            return "error"
 
     cur.execute("""
         INSERT INTO generated_tests (
@@ -149,6 +149,7 @@ def save_test(test_data):
 
     cur.close()
     conn.close()
+    return "saved"
 
 def generate_tests():
 
