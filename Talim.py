@@ -822,23 +822,16 @@ async def show_topics_page(
     
 @dp.message(F.photo)
 async def save_image(message: types.Message):
-
     if message.from_user.id not in ADMINS:
         return
-
     if not message.caption:
         await message.answer(
-            "Rasm nomini captionga yozing"
-        )
+            "Rasm nomini captionga yozing")
         return
-
     name = message.caption.strip()
-
     file_id = message.photo[-1].file_id
-
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-
     cur.execute("""
     INSERT INTO images(
         name,
@@ -851,10 +844,8 @@ async def save_image(message: types.Message):
     """, (name, file_id))
     conn.commit()
     conn.close()
-
     await message.answer(
-        f"✅ Saqlandi: {name}"
-    )
+        f"✅ Saqlandi: {name}")
 
 async def show_question(
     user_id,
@@ -904,11 +895,19 @@ async def show_question(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_A"
+                ),
+                InlineKeyboardButton(
                     text=str(a),
                     callback_data="ans_A"
                 )
             ],
             [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_B"
+                ),
                 InlineKeyboardButton(
                     text=str(b),
                     callback_data="ans_B"
@@ -916,11 +915,19 @@ async def show_question(
             ],
             [
                 InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_c"
+                ),
+                InlineKeyboardButton(
                     text=str(c),
                     callback_data="ans_C"
                 )
             ],
             [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_d"
+                ),
                 InlineKeyboardButton(
                     text=str(d),
                     callback_data="ans_D"
@@ -929,10 +936,26 @@ async def show_question(
         ]
     )
 
-    await message.answer(
-        f"⏱️ {time_limit} soniya\n\n{question}",
-        reply_markup=kb
+    cur.execute(
+        "SELECT file_id FROM images WHERE name=%s",
+        (image_url,)
     )
+    row = cur.fetchone()
+
+    if row:
+        image_url = row[0]
+
+    if is_latex:
+        await message.answer_photo(
+            photo=image_url,
+            caption=f"⏱️ {time_limit} soniya",
+            reply_markup=kb
+        )
+    else:
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n{question}",
+            reply_markup=kb
+        )
 
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
