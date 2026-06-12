@@ -130,11 +130,19 @@ async def show_question(
             ],
             [
                 InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_a"
+                ),
+                InlineKeyboardButton(
                     text=str(a),
                     callback_data="ans_A"
                 )
             ],
             [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_b"
+                ),
                 InlineKeyboardButton(
                     text=str(b),
                     callback_data="ans_B"
@@ -142,11 +150,19 @@ async def show_question(
             ],
             [
                 InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_c"
+                ),
+                InlineKeyboardButton(
                     text=str(c),
                     callback_data="ans_C"
                 )
             ],
             [
+                InlineKeyboardButton(
+                    text="🔊 Eshitish",
+                    callback_data="speak_d"
+                ),
                 InlineKeyboardButton(
                     text=str(d),
                     callback_data="ans_D"
@@ -177,7 +193,6 @@ async def show_question(
             "Savolni rasmda ko‘ring",
             reply_markup=kb
         )
-
 
     if (
         image_url
