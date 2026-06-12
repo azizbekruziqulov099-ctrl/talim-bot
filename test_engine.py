@@ -199,14 +199,7 @@ async def show_question(
         and str(image_url).lower() != "nan"
         and str(image_url).strip() != ""
     ):
-        cur.execute(
-            "SELECT file_id FROM images WHERE name=%s",
-            (image_url,)
-        )
-        row = cur.fetchone()
 
-        if row:
-            image_url = row[0]
         print("IMAGE_URL =", image_url)
         await message.answer_photo(
             photo=image_url,
