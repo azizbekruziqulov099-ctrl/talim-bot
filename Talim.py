@@ -936,26 +936,55 @@ async def show_question(
         ]
     )
 
-    cur.execute(
-        "SELECT file_id FROM images WHERE name=%s",
-        (image_url,)
-    )
-    row = cur.fetchone()
-    print("IMAGE_URL =", image_url)
-    print("ROW =", row)
-    print(image_url)
-    if row:
-        image_url = row[0]
-
     if is_latex:
+
+        image_file = (
+            f"latex_{user_id}.png"
+        )
+
+        latex_to_image(
+            question,
+            image_file
+        )
+
         await message.answer_photo(
-            photo=image_url,
-            caption=f"⏱️ {time_limit} soniya",
+            photo=FSInputFile(
+                image_file
+            )
+        )
+
+        await message.answer(
+            "Savolni rasmda ko‘ring",
             reply_markup=kb
         )
+
+    if (
+        image_url
+        and str(image_url).lower() != "nan"
+        and str(image_url).strip() != ""
+    ):
+        cur.execute(
+            "SELECT file_id FROM images WHERE name=%s",
+            (image_url,)
+        )
+        row = cur.fetchone()
+
+        if row:
+            image_url = row[0]
+
+        await message.answer_photo(
+            photo=image_url,
+            caption=
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
+        )
+
     else:
+
         await message.answer(
-            f"⏱️ {time_limit} soniya\n\n{question}",
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
             reply_markup=kb
         )
 
@@ -2863,4 +2892,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
