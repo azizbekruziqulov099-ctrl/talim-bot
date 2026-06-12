@@ -941,7 +941,9 @@ async def show_question(
         (image_url,)
     )
     row = cur.fetchone()
-
+    print("IMAGE_URL =", image_url)
+    print("ROW =", row)
+    print(image_url)
     if row:
         image_url = row[0]
 
@@ -2861,3 +2863,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
