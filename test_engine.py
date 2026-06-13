@@ -6,6 +6,10 @@ from aiogram.types import (
 import edge_tts
 import asyncio
 import matplotlib.pyplot as plt
+import psycopg2
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 test_sessions = {}
@@ -90,11 +94,31 @@ async def show_question(
 
         user_state[user_id] = "text_answer"
 
-        if (
-            image_url
-            and str(image_url).lower() != "nan"
-            and str(image_url).strip() != ""
-        ):
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        
+        cur.execute(
+            "SELECT file_id FROM images WHERE name=%s",
+            (image_url.strip(),)
+        )
+        
+        row = cur.fetchone()
+        
+        conn.close()
+        
+        if not row:
+            await message.answer(
+                f"❌ Rasm topilmadi: {image_url}"
+            )
+            return
+        
+        file_id = row[0]
+        
+        await message.answer_photo(
+            photo=file_id,
+            caption=f"⏱️ {time_limit} soniya\n\n{question}",
+            reply_markup=kb
+        )
 
             await message.answer(
                 f"DEBUG: {image_url}"
