@@ -957,42 +957,56 @@ async def show_question(
             "Savolni rasmda ko‘ring",
             reply_markup=kb
         )
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
     
-    if (
-        image_url
-        and str(image_url).lower() != "nan"
-        and str(image_url).strip() != ""
-    ):
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+    cur.execute(
+        "SELECT file_id FROM images WHERE name=%s",
+        (image_url.strip(),)
+    )
     
-        cur.execute(
-            "SELECT file_id FROM images WHERE name=%s",
-            (image_url.strip(),)
-        )
+    row = cur.fetchone()
     
-        row = cur.fetchone()
+    conn.close()
     
-        conn.close()
-    
-        if row:
-            file_id = row[0]
-    
-            await message.answer_photo(
-                photo=file_id,
-                caption=f"⏱️ {time_limit} soniya\n\n{question}",
-                reply_markup=kb
-            )
-        else:
-            await message.answer(
-                f"❌ Rasm topilmadi: {image_url}"
-            )
-    
-    else:
+    if not row:
         await message.answer(
-            f"⏱️ {time_limit} soniya\n\n{question}",
+            f"❌ Rasm topilmadi: {image_url}"
+        )
+        return
+    
+    file_id = row[0]
+    
+    await message.answer_photo(
+        photo=file_id,
+        caption=f"⏱️ {time_limit} soniya\n\n{question}",
+        reply_markup=kb
+    )        cur.execute(
+            "SELECT file_id FROM images WHERE name=%s",
+            (image_url,)
+        )
+        row = cur.fetchone()
+
+        if row:
+            image_url = row[0]
+
+        await message.answer_photo(
+            photo=image_url,
+            caption=
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
             reply_markup=kb
         )
+
+    else:
+
+        await message.answer(
+            f"⏱️ {time_limit} soniya\n\n"
+            f"{question}",
+            reply_markup=kb
+        )
+
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
 
