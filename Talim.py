@@ -1968,58 +1968,6 @@ async def handle_all(
             )
 
             return
-
-        elif user_state.get(message.from_user.id) == "role":
-        
-            temp_user[message.from_user.id] = {
-                "role": message.text
-            }
-        
-            user_state[message.from_user.id] = "education_level"
-        
-            await message.answer(
-                "🎓 Ta'lim bosqichini tanlang:",
-                reply_markup=make_keyboard([
-                    "👶 Maktabgacha",
-                    "🏫 Maktab",
-                    "🎓 Talaba"
-                ])
-            )
-        
-            return
-
-        elif user_state.get(message.from_user.id) == "education_level":
-        
-            temp_user[message.from_user.id][
-                "education_level"
-            ] = message.text
-        
-            user_state[message.from_user.id] = "full_name"
-        
-            await message.answer(
-                "👤 F.I.Sh kiriting:"
-            )
-        
-            return
-        
-        # ===== REGION =====
-        elif user_state.get(message.from_user.id) == "region":
-            temp_user[message.from_user.id]["region"] = message.text
-            user_state[message.from_user.id] = "district"
-
-            districts = REGIONS.get(message.text, [])
-
-            flat_districts = []
-
-            for row in districts:
-                flat_districts.extend(row)
-
-            await message.answer(
-                "Tuman tanlang:",
-                reply_markup=base_keyboard(flat_districts)
-            )
-    
-
         
         elif user_state.get(message.from_user.id) == "survey_work":
 
