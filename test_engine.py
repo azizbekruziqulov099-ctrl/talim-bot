@@ -48,9 +48,7 @@ async def show_question(
     message
 ):
 
-    session = test_sessions.get(
-        user_id
-    )
+    session = test_sessions.get(user_id)
 
     if not session:
         return
@@ -75,63 +73,55 @@ async def show_question(
         time_limit
     ) = test
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_question"
-                ),
-                InlineKeyboardButton(
-                    text="🛑 Tugatish",
-                    callback_data="test_stop"
-                )
-            ]
-        ]
-    )
-
+    # WRITE ANSWER
     if question_type == "write_answer":
 
         user_state[user_id] = "text_answer"
 
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        
-        cur.execute(
-            "SELECT file_id FROM images WHERE name=%s",
-            (image_url.strip(),)
-        )
-        
-        row = cur.fetchone()
-        
-        conn.close()
-        
-        if not row:
-            await message.answer(
-                f"❌ Rasm topilmadi: {image_url}"
-            )
-            return
-        
-        file_id = row[0]
-        
-        await message.answer_photo(
-            photo=file_id,
-            caption=f"⏱️ {time_limit} soniya\n\n{question}",
-            reply_markup=kb
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛑 Tugatish",
+                        callback_data="test_stop"
+                    )
+                ]
+            ]
         )
 
-            await message.answer(
-                f"DEBUG: {image_url}"
+        if image_url and str(image_url).strip():
+
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT file_id FROM images WHERE name=%s",
+                (image_url.strip(),)
             )
-            
-            await message.answer_photo(
-                photo=image_url,
-                caption=
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
-                f"✍️ Javobni yozing:",
-                reply_markup=kb
-            )
+
+            row = cur.fetchone()
+
+            conn.close()
+
+            if row:
+
+                await message.answer_photo(
+                    photo=row[0],
+                    caption=
+                    f"⏱️ {time_limit} soniya\n\n"
+                    f"{question}\n\n"
+                    f"✍️ Javobni yozing:",
+                    reply_markup=kb
+                )
+
+            else:
+
+                await message.answer(
+                    f"⏱️ {time_limit} soniya\n\n"
+                    f"{question}\n\n"
+                    f"✍️ Javobni yozing:",
+                    reply_markup=kb
+                )
 
         else:
 
@@ -144,6 +134,7 @@ async def show_question(
 
         return
 
+    # ODDIY TESTLAR
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -199,12 +190,9 @@ async def show_question(
         ]
     )
 
-
     if is_latex:
 
-        image_file = (
-            f"latex_{user_id}.png"
-        )
+        image_file = f"latex_{user_id}.png"
 
         latex_to_image(
             question,
@@ -212,9 +200,7 @@ async def show_question(
         )
 
         await message.answer_photo(
-            photo=FSInputFile(
-                image_file
-            )
+            photo=FSInputFile(image_file)
         )
 
         await message.answer(
@@ -222,19 +208,43 @@ async def show_question(
             reply_markup=kb
         )
 
+        return
+
     if (
         image_url
         and str(image_url).lower() != "nan"
         and str(image_url).strip() != ""
     ):
-        print("IMAGE_URL =", image_url)
-        await message.answer_photo(
-            photo=image_url,
-            caption=
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}",
-            reply_markup=kb
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT file_id FROM images WHERE name=%s",
+            (image_url.strip(),)
         )
+
+        row = cur.fetchone()
+
+        conn.close()
+
+        if row:
+
+            await message.answer_photo(
+                photo=row[0],
+                caption=
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}",
+                reply_markup=kb
+            )
+
+        else:
+
+            await message.answer(
+                f"⏱️ {time_limit} soniya\n\n"
+                f"{question}",
+                reply_markup=kb
+            )
 
     else:
 
