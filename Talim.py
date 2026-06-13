@@ -126,7 +126,7 @@ ws3 = wb.create_sheet("NAMUNA")
 ws3.append(headers)
 
 ws3.append([
-    "ENG_4_001",
+    "_1_01_01_01_01_001",
     "oson",
     "oddiy",
     "What animal gives us milk?",
@@ -152,30 +152,14 @@ print("test_import_template.xlsx yaratildi")
 
 # BUTTON ID (faqat shu bilan ishlaymiz)
 BTN_SURVEY = "survey"
-BTN_TEST = "test"
 BTN_STATS = "stats"
 
 BTN_MY = "my_stats"
 BTN_GLOBAL = "global_stats"
 
-SCHOOL_TYPES = [
-    "🏫 Oddiy davlat maktabi",
-    "⭐ Ixtisoslashgan (IDUM)",
-    "🏆 Prezident maktabi",
-    "🏢 Xususiy maktab"
-]
-
 BACK = "🔙 Ortga"
 HOME = "🏠 Bosh menyu"
 FINISH = "❌ Testni tugatish"
-
-LEVELS = [
-    (0, "🌱", "Nihol"),
-    (500, "🌿", "O'smoqda"),
-    (1500, "🌳", "Bilimli"),
-    (3000, "🥈", "Ekspert"),
-    (5000, "🥇", "Usta")
-]
 
 TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
@@ -183,67 +167,15 @@ TEXT_TO_ID = {
     "📈 Statistika": BTN_STATS,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
-CLASSES = [
-    "🏫 Oddiy 0-sinf",
-    "⭐ IDUM 0-sinf",
-    "🏆 Prezident 0-sinf",
-    "🏢 Xususiy 0-sinf",
 
-    "🏫 Oddiy 1-sinf",
-    "⭐ IDUM 1-sinf",
-    "🏆 Prezident 1-sinf",
-    "🏢 Xususiy 1-sinf",
-
-   "🏫 Oddiy 2-sinf",
-    "⭐ IDUM 2-sinf",
-    "🏆 Prezident 2-sinf",
-    "🏢 Xususiy 2-sinf",
-
-   "🏫 Oddiy 3-sinf",
-    "⭐ IDUM 3-sinf",
-    "🏆 Prezident 3-sinf",
-    "🏢 Xususiy 3-sinf",
-
-   "🏫 Oddiy 4-sinf",
-    "⭐ IDUM 4-sinf",
-    "🏆 Prezident 4-sinf",
-    "🏢 Xususiy 4-sinf",
-
-   "🏫 Oddiy 5-sinf",
-    "⭐ IDUM 5-sinf",
-    "🏆 Prezident 5-sinf",
-    "🏢 Xususiy 5-sinf",
-
-   "🏫 Oddiy 6-sinf",
-    "⭐ IDUM 6-sinf",
-    "🏆 Prezident 6-sinf",
-    "🏢 Xususiy 6-sinf",
-
-   "🏫 Oddiy 7-sinf",
-    "⭐ IDUM 7-sinf",
-    "🏆 Prezident 7-sinf",
-    "🏢 Xususiy 7-sinf",
-
-   "🏫 Oddiy 8-sinf",
-    "⭐ IDUM 8-sinf",
-    "🏆 Prezident 8-sinf",
-    "🏢 Xususiy 8-sinf",
-
-   "🏫 Oddiy 9-sinf",
-    "⭐ IDUM 9-sinf",
-    "🏆 Prezident 9-sinf",
-    "🏢 Xususiy 9-sinf",
-
-   "🏫 Oddiy 10-sinf",
-    "⭐ IDUM 10-sinf",
-    "🏆 Prezident 10-sinf",
-    "🏢 Xususiy 10-sinf",
-
-   "🏫 Oddiy 11-sinf",
-    "⭐ IDUM 11-sinf",
-    "🏆 Prezident 11-sinf",
-    "🏢 Xususiy 11-sinf",
-
+SCHOOL_TYPES = [
+    "🏫 Oddiy maktab",
+    "⭐ Ixtisoslashtirilgan maktab",
+    "🇺🇿 Prezident maktabi",
+    "🧮 Al-Xorazmiy maktabi",
+    "🪖 Harbiy maktab",
+    "🎨 San'at maktabi",
+    "📖 IDUM"
 ]
 
 SUBJECTS_BY_LEVEL = {
@@ -326,52 +258,12 @@ HIGH_SUBJECTS = [
     ["Adabiyot"]
 ]
 
-for school in [
-    "🏫 Oddiy",
-    "⭐ IDUM",
-    "🏆 Prezident",
-    "🏢 Xususiy"
-]:
-    # 0
-    SUBJECTS_BY_CLASS["🏫 Oddiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
-    SUBJECTS_BY_CLASS["⭐ IDUM 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
-    SUBJECTS_BY_CLASS["🏆 Prezident 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
-    SUBJECTS_BY_CLASS["🏢 Xususiy 0-sinf"] = SUBJECTS_BY_CLASS["0-sinf"]
-
-    # 1-4
-    SUBJECTS_BY_CLASS[f"{school} 1-sinf"] = PRIMARY_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 2-sinf"] = PRIMARY_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 3-sinf"] = PRIMARY_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 4-sinf"] = PRIMARY_SUBJECTS
-
-    # 5-6
-    SUBJECTS_BY_CLASS[f"{school} 5-sinf"] = MIDDLE_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 6-sinf"] = MIDDLE_SUBJECTS
-
-    # 7-9
-    SUBJECTS_BY_CLASS[f"{school} 7-sinf"] = UPPER_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 8-sinf"] = UPPER_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 9-sinf"] = UPPER_SUBJECTS
-
-    # 10-11
-    SUBJECTS_BY_CLASS[f"{school} 10-sinf"] = HIGH_SUBJECTS
-    SUBJECTS_BY_CLASS[f"{school} 11-sinf"] = HIGH_SUBJECTS
-
 ZERO_TEST_TYPES = [
     "🔤 Harflar",
     "📖 So‘zlar",
     "🖼 Rasmli o‘yin",
     "🎵 Eshit va top",
     "🎁 Aralash"
-]
-
-TEST_TYPES = [
-    "1-chorak",
-    "2-chorak",
-    "3-chorak",
-    "4-chorak",
-    "📘 Yillik",
-    "📝 DTS"
 ]
 
 def set_state(user_id, state):
@@ -382,20 +274,6 @@ def set_state(user_id, state):
         state_history[user_id] = []
 
     state_history[user_id].append(state)
-
-def get_level(xp):
-
-    current_icon = "🌱"
-    current_name = "Nihol"
-
-    for need_xp, icon, name in LEVELS:
-
-        if xp >= need_xp:
-
-            current_icon = icon
-            current_name = name
-
-    return current_icon, current_name
 
 def base_keyboard(extra=[]):
 
@@ -538,30 +416,6 @@ def init_db():
         district TEXT,
         school TEXT,
         role TEXT
-    )
-    """)
-
-    # QUESTIONS
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS questions (
-        id SERIAL PRIMARY KEY,
-        role TEXT,
-        class TEXT,
-        level TEXT,
-        subject TEXT,
-        question TEXT,
-        a TEXT,
-        b TEXT,
-        c TEXT,
-        d TEXT,
-        correct TEXT,
-        test_type TEXT,
-        difficulty TEXT,
-        type TEXT,
-        img TEXT,
-        voice_type TEXT,
-        school_type TEXT           
     )
     """)
 
@@ -847,7 +701,6 @@ async def save_image(message: types.Message):
     await message.answer(
         f"✅ Saqlandi: {name}")
 
-
 # ====== START ======
 @dp.message(CommandStart())
 async def start(message: types.Message):
@@ -861,9 +714,10 @@ async def start(message: types.Message):
     )
 
     user = cur.fetchone()
+
     conn.close()
 
-    # AGAR OLDIN RO‘YXATDAN O‘TGAN BO‘LSA
+    # RO'YXATDAN O'TGAN FOYDALANUVCHI
     if user:
 
         role = user[0]
@@ -872,17 +726,26 @@ async def start(message: types.Message):
             role = "Admin"
 
         await message.answer(
-            f"Qaytganingiz bilan 😊\nSiz: {role}",
+            f"👋 Qaytganingiz bilan!\n\n"
+            f"🎭 Rol: {role}",
             reply_markup=get_main_keyboard(role)
         )
 
         return
-    # AGAR YANGI USER BO‘LSA
+
+    # YANGI FOYDALANUVCHI
     user_state[message.from_user.id] = "role"
 
     await message.answer(
-        "Kim siz?",
-        reply_markup=make_keyboard(["O‘quvchi", "O‘qituvchi"])
+        "🎓 TA'LIM PLATFORMASI\n\n"
+        "Xush kelibsiz!\n\n"
+        "Platformadan foydalanish uchun "
+        "o'zingizga mos rolni tanlang.",
+        reply_markup=make_keyboard([
+            "🧒 O‘quvchi",
+            "👨‍🏫 O‘qituvchi",
+            "👨‍👩‍👧 Ota-ona"
+        ])
     )
 
 async def import_tests_excel(message):
@@ -2105,16 +1968,39 @@ async def handle_all(
 
             return
 
-
         elif user_state.get(message.from_user.id) == "role":
-            temp_user[message.from_user.id] = {"role": message.text}
-            user_state[message.from_user.id] = "region"
-
+        
+            temp_user[message.from_user.id] = {
+                "role": message.text
+            }
+        
+            user_state[message.from_user.id] = "education_level"
+        
             await message.answer(
-                "Viloyat tanlang:",
-                reply_markup=base_keyboard(REGIONS.keys())
+                "🎓 Ta'lim bosqichini tanlang:",
+                reply_markup=make_keyboard([
+                    "👶 Maktabgacha",
+                    "🏫 Maktab",
+                    "🎓 Talaba"
+                ])
             )
+        
+            return
 
+        elif user_state.get(message.from_user.id) == "education_level":
+        
+            temp_user[message.from_user.id][
+                "education_level"
+            ] = message.text
+        
+            user_state[message.from_user.id] = "full_name"
+        
+            await message.answer(
+                "👤 F.I.Sh kiriting:"
+            )
+        
+            return
+        
         # ===== REGION =====
         elif user_state.get(message.from_user.id) == "region":
             temp_user[message.from_user.id]["region"] = message.text
@@ -2132,39 +2018,8 @@ async def handle_all(
                 reply_markup=base_keyboard(flat_districts)
             )
     
-        # ===== CLASS ===
-        elif user_state.get(message.from_user.id) == "class":
 
-            # sinfni saqlash
-            selected_class = message.text.strip()
-
-            temp_user[message.from_user.id]["class"] = selected_class
-
-            # keyingi bosqich
-            set_state(message.from_user.id, "subject")
-
-            # shu sinfga mos fanlarni olish
-            subjects = SUBJECTS_BY_CLASS.get(selected_class)
-
-            # agar topilmasa
-            if not subjects:
-                await message.answer("Fan topilmadi ❌")
-                return
-
-            # nested list -> 🏫 Oddiy list
-            flat_subjects = []
-
-            for row in subjects:
-                flat_subjects.extend(row)
-
-            # fanlarni chiqarish
-            await message.answer(
-                "Fan tanlang:",
-                reply_markup=base_keyboard(flat_subjects)
-            )
-
-            return
-
+        
         elif user_state.get(message.from_user.id) == "survey_work":
 
             data = user_test[message.from_user.id]
