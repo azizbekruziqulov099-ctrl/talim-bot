@@ -82,6 +82,10 @@ async def show_question(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
+                        text="🔊 Eshitish",
+                        callback_data="speak_question"
+                    ),
+                    InlineKeyboardButton(
                         text="🛑 Tugatish",
                         callback_data="test_stop"
                     )
