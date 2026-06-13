@@ -958,12 +958,31 @@ async def show_question(
             reply_markup=kb
         )
 
-    if (
-        image_url
-        and str(image_url).lower() != "nan"
-        and str(image_url).strip() != ""
-    ):
-        cur.execute(
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    
+    cur.execute(
+        "SELECT file_id FROM images WHERE name=%s",
+        (image_url.strip(),)
+    )
+    
+    row = cur.fetchone()
+    
+    conn.close()
+    
+    if not row:
+        await message.answer(
+            f"❌ Rasm topilmadi: {image_url}"
+        )
+        return
+    
+    file_id = row[0]
+    
+    await message.answer_photo(
+        photo=file_id,
+        caption=f"⏱️ {time_limit} soniya\n\n{question}",
+        reply_markup=kb
+    )        cur.execute(
             "SELECT file_id FROM images WHERE name=%s",
             (image_url,)
         )
