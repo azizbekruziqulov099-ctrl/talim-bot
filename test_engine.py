@@ -464,53 +464,185 @@ async def stop_test(
         message
     )
 
-async def speak_question(
+async def speak_text(
     user_id,
-    message
+    message,
+    text
 ):
 
-    session = test_sessions.get(
-        user_id
-    )
+    session = test_sessions.get(user_id)
 
     if not session:
         return
 
     current = session["current"]
-
     test = session["questions"][current]
 
-    question = test[0]
+    language = str(test[11]).lower()
 
-    language = test[11]
+    voices = {
+        "uz": "uz-UZ-SardorNeural",
+        "ru": "ru-RU-DmitryNeural",
+        "en": "en-US-GuyNeural",
 
-    if language == "uz":
-        voice = "uz-UZ-SardorNeural"
+        "kk": "kk-KZ-DauletNeural",      # Qozoq
+        "kz": "kk-KZ-DauletNeural",
 
-    elif language == "ru":
-        voice = "ru-RU-DmitryNeural"
+        "ky": "ky-KG-AzizNeural",        # Qirg'iz
+        "kg": "ky-KG-AzizNeural",
 
-    elif language == "en":
-        voice = "en-US-GuyNeural"
+        "tk": "tk-TM-MerdanNeural",      # Turkman
 
-    else:
-        voice = "uz-UZ-SardorNeural"
+        "tr": "tr-TR-AhmetNeural",       # Turk
 
-    filename = (
-        f"voice_{user_id}.mp3"
+        "ko": "ko-KR-InJoonNeural",      # Koreys
+
+        "ja": "ja-JP-KeitaNeural",       # Yapon
+
+        "fr": "fr-FR-HenriNeural",       # Fransuz
+
+        "it": "it-IT-DiegoNeural",       # Italyan
+
+        "es": "es-ES-AlvaroNeural",      # Ispan
+
+        "pt": "pt-BR-AntonioNeural",     # Portugal/Brazil
+    
+        "ar": "ar-SA-HamedNeural",      # Arab
+    
+        "fa": "fa-IR-DilaraNeural",     # Fors (Eron)
+    
+        "tg": "tg-TJ-???",              # Tojik (agar Edge TTS qo‘llasa)
+    
+        "mn": "mn-MN-???",              # Mo‘g‘ul (agar Edge TTS qo‘llasa)
+    
+        "zh": "zh-CN-YunxiNeural",      # Xitoy
+    
+        "de": "de-DE-ConradNeural",     # Nemis
+    
+        "hi": "hi-IN-MadhurNeural",     # Hind
+    
+        "ur": "ur-PK-AsadNeural",       # Urdu
+    
+        "bn": "bn-BD-NabanitaNeural",   # Bengal
+    
+        "pl": "pl-PL-MarekNeural",      # Polyak
+    
+        "nl": "nl-NL-MaartenNeural",    # Golland
+    
+        "sv": "sv-SE-MattiasNeural",    # Shved
+    
+        "fi": "fi-FI-HarriNeural",      # Fin
+    
+        "cs": "cs-CZ-AntoninNeural",    # Chex
+
+    }
+
+    voice = voices.get(
+        language,
+        "uz-UZ-SardorNeural"
     )
 
+    filename = f"voice_{user_id}.mp3"
+
     communicate = edge_tts.Communicate(
-        text=question,
+        text=str(text),
         voice=voice
     )
 
-    await communicate.save(
-        filename
-    )
+    await communicate.save(filename)
 
     await message.answer_voice(
         FSInputFile(filename)
+    )
+
+async def speak_question(
+    user_id,
+    message
+):
+    session = test_sessions.get(user_id)
+
+    if not session:
+        return
+
+    current = session["current"]
+    test = session["questions"][current]
+
+    await speak_text(
+        user_id,
+        message,
+        test[0]
+    )
+
+async def speak_a(
+    user_id,
+    message
+):
+    session = test_sessions.get(user_id)
+
+    if not session:
+        return
+
+    current = session["current"]
+    test = session["questions"][current]
+
+    await speak_text(
+        user_id,
+        message,
+        test[1]
+    )
+
+async def speak_b(
+    user_id,
+    message
+):
+    session = test_sessions.get(user_id)
+
+    if not session:
+        return
+
+    current = session["current"]
+    test = session["questions"][current]
+
+    await speak_text(
+        user_id,
+        message,
+        test[2]
+    )
+
+async def speak_c(
+    user_id,
+    message
+):
+    session = test_sessions.get(user_id)
+
+    if not session:
+        return
+
+    current = session["current"]
+    test = session["questions"][current]
+
+    await speak_text(
+        user_id,
+        message,
+        test[3]
+    )
+
+async def speak_d(
+    user_id,
+    message
+):
+    session = test_sessions.get(user_id)
+
+    if not session:
+        return
+
+    current = session["current"]
+    test = session["questions"][current]
+
+    await speak_text(
+        user_id,
+        message,
+        test[4]
     )
 
 def latex_to_image(latex_text, filename):
