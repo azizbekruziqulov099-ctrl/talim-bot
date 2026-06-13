@@ -2412,6 +2412,39 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    if call.data == "speak_a":
+
+        await speak_a(
+            call.from_user.id,
+            call.message
+        )
+
+        return
+
+    if call.data == "speak_b":
+
+        await speak_b(
+            call.from_user.id,
+            call.message
+        )
+        return
+
+    if call.data == "speak_c":
+
+        await speak_c(
+            call.from_user.id,
+            call.message
+        )
+        return
+
+    if call.data == "speak_d":
+
+        await speak_d(
+            call.from_user.id,
+            call.message
+        )
+        return
+        
     elif call.data == "dts_navigator":
 
         await dts_navigator(call)
