@@ -977,35 +977,13 @@ async def show_question(
         return
     
     file_id = row[0]
-    
+        
     await message.answer_photo(
         photo=file_id,
         caption=f"⏱️ {time_limit} soniya\n\n{question}",
         reply_markup=kb
-    )        cur.execute(
-            "SELECT file_id FROM images WHERE name=%s",
-            (image_url,)
-        )
-        row = cur.fetchone()
-
-        if row:
-            image_url = row[0]
-
-        await message.answer_photo(
-            photo=image_url,
-            caption=
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}",
-            reply_markup=kb
-        )
-
-    else:
-
-        await message.answer(
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}",
-            reply_markup=kb
-        )
+    )
+    return
 
 @dp.message(Command("ovoz"))
 async def test_ovoz(message: types.Message):
