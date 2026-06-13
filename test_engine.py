@@ -95,7 +95,7 @@ async def show_question(
             and str(image_url).lower() != "nan"
             and str(image_url).strip() != ""
         ):
-
+            print("IMAGE =", repr(image_url))
             await message.answer_photo(
                 photo=image_url,
                 caption=
