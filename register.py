@@ -5,12 +5,16 @@ from aiogram.types import (
 import json
 import psycopg2
 import os
+from keyboards import get_main_keyboard
+from storage import user_state, temp_user
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
+user_state = {}
+temp_user = {}
 
 ROLES = [
     "🧒 O‘quvchi",
