@@ -7,16 +7,14 @@ def get_main_keyboard(role=None):
 
     if "🧒 O‘quvchi" in str(role):
 
-        keyboard = [
-            [KeyboardButton(text="📚 BILIMNI SINASH"),
-             KeyboardButton(text="📚 DTS Navigator")],
-
-            [KeyboardButton(text="🎓 Sinf statistikasi"),
-             KeyboardButton(text="🏫 Maktab statistikasi")],
-
-            [KeyboardButton(text="📊 So‘rovnoma"),
-             KeyboardButton(text="⚙️ Akkaunt sozlamalari")]
-        ]
+        keyboard=[
+                KeyboardButton(text="🎯 Bugungi reja"),
+                KeyboardButton(text="📈 Rivojlanishim")
+            ],
+            [
+                KeyboardButton(text="🌍 Hamjamiyat"),
+                KeyboardButton(text="👤 Kabinet")
+            ]
 
     elif "👨‍🏫 O‘qituvchi" in str(role):
 
