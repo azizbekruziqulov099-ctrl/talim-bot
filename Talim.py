@@ -854,7 +854,11 @@ async def handle_all(
     message: Message,
     state: FSMContext
 ):
+    
     user_id = message.from_user.id
+
+    print("HANDLE_ALL KELDI")
+    print("TEXT =", message.text)
 
     if user_id not in temp_user:
         temp_user[user_id] = {}
