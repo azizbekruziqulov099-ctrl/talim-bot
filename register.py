@@ -51,13 +51,28 @@ CLASS_LETTERS = [
     "A", "B", "C", "D", "E", "Bilmadim"
 ]
 
+def reg_status(data):
+
+    return (
+        "📋 Registratsiya\n\n"
+
+        f"{'✅' if data.get('full_name') else '⬜'} F.I.Sh\n"
+        f"{'✅' if data.get('birth_date') else '⬜'} Tug‘ilgan sana\n"
+        f"{'✅' if data.get('gender') else '⬜'} Jins\n"
+        f"{'✅' if data.get('region') else '⬜'} Viloyat\n"
+        f"{'✅' if data.get('district') else '⬜'} Tuman\n"
+        f"{'✅' if data.get('education_type') else '⬜'} Ta'lim turi\n"
+        f"{'✅' if data.get('school_type') else '⬜'} Maktab turi\n"
+        f"{'✅' if data.get('school') else '⬜'} Maktab\n"
+        f"{'✅' if data.get('class') else '⬜'} Sinf\n"
+        f"{'✅' if data.get('class_letter') else '⬜'} Harf"
+    )
 
 def make_keyboard(items):
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=i)] for i in items],
         resize_keyboard=True
     )
-
 
 def base_keyboard(items):
 
@@ -98,7 +113,12 @@ async def register_handler(message):
             "role": message.text
         }
 
-        user_state[user_id] = "full_info"
+        user_state[user_id] = "full_name"
+
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n👤 F.I.Sh ni kiriting:"
+        )
 
         await message.answer(
             "👤 Ma'lumotlarni kiriting:\n\n"
@@ -111,51 +131,92 @@ async def register_handler(message):
 
         return
 
-    # FULL INFO
-    elif user_state.get(user_id) == "full_info":
+    elif user_state.get(user_id) == "full_name":
 
-        lines = message.text.split("\n")
+        temp_user[user_id]["full_name"] = message.text
 
-        data = {}
+        user_state[user_id] = "birth_date"
 
-        for line in lines:
-
-            if ":" in line:
-
-                key, value = line.split(":", 1)
-
-                data[key.strip()] = value.strip()
-
-        temp_user[user_id]["full_name"] = data.get("F.I.Sh", "")
-        temp_user[user_id]["birth_date"] = data.get("Tug‘ilgan sana", "")
-        temp_user[user_id]["gender"] = data.get("Jins", "")
-        temp_user[user_id]["region"] = data.get("Viloyat", "")
-        temp_user[user_id]["district"] = data.get("Tuman", "")
-
-        role = temp_user[user_id]["role"]
-
-        if role == "🧒 O‘quvchi":
-
-            user_state[user_id] = "education_type"
-
-            await message.answer(
-                "🎓 Ta'lim turini tanlang:",
-                reply_markup=make_keyboard(
-                    EDUCATION_TYPES
-                )
-            )
-
-        else:
-
-            user_state[user_id] = "teacher_subject"
-
-            await message.answer(
-                "📚 Faningizni kiriting:"
-            )
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n🎂 Tug‘ilgan sanani kiriting:"
+        )
 
         return
 
-    # EDUCATION TYPE
+    elif user_state.get(user_id) == "birth_date":
+
+        temp_user[user_id]["birth_date"] = message.text
+
+        user_state[user_id] = "gender"
+
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n👤 Jinsni tanlang:",
+            reply_markup=make_keyboard([
+                "👨 Erkak",
+                "👩 Ayol"
+            ])
+        )
+
+        return
+
+    elif user_state.get(user_id) == "gender":
+
+        temp_user[user_id]["gender"] = message.text
+
+        user_state[user_id] = "region"
+
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n🌍 Viloyatni tanlang:",
+            reply_markup=base_keyboard(
+                REGIONS.keys()
+            )
+        )
+
+        return
+
+    elif user_state.get(user_id) == "region":
+
+        temp_user[user_id]["region"] = message.text
+
+        districts = REGIONS.get(
+            message.text,
+            []
+        )
+
+        flat = []
+
+        for row in districts:
+            flat.extend(row)
+
+        user_state[user_id] = "district"
+
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n📍 Tumanni tanlang:",
+            reply_markup=base_keyboard(flat)
+        )
+
+        return
+
+    elif user_state.get(user_id) == "district":
+
+        temp_user[user_id]["district"] = message.text
+
+        user_state[user_id] = "education_type"
+
+        await message.answer(
+            reg_status(temp_user[user_id]) +
+            "\n\n🎓 Ta'lim turini tanlang:",
+            reply_markup=make_keyboard(
+                EDUCATION_TYPES
+            )
+        )
+
+        return
+
     elif user_state.get(user_id) == "education_type":
 
         temp_user[user_id]["education_type"] = message.text
@@ -165,7 +226,8 @@ async def register_handler(message):
             user_state[user_id] = "school_type"
 
             await message.answer(
-                "🏫 Maktab turini tanlang:",
+                reg_status(temp_user[user_id]) +
+                "\n\n🏫 Maktab turini tanlang:",
                 reply_markup=make_keyboard(
                     SCHOOL_TYPES
                 )
@@ -176,10 +238,12 @@ async def register_handler(message):
             user_state[user_id] = "kindergarten"
 
             await message.answer(
-                "🏡 Bog‘cha nomini kiriting:"
+                reg_status(temp_user[user_id]) +
+                "\n\n🏡 Bog‘cha nomini kiriting:"
             )
 
         return
+
 
     elif user_state.get(user_id) == "kindergarten":
 
@@ -188,10 +252,12 @@ async def register_handler(message):
         user_state[user_id] = "group"
 
         await message.answer(
-            "👶 Guruh nomini kiriting:"
+            reg_status(temp_user[user_id]) +
+            "\n\n👶 Guruh nomini kiriting:"
         )
 
         return
+
 
     elif user_state.get(user_id) == "group":
 
@@ -205,7 +271,7 @@ async def register_handler(message):
 
         return
 
-    # SCHOOL TYPE
+
     elif user_state.get(user_id) == "school_type":
 
         temp_user[user_id]["school_type"] = message.text
@@ -213,12 +279,13 @@ async def register_handler(message):
         user_state[user_id] = "school"
 
         await message.answer(
-            "🏫 Maktab nomi yoki raqamini kiriting:"
+            reg_status(temp_user[user_id]) +
+            "\n\n🏫 Maktab nomi yoki raqamini kiriting:"
         )
 
         return
 
-    # SCHOOL
+
     elif user_state.get(user_id) == "school":
 
         temp_user[user_id]["school"] = message.text
@@ -226,7 +293,8 @@ async def register_handler(message):
         user_state[user_id] = "class"
 
         await message.answer(
-            "🎓 Sinfni tanlang:",
+            reg_status(temp_user[user_id]) +
+            "\n\n🎓 Sinfni tanlang:",
             reply_markup=make_keyboard(
                 CLASS_LEVELS
             )
@@ -234,7 +302,7 @@ async def register_handler(message):
 
         return
 
-    # CLASS
+
     elif user_state.get(user_id) == "class":
 
         temp_user[user_id]["class"] = message.text
@@ -242,7 +310,8 @@ async def register_handler(message):
         user_state[user_id] = "class_letter"
 
         await message.answer(
-            "🔤 Harfni tanlang:",
+            reg_status(temp_user[user_id]) +
+            "\n\n🔤 Harfni tanlang:",
             reply_markup=make_keyboard(
                 CLASS_LETTERS
             )
@@ -250,7 +319,7 @@ async def register_handler(message):
 
         return
 
-    # CLASS LETTER
+
     elif user_state.get(user_id) == "class_letter":
 
         temp_user[user_id]["class_letter"] = message.text
@@ -292,29 +361,14 @@ async def register_handler(message):
         conn.commit()
         conn.close()
 
+        user_state[user_id] = None
+
         await message.answer(
-            "✅ Registratsiya yakunlandi",
+            reg_status(temp_user[user_id]) +
+            "\n\n🎉 Registratsiya yakunlandi!",
             reply_markup=get_main_keyboard(
                 temp_user[user_id].get("role")
             )
         )
-
-
-        user_state[user_id] = None
-
-        return
-
-    # TEACHER SUBJECT
-    elif user_state.get(user_id) == "teacher_subject":
-
-        temp_user[user_id]["subject"] = message.text
-
-        user_state[user_id] = None
-
-        await message.answer(
-            "✅ O‘qituvchi registratsiyasi yakunlandi"
-        )
-
-        print(temp_user[user_id])
 
         return
