@@ -9,6 +9,7 @@ from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
 from ai_generatori import *
+from storage import user_state, temp_user
 from keyboards import get_main_keyboard
 from loader import dp, bot
 from test_generator import save_test
