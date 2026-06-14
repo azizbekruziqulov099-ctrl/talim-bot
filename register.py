@@ -122,6 +122,26 @@ def base_keyboard(items):
         resize_keyboard=True
     )
 
+async def update_reg_message(
+    message,
+    user_id,
+    text,
+    reply_markup=None
+):
+    try:
+        await message.bot.delete_message(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id]
+        )
+    except:
+        pass
+
+    msg = await message.answer(
+        text,
+        reply_markup=reply_markup
+    )
+
+    registration_message[user_id] = msg.message_id
 
 async def register_handler(message):
 
@@ -160,17 +180,14 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ F.I.Sh ni to'liq kiriting\n\n"
-                "Masalan:\n"
-                "Familiyangiz Ismingiz"
+                "\n\n❌ F.I.Sh ni to'liq kiriting"
             )
 
-            registration_message[user_id] = msg.message_id
-
             return
-
         temp_user[user_id]["full_name"] = message.text
 
         try:
@@ -180,11 +197,12 @@ async def register_handler(message):
 
         user_state[user_id] = "birth_year"
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n🎂 Tug‘ilgan yilingizni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🎂 Tug‘ilgan yilingizni tanlang:",
+            base_keyboard(BIRTH_YEARS)
         )
 
         return
@@ -203,11 +221,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n📅 Tug‘ilgan oyingizni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n📅 Tug‘ilgan oyingizni tanlang:",
+            base_keyboard(MONTHS)
         )
 
         return
@@ -241,11 +260,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n📅 Tug‘ilgan kuningizni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n📅 Tug‘ilgan kuningizni tanlang:",
+            base_keyboard(DAYS)
         )
 
         return
@@ -279,12 +299,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Sana noto'g'ri, to'g'ri tanlang"
+                "\n\n❌ Sana noto'g'ri"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -310,12 +330,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Yosh noto‘g‘ri kiritilgan 2 yoshdan katta bo'lsin yoshingiz"
+                "\n\n❌ Yosh noto‘g‘ri kiritilgan"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -327,11 +347,15 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n👤 Jinsni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n👤 Jinsni tanlang:",
+            make_keyboard([
+                "👨 Erkak",
+                "👩 Ayol"
+            ])
         )
 
         return
@@ -353,11 +377,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n🌍 Viloyatni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🌍 Viloyatni tanlang:",
+            base_keyboard(REGIONS.keys())
         )
 
         return
@@ -374,12 +399,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
                 "\n\n❌ Viloyatni tugmadan tanlang"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -402,11 +427,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n📍 Tumanni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n📍 Tumanni tanlang:",
+            base_keyboard(flat)
         )
 
         return
@@ -422,11 +448,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n🎓 Ta'lim turini tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🎓 Ta'lim turini tanlang:",
+            make_keyboard(EDUCATION_TYPES)
         )
 
         return
@@ -443,12 +470,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
                 "\n\n❌ Ta'lim turini tugmadan tanlang"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -463,21 +490,22 @@ async def register_handler(message):
 
             user_state[user_id] = "school_type"
 
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=registration_message[user_id],
-                text=reg_status(temp_user[user_id]) +
-                "\n\n🏫 Maktab turini tanlang:"
+            await update_reg_message(
+                message,
+                user_id,
+                reg_status(temp_user[user_id]) +
+                "\n\n🏫 Maktab turini tanlang:",
+                make_keyboard(SCHOOL_TYPES)
             )
 
         else:
 
             user_state[user_id] = "kindergarten"
 
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=registration_message[user_id],
-                text=reg_status(temp_user[user_id]) +
+            await update_reg_message(
+                message,
+                user_id,
+                reg_status(temp_user[user_id]) +
                 "\n\n🏡 Bog‘cha nomini kiriting:"
             )
 
@@ -494,10 +522,10 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
             "\n\n👶 Guruh nomini kiriting:"
         )
 
@@ -512,10 +540,10 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text="🎉 Registratsiya yakunlandi!"
+        await update_reg_message(
+            message,
+            user_id,
+            "🎉 Registratsiya yakunlandi!"
         )
 
         user_state[user_id] = None
@@ -534,12 +562,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
                 "\n\n❌ Maktab turini tugmadan tanlang"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -552,10 +580,10 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
             "\n\n🏫 Maktab raqamini kiriting:"
         )
 
@@ -573,14 +601,12 @@ async def register_handler(message):
             except:
                 pass
 
-            msg = await message.answer(
+            await update_reg_message(
+                message,
+                user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Maktab raqamini kiriting\n\n"
-                "Masalan:\n"
-                "25"
+                "\n\n❌ Maktab raqamini kiriting\n\nMasalan:\n25"
             )
-
-            registration_message[user_id] = msg.message_id
 
             return
 
@@ -592,12 +618,12 @@ async def register_handler(message):
             await message.delete()
         except:
             pass
-
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n🎓 Sinfni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🎓 Sinfni tanlang:",
+            make_keyboard(CLASS_LEVELS)
         )
 
         return
@@ -616,11 +642,12 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
-            "\n\n🔤 Harfni tanlang:"
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🔤 Harfni tanlang:",
+            make_keyboard(CLASS_LETTERS)
         )
 
         return
@@ -679,10 +706,10 @@ async def register_handler(message):
         except:
             pass
 
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id],
-            text=reg_status(temp_user[user_id]) +
+        await update_reg_message(
+            message,
+            user_id,
+            reg_status(temp_user[user_id]) +
             "\n\n🎉 Registratsiya yakunlandi!"
         )
 
