@@ -90,6 +90,10 @@ async def register_handler(message):
 
     user_id = message.from_user.id
 
+    print("REGISTER_HANDLER KELDI")
+    print("STATE =", user_state.get(user_id))
+    print("TEXT =", message.text)
+
     # ROLE
     if user_state.get(user_id) == "role":
 
