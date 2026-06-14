@@ -1,6 +1,7 @@
 from aiogram.types import (
     ReplyKeyboardMarkup,
-    KeyboardButton
+    KeyboardButton,
+    CallbackQuery
 )
 import json
 import psycopg2
@@ -8,6 +9,7 @@ import os
 from keyboards import get_main_keyboard
 from storage import user_state, temp_user, registration_message
 import re
+from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -138,41 +140,17 @@ async def register_handler(message):
 
         user_state[user_id] = "birth_date"
 
-        await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🎂 Tug‘ilgan sanani kiriting:\n\n"
-                "Masalan:\n"
-                "15.08.2012"
-        )
+        try:
+            await message.delete()
+        except:
+            pass
 
-        return
-
-    elif user_state.get(user_id) == "birth_date":
-
-        if not re.match(
-            r"^\d{2}\.\d{2}\.\d{4}$",
-            message.text
-        ):
-            await message.answer(
-                "❌ Sana noto'g'ri\n\n"
-                "Masalan:\n"
-                "15.08.2012"
-            )
-            return
-
-        temp_user[user_id]["birth_date"] = message.text
-
-        user_state[user_id] = "gender"
+        user_state[user_id] = "birth_date"
 
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n👤 Jinsni tanlang:",
-            reply_markup=make_keyboard([
-                "👨 Erkak",
-                "👩 Ayol"
-            ])
+            "📅 Tug‘ilgan sanani tanlang:",
+            reply_markup=await SimpleCalendar().start_calendar()
         )
-
         return
 
     elif user_state.get(user_id) == "gender":
@@ -187,9 +165,20 @@ async def register_handler(message):
 
         user_state[user_id] = "region"
 
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🌍 Viloyatni tanlang:"
+        )
+
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🌍 Viloyatni tanlang:",
+            "🌍 Viloyatni tanlang:",
             reply_markup=base_keyboard(
                 REGIONS.keys()
             )
@@ -219,9 +208,20 @@ async def register_handler(message):
 
         user_state[user_id] = "district"
 
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n📍 Tumanni tanlang:"
+        )
+
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n📍 Tumanni tanlang:",
+            "📍 Tumanni tanlang:",
             reply_markup=base_keyboard(flat)
         )
 
@@ -229,26 +229,24 @@ async def register_handler(message):
 
     elif user_state.get(user_id) == "district":
 
-        districts = []
-
-        for row in REGIONS[
-            temp_user[user_id]["region"]
-        ]:
-            districts.extend(row)
-
-        if message.text not in districts:
-            await message.answer(
-                "❌ Tumanni tugmadan tanlang"
-            )
-            return
-
         temp_user[user_id]["district"] = message.text
 
         user_state[user_id] = "education_type"
 
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🎓 Ta'lim turini tanlang:"
+        )
+
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🎓 Ta'lim turini tanlang:",
+            "🎓 Ta'lim turini tanlang:",
             reply_markup=make_keyboard(
                 EDUCATION_TYPES
             )
@@ -266,13 +264,24 @@ async def register_handler(message):
 
         temp_user[user_id]["education_type"] = message.text
 
+        try:
+            await message.delete()
+        except:
+            pass
+
         if message.text == "🏫 Maktab":
 
             user_state[user_id] = "school_type"
 
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=registration_message[user_id],
+                text=reg_status(temp_user[user_id]) +
+                "\n\n🏫 Maktab turini tanlang:"
+            )
+
             await message.answer(
-                reg_status(temp_user[user_id]) +
-                "\n\n🏫 Maktab turini tanlang:",
+                "🏫 Maktab turini tanlang:",
                 reply_markup=make_keyboard(
                     SCHOOL_TYPES
                 )
@@ -282,13 +291,18 @@ async def register_handler(message):
 
             user_state[user_id] = "kindergarten"
 
-            await message.answer(
-                reg_status(temp_user[user_id]) +
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=registration_message[user_id],
+                text=reg_status(temp_user[user_id]) +
                 "\n\n🏡 Bog‘cha nomini kiriting:"
             )
 
-        return
+            await message.answer(
+                "🏡 Bog‘cha nomini kiriting:"
+            )
 
+        return
 
     elif user_state.get(user_id) == "kindergarten":
 
@@ -296,26 +310,38 @@ async def register_handler(message):
 
         user_state[user_id] = "group"
 
-        await message.answer(
-            reg_status(temp_user[user_id]) +
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
             "\n\n👶 Guruh nomini kiriting:"
         )
 
         return
 
-
     elif user_state.get(user_id) == "group":
 
         temp_user[user_id]["group"] = message.text
 
-        user_state[user_id] = None
+        try:
+            await message.delete()
+        except:
+            pass
 
-        await message.answer(
-            "✅ Registratsiya yakunlandi"
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text="🎉 Registratsiya yakunlandi!"
         )
 
-        return
+        user_state[user_id] = None
 
+        return
 
     elif user_state.get(user_id) == "school_type":
 
@@ -329,14 +355,24 @@ async def register_handler(message):
 
         user_state[user_id] = "school"
 
-        await message.answer(
-            reg_status(temp_user[user_id]) +
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
             "\n\n🏫 Maktab raqamini kiriting:"
         )
 
+        await message.answer(
+            "🏫 Maktab raqamini kiriting:\n\nMasalan:\n25"
+        )
+
         return
-
-
+        
     elif user_state.get(user_id) == "school":
 
         if not message.text.isdigit():
@@ -351,17 +387,27 @@ async def register_handler(message):
 
         user_state[user_id] = "class"
 
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🎓 Sinfni tanlang:"
+        )
+
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🎓 Sinfni tanlang:",
+            "🎓 Sinfni tanlang:",
             reply_markup=make_keyboard(
                 CLASS_LEVELS
             )
         )
 
         return
-
-
+        
     elif user_state.get(user_id) == "class":
 
         if message.text not in CLASS_LEVELS:
@@ -371,17 +417,27 @@ async def register_handler(message):
 
         user_state[user_id] = "class_letter"
 
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🔤 Harfni tanlang:"
+        )
+
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🔤 Harfni tanlang:",
+            "🔤 Harfni tanlang:",
             reply_markup=make_keyboard(
                 CLASS_LETTERS
             )
         )
 
         return
-
-
+        
     elif user_state.get(user_id) == "class_letter":
 
         if message.text not in CLASS_LETTERS:
@@ -426,14 +482,28 @@ async def register_handler(message):
         conn.commit()
         conn.close()
 
-        user_state[user_id] = None
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🎉 Registratsiya yakunlandi!"
+        )
 
         await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n🎉 Registratsiya yakunlandi!",
+            "Xush kelibsiz!",
             reply_markup=get_main_keyboard(
-                temp_user[user_id].get("role")
+                temp_user[user_id]["role"]
             )
         )
 
+        registration_message.pop(user_id, None)
+
+        user_state[user_id] = None
+
         return
+
