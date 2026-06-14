@@ -910,16 +910,6 @@ async def handle_all(
 
         return
 
-    elif user_id not in temp_user:
-        temp_user[user_id] = {}
-
-    elif user_id not in user_state:
-        user_state[user_id] = None
-
-    # lock yaratish
-    elif user_id not in user_locks:
-        user_locks[user_id] = asyncio.Lock()
-
     elif user_state.get(message.from_user.id) == "text_answer":
 
         await check_text_answer(
