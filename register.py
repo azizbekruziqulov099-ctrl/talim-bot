@@ -5,9 +5,8 @@ from aiogram.types import (
 import json
 import psycopg2
 import os
-from storage import registration_message
 from keyboards import get_main_keyboard
-from storage import user_state, temp_user
+from storage import user_state, temp_user, registration_message
 import re
 
 DATABASE_URL = os.getenv("DATABASE_URL")
