@@ -164,20 +164,10 @@ FINISH = "❌ Testni tugatish"
 
 TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
-    "📚 BILIMNI SINASH": BTN_TEST,
+    
     "📈 Statistika": BTN_STATS,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
-
-SCHOOL_TYPES = [
-    "🏫 Oddiy maktab",
-    "⭐ Ixtisoslashtirilgan maktab",
-    "🇺🇿 Prezident maktabi",
-    "🧮 Al-Xorazmiy maktabi",
-    "🪖 Harbiy maktab",
-    "🎨 San'at maktabi",
-    "📖 IDUM"
-]
 
 SUBJECTS_BY_LEVEL = {
 
@@ -210,12 +200,6 @@ SUBJECTS_BY_LEVEL = {
     ]
 }
 
-LEVELS = [
-    (0, "🥚", "Boshlanish"),
-    (500, "🐣", "O'rganuvchi"),
-    (1500, "🦅", "Usta")
-]
-
 SUBJECTS_BY_CLASS = {
 
     "0-sinf": [
@@ -226,38 +210,6 @@ SUBJECTS_BY_CLASS = {
         ["🎯 Mantiqiy o‘yinlar"]
     ]
 }
-
-# 1-4 sinf
-PRIMARY_SUBJECTS = [
-    ["Matematika", "Ona tili", "O‘qish"],
-    ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-    ["Musiqa", "Rasm"]
-]
-
-# 5-6 sinf
-MIDDLE_SUBJECTS = [
-    ["Matematika", "Ona tili", "Adabiyot"],
-    ["Ingliz tili", "Rus tili", "Tarix"],
-    ["Biologiya", "Geografiya", "Informatika"],
-    ["Texnologiya"]
-]
-
-# 7-9 sinf
-UPPER_SUBJECTS = [
-    ["Algebra", "Geometriya", "Fizika"],
-    ["Kimyo", "Biologiya", "Tarix"],
-    ["Geografiya", "Informatika", "Ingliz tili"],
-    ["Ona tili", "Adabiyot"]
-]
-
-# 10-11 sinf
-HIGH_SUBJECTS = [
-    ["Algebra", "Geometriya", "Fizika"],
-    ["Kimyo", "Biologiya", "Tarix"],
-    ["Huquq", "Iqtisod", "Geografiya"],
-    ["Informatika", "Ingliz tili", "Ona tili"],
-    ["Adabiyot"]
-]
 
 ZERO_TEST_TYPES = [
     "🔤 Harflar",
