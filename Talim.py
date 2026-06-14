@@ -594,6 +594,7 @@ def get_topic_statistics(topic_code):
     conn.close()
 
     return row
+
 async def show_topics_page(
     message,
     user_id
@@ -837,10 +838,6 @@ async def handle_all(
     user_id = message.from_user.id
 
     if message.text == "🎯 Bugungi reja":
-        await student_daily_plan(message)
-        return
-
-    if message.text == "▶️ Davom etish":
         await continue_learning(message)
         return
 
