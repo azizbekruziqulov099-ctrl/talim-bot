@@ -855,6 +855,22 @@ async def handle_all(
     state: FSMContext
 ):
     user_id = message.from_user.id
+
+    if user_id not in temp_user:
+        temp_user[user_id] = {}
+
+    if user_id not in user_state:
+        user_state[user_id] = None
+
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
+
+    # REGISTRATSIYA
+    if user_state.get(user_id):
+
+        await register_handler(message)
+        return
+
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
