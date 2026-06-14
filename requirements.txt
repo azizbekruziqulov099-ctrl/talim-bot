@@ -7,3 +7,4 @@ rapidfuzz
 pandas
 edge-tts
 matplotlib
+aiogram-calendar
