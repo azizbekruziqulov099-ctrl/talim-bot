@@ -1,7 +1,7 @@
 from admin_handlers import *
 from generator_handlers import *
 from test_engine import *
-from register import *
+from https.register import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -163,7 +163,6 @@ FINISH = "❌ Testni tugatish"
 
 TEXT_TO_ID = {
     "📊 So‘rovnoma": BTN_SURVEY,
-    "📚 BILIMNI SINASH": BTN_TEST,
     "📈 Statistika": BTN_STATS,
     "📈 Umumiy statistika": BTN_GLOBAL,
 }
