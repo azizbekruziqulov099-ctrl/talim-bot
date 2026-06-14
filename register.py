@@ -5,8 +5,10 @@ from aiogram.types import (
 import json
 import psycopg2
 import os
+from storage import registration_message
 from keyboards import get_main_keyboard
 from storage import user_state, temp_user
+import re
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -102,10 +104,6 @@ async def register_handler(message):
 
     user_id = message.from_user.id
 
-    print("REGISTER_HANDLER KELDI")
-    print("STATE =", user_state.get(user_id))
-    print("TEXT =", message.text)
-
     # ROLE
     if user_state.get(user_id) == "role":
 
@@ -115,14 +113,27 @@ async def register_handler(message):
 
         user_state[user_id] = "full_name"
 
-        await message.answer(
+        msg = await message.answer(
             reg_status(temp_user[user_id]) +
-            "\n\n👤 F.I.Sh ni kiriting:"
+            "\n\n👤 F.I.Sh ni kiriting:\n\n"
+            "Masalan:\n"
+            "Familyangiz Ismingiz"
         )
+        registration_message[user_id] = msg.message_id
 
         return
 
     elif user_state.get(user_id) == "full_name":
+
+        name = message.text.strip()
+
+        if len(name.split()) < 2:
+            await message.answer(
+                "❌ F.I.Sh ni to'liq kiriting\n\n"
+                "Masalan:\n"
+                "Familyangiz Ismingiz"
+            )
+            return
 
         temp_user[user_id]["full_name"] = message.text
 
@@ -130,12 +141,25 @@ async def register_handler(message):
 
         await message.answer(
             reg_status(temp_user[user_id]) +
-            "\n\n🎂 Tug‘ilgan sanani kiriting:"
+            "\n\n🎂 Tug‘ilgan sanani kiriting:\n\n"
+                "Masalan:\n"
+                "15.08.2012"
         )
 
         return
 
     elif user_state.get(user_id) == "birth_date":
+
+        if not re.match(
+            r"^\d{2}\.\d{2}\.\d{4}$",
+            message.text
+        ):
+            await message.answer(
+                "❌ Sana noto'g'ri\n\n"
+                "Masalan:\n"
+                "15.08.2012"
+            )
+            return
 
         temp_user[user_id]["birth_date"] = message.text
 
@@ -154,6 +178,12 @@ async def register_handler(message):
 
     elif user_state.get(user_id) == "gender":
 
+        if message.text not in [
+            "👨 Erkak",
+            "👩 Ayol"
+        ]:
+            return
+
         temp_user[user_id]["gender"] = message.text
 
         user_state[user_id] = "region"
@@ -169,6 +199,12 @@ async def register_handler(message):
         return
 
     elif user_state.get(user_id) == "region":
+
+        if message.text not in REGIONS:
+            await message.answer(
+                "❌ Viloyatni tugmadan tanlang"
+            )
+            return
 
         temp_user[user_id]["region"] = message.text
 
@@ -194,6 +230,19 @@ async def register_handler(message):
 
     elif user_state.get(user_id) == "district":
 
+        districts = []
+
+        for row in REGIONS[
+            temp_user[user_id]["region"]
+        ]:
+            districts.extend(row)
+
+        if message.text not in districts:
+            await message.answer(
+                "❌ Tumanni tugmadan tanlang"
+            )
+            return
+
         temp_user[user_id]["district"] = message.text
 
         user_state[user_id] = "education_type"
@@ -209,6 +258,12 @@ async def register_handler(message):
         return
 
     elif user_state.get(user_id) == "education_type":
+
+        if message.text not in EDUCATION_TYPES:
+            await message.answer(
+                "❌ Ta'lim turini tugmadan tanlang"
+            )
+            return
 
         temp_user[user_id]["education_type"] = message.text
 
@@ -265,19 +320,33 @@ async def register_handler(message):
 
     elif user_state.get(user_id) == "school_type":
 
+        if message.text not in SCHOOL_TYPES:
+            await message.answer(
+                "❌ Maktab turini tugmadan tanlang"
+            )
+            return
+
         temp_user[user_id]["school_type"] = message.text
 
         user_state[user_id] = "school"
 
         await message.answer(
             reg_status(temp_user[user_id]) +
-            "\n\n🏫 Maktab nomi yoki raqamini kiriting:"
+            "\n\n🏫 Maktab raqamini kiriting:"
         )
 
         return
 
 
     elif user_state.get(user_id) == "school":
+
+        if not message.text.isdigit():
+            await message.answer(
+                "❌ Maktab raqamini kiriting\n\n"
+                "Masalan:\n"
+                "25"
+            )
+            return
 
         temp_user[user_id]["school"] = message.text
 
@@ -296,6 +365,9 @@ async def register_handler(message):
 
     elif user_state.get(user_id) == "class":
 
+        if message.text not in CLASS_LEVELS:
+            return
+
         temp_user[user_id]["class"] = message.text
 
         user_state[user_id] = "class_letter"
@@ -312,6 +384,9 @@ async def register_handler(message):
 
 
     elif user_state.get(user_id) == "class_letter":
+
+        if message.text not in CLASS_LETTERS:
+            return
 
         temp_user[user_id]["class_letter"] = message.text
 
