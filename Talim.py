@@ -1,4 +1,8 @@
 from admin_handlers import *
+from https.learning import router as learning_router
+
+dp.include_router(learning_router)
+
 from generator_handlers import *
 from test_engine import *
 from register import *
@@ -1709,7 +1713,7 @@ async def handle_all(
 
             await message.answer(
                 "Yangi rolni tanlang:",
-                reply_markup=make_keyboard(["O‘quvchi", "O‘qituvchi"])
+                reply_markup=make_keyboard(["🧒 O‘quvchi", "👨‍🏫 O‘qituvchi"])
             )
 
         elif user_state.get(message.from_user.id) == "change_role":
@@ -1890,7 +1894,7 @@ async def handle_all(
 
             conn.close()
 
-            role = row[0] if row else "O‘quvchi"
+            role = row[0] if row else "🧒 O‘quvchi"
 
             user_state[user_id] = None
 
@@ -1967,7 +1971,7 @@ async def handle_all(
 
             conn.close()
 
-            role = row[0] if row else "O‘quvchi"
+            role = row[0] if row else "🧒 O‘quvchi"
 
             user_state[message.from_user.id] = None
 
