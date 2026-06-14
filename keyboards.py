@@ -8,6 +8,7 @@ def get_main_keyboard(role=None):
     if "🧒 O‘quvchi" in str(role):
 
         keyboard=[
+            [
                 KeyboardButton(text="🎯 Bugungi reja"),
                 KeyboardButton(text="📈 Rivojlanishim")
             ],
@@ -15,6 +16,7 @@ def get_main_keyboard(role=None):
                 KeyboardButton(text="🌍 Hamjamiyat"),
                 KeyboardButton(text="👤 Kabinet")
             ]
+        ]
 
     elif "👨‍🏫 O‘qituvchi" in str(role):
 
