@@ -3,6 +3,7 @@ from learning import *
 from generator_handlers import *
 from test_engine import *
 from register import *
+from learning import continue_learning
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
@@ -837,6 +838,10 @@ async def handle_all(
 
     if message.text == "🎯 Bugungi reja":
         await student_daily_plan(message)
+        return
+
+    if message.text == "▶️ Davom etish":
+        await continue_learning(message)
         return
 
     if message.text == "📈 Rivojlanishim":
