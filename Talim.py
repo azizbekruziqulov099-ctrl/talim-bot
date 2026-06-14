@@ -1,7 +1,7 @@
 from admin_handlers import *
 from generator_handlers import *
 from test_engine import *
-from https.register import *
+from register import *
 import asyncio
 from aiogram.types import ReplyKeyboardRemove
 from aiogram import Bot, Dispatcher, types
