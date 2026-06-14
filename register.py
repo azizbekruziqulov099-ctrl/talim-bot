@@ -271,9 +271,20 @@ async def register_handler(message):
 
         except:
 
-            await message.answer(
-                "❌ Bunday sana mavjud emas"
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Sana noto'g'ri, to'g'ri tanlang"
             )
+
+            registration_message[user_id] = msg.message_id
 
             return
 
@@ -291,9 +302,20 @@ async def register_handler(message):
 
         if age < 2 or age > 100:
 
-            await message.answer(
-                "❌ Yosh noto‘g‘ri kiritilgan"
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Yosh noto‘g‘ri kiritilgan 2 yoshdan katta bo'lsin yoshingiz"
             )
+
+            registration_message[user_id] = msg.message_id
 
             return
 
@@ -343,9 +365,22 @@ async def register_handler(message):
     elif user_state.get(user_id) == "region":
 
         if message.text not in REGIONS:
-            await message.answer(
-                "❌ Viloyatni tugmadan tanlang"
+
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Viloyatni tugmadan tanlang"
             )
+
+            registration_message[user_id] = msg.message_id
+
             return
 
         temp_user[user_id]["region"] = message.text
@@ -399,9 +434,22 @@ async def register_handler(message):
     elif user_state.get(user_id) == "education_type":
 
         if message.text not in EDUCATION_TYPES:
-            await message.answer(
-                "❌ Ta'lim turini tugmadan tanlang"
+
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Ta'lim turini tugmadan tanlang"
             )
+
+            registration_message[user_id] = msg.message_id
+
             return
 
         temp_user[user_id]["education_type"] = message.text
@@ -477,9 +525,22 @@ async def register_handler(message):
     elif user_state.get(user_id) == "school_type":
 
         if message.text not in SCHOOL_TYPES:
-            await message.answer(
-                "❌ Maktab turini tugmadan tanlang"
+
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Maktab turini tugmadan tanlang"
             )
+
+            registration_message[user_id] = msg.message_id
+
             return
 
         temp_user[user_id]["school_type"] = message.text
@@ -503,11 +564,24 @@ async def register_handler(message):
     elif user_state.get(user_id) == "school":
 
         if not message.text.isdigit():
-            await message.answer(
-                "❌ Maktab raqamini kiriting\n\n"
+
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Maktab raqamini kiriting\n\n"
                 "Masalan:\n"
                 "25"
             )
+
+            registration_message[user_id] = msg.message_id
+
             return
 
         temp_user[user_id]["school"] = message.text
