@@ -1,7 +1,6 @@
 from aiogram.types import (
     ReplyKeyboardMarkup,
-    KeyboardButton,
-    CallbackQuery
+    KeyboardButton
 )
 import json
 import psycopg2
@@ -9,8 +8,7 @@ import os
 from keyboards import get_main_keyboard
 from storage import user_state, temp_user, registration_message
 import re
-from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
-
+from datetime import datetime
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 with open("regions.json", "r", encoding="utf-8") as f:
@@ -25,6 +23,30 @@ EDUCATION_TYPES = [
     "👶 Maktabgacha",
     "🏫 Maktab"
 ]
+
+CURRENT_YEAR = datetime.now().year
+
+BIRTH_YEARS = [
+    str(i)
+    for i in range(CURRENT_YEAR - 100, CURRENT_YEAR)
+]
+
+MONTHS = [
+    "Yanvar",
+    "Fevral",
+    "Mart",
+    "Aprel",
+    "May",
+    "Iyun",
+    "Iyul",
+    "Avgust",
+    "Sentabr",
+    "Oktabr",
+    "Noyabr",
+    "Dekabr"
+]
+
+DAYS = [str(i) for i in range(1, 32)]
 
 CLASS_LEVELS = [
     "1",
@@ -138,19 +160,168 @@ async def register_handler(message):
 
         temp_user[user_id]["full_name"] = message.text
 
-        user_state[user_id] = "birth_date"
+        try:
+            await message.delete()
+        except:
+            pass
+
+        user_state[user_id] = "birth_year"
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n🎂 Tug‘ilgan yilingizni tanlang:"
+        )
+
+        await message.answer(
+            "🎂 Tug‘ilgan yilingizni tanlang:",
+            reply_markup=base_keyboard(BIRTH_YEARS)
+        )
+
+        return
+
+    elif user_state.get(user_id) == "birth_year":
+
+        if message.text not in BIRTH_YEARS:
+            return
+
+        temp_user[user_id]["birth_year"] = message.text
+
+        user_state[user_id] = "birth_month"
 
         try:
             await message.delete()
         except:
             pass
 
-        user_state[user_id] = "birth_date"
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n📅 Tug‘ilgan oyingizni tanlang:"
+        )
 
         await message.answer(
-            "📅 Tug‘ilgan sanani tanlang:",
-            reply_markup=await SimpleCalendar().start_calendar()
+            "📅 Tug‘ilgan oyingizni tanlang:",
+            reply_markup=base_keyboard(MONTHS)
         )
+
+        return
+
+    elif user_state.get(user_id) == "birth_month":
+
+        if message.text not in MONTHS:
+            return
+
+        month_map = {
+            "Yanvar": "01",
+            "Fevral": "02",
+            "Mart": "03",
+            "Aprel": "04",
+            "May": "05",
+            "Iyun": "06",
+            "Iyul": "07",
+            "Avgust": "08",
+            "Sentabr": "09",
+            "Oktabr": "10",
+            "Noyabr": "11",
+            "Dekabr": "12"
+        }
+
+        temp_user[user_id]["birth_month"] = month_map[message.text]
+
+        user_state[user_id] = "birth_day"
+
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n📅 Tug‘ilgan kuningizni tanlang:"
+        )
+
+        await message.answer(
+            "📅 Tug‘ilgan kuningizni tanlang:",
+            reply_markup=base_keyboard(DAYS)
+        )
+
+        return
+
+    elif user_state.get(user_id) == "birth_day":
+
+        if message.text not in DAYS:
+            return
+
+        day = message.text.zfill(2)
+
+        try:
+            birth_date = (
+                f"{day}."
+                f"{temp_user[user_id]['birth_month']}."
+                f"{temp_user[user_id]['birth_year']}"
+            )
+
+            datetime.strptime(
+                birth_date,
+                "%d.%m.%Y"
+            )
+
+        except:
+
+            await message.answer(
+                "❌ Bunday sana mavjud emas"
+            )
+
+            return
+
+        birth = datetime.strptime(
+            birth_date,
+            "%d.%m.%Y"
+        )
+
+        today = datetime.now()
+
+        age = today.year - birth.year
+
+        if (today.month, today.day) < (birth.month, birth.day):
+            age -= 1
+
+        if age < 2 or age > 100:
+
+            await message.answer(
+                "❌ Yosh noto‘g‘ri kiritilgan"
+            )
+
+            return
+
+        temp_user[user_id]["birth_date"] = birth_date
+        user_state[user_id] = "gender"
+
+        try:
+            await message.delete()
+        except:
+            pass
+
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=registration_message[user_id],
+            text=reg_status(temp_user[user_id]) +
+            "\n\n👤 Jinsni tanlang:"
+        )
+
+        await message.answer(
+            "👤 Jinsni tanlang:",
+            reply_markup=make_keyboard([
+                "👨 Erkak",
+                "👩 Ayol"
+            ])
+        )
+
         return
 
     elif user_state.get(user_id) == "gender":
