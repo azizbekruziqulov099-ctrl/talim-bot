@@ -2,17 +2,16 @@ from keyboards import get_main_keyboard
 
 from aiogram import Router, F
 from aiogram.types import Message
-
+import os
 import psycopg2
-from storage import get_connection
-DATABASE_URL = os.getenv("DATABASE_URL")
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def continue_learning(message: Message):
 
     user_id = message.from_user.id
 
-    conn = get_connection()
+    conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
@@ -21,7 +20,7 @@ async def continue_learning(message: Message):
         cur.execute("""
             SELECT class
             FROM users
-            WHERE user_id=%s
+            WHERE user_id = %s
         """, (user_id,))
 
         user = cur.fetchone()
@@ -34,41 +33,26 @@ async def continue_learning(message: Message):
 
         grade = user[0]
 
-        # tugallanmagan birinchi mavzu
+        # shu sinfdagi birinchi mavzu
         cur.execute("""
             SELECT
-                d.topic_code,
-                d.subject_name,
-                d.bob_name,
-                d.bolim_name,
-                d.mavzu_name,
-                d.kichik_name
-            FROM dts_tree d
-
-            LEFT JOIN user_topic_progress p
-            ON p.topic_code = d.topic_code
-            AND p.user_id = %s
-
-            WHERE d.grade = %s
-            AND (
-                p.status IS NULL
-                OR p.status != 'completed'
-            )
-
-            ORDER BY d.topic_code
+                topic_code,
+                subject_name,
+                bob_name,
+                bolim_name,
+                mavzu_name,
+                kichik_name
+            FROM dts_tree
+            WHERE grade = %s
+            ORDER BY topic_code
             LIMIT 1
-        """, (
-            user_id,
-            grade
-        ))
+        """, (grade,))
 
         topic = cur.fetchone()
 
         if not topic:
-
             await message.answer(
-                "🎉 Tabriklayman!\n\n"
-                "Siz ushbu sinfdagi barcha mavzularni tugatgansiz."
+                f"❌ {grade}-sinf uchun mavzu topilmadi."
             )
             return
 
