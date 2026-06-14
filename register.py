@@ -639,7 +639,12 @@ async def register_handler(message):
             user_id,
             temp_user[user_id].get("role"),
             temp_user[user_id].get("full_name"),
-            temp_user[user_id].get("birth_date"),
+
+            datetime.strptime(
+                temp_user[user_id].get("birth_date"),
+                "%d.%m.%Y"
+            ).date(),
+
             temp_user[user_id].get("gender"),
             temp_user[user_id].get("region"),
             temp_user[user_id].get("district"),
