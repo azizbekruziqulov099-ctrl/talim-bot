@@ -120,15 +120,6 @@ async def register_handler(message):
             "\n\n👤 F.I.Sh ni kiriting:"
         )
 
-        await message.answer(
-            "👤 Ma'lumotlarni kiriting:\n\n"
-            "F.I.Sh:\n"
-            "Tug‘ilgan sana:\n"
-            "Jins:\n"
-            "Viloyat:\n"
-            "Tuman:"
-        )
-
         return
 
     elif user_state.get(user_id) == "full_name":
