@@ -1,8 +1,5 @@
 from admin_handlers import *
-from learning import router as learning_router
-
-dp.include_router(learning_router)
-
+from learning import *
 from generator_handlers import *
 from test_engine import *
 from register import *
@@ -164,23 +161,6 @@ BTN_GLOBAL = "global_stats"
 
 BACK = "🔙 Ortga"
 HOME = "🏠 Bosh menyu"
-FINISH = "❌ Testni tugatish"
-
-TEXT_TO_ID = {
-    "📊 So‘rovnoma": BTN_SURVEY,
-    "📈 Statistika": BTN_STATS,
-    "📈 Umumiy statistika": BTN_GLOBAL,
-}
-
-SCHOOL_TYPES = [
-    "🏫 Oddiy maktab",
-    "⭐ Ixtisoslashtirilgan maktab",
-    "🇺🇿 Prezident maktabi",
-    "🧮 Al-Xorazmiy maktabi",
-    "🪖 Harbiy maktab",
-    "🎨 San'at maktabi",
-    "📖 IDUM"
-]
 
 SUBJECTS_BY_LEVEL = {
 
@@ -212,12 +192,6 @@ SUBJECTS_BY_LEVEL = {
         "Informatika"
     ]
 }
-
-LEVELS = [
-    (0, "🥚", "Boshlanish"),
-    (500, "🐣", "O'rganuvchi"),
-    (1500, "🦅", "Usta")
-]
 
 SUBJECTS_BY_CLASS = {
 
@@ -861,8 +835,21 @@ async def handle_all(
     
     user_id = message.from_user.id
 
-    print("HANDLE_ALL KELDI")
-    print("TEXT =", message.text)
+    if message.text == "🎯 Bugungi reja":
+        await student_daily_plan(message)
+        return
+
+    if message.text == "📈 Rivojlanishim":
+        await student_progress(message)
+        return
+
+    if message.text == "🌍 Hamjamiyat":
+        await student_community(message)
+        return
+
+    if message.text == "👤 Kabinet":
+        await student_profile(message)
+        return
 
     if user_id not in temp_user:
         temp_user[user_id] = {}
