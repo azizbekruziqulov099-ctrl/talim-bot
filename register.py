@@ -3,6 +3,10 @@ from aiogram.types import (
     KeyboardButton
 )
 import json
+import psycopg2
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
@@ -248,13 +252,52 @@ async def register_handler(message):
 
         temp_user[user_id]["class_letter"] = message.text
 
-        user_state[user_id] = None
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO users(
+            user_id,
+            role,
+            full_name,
+            birth_date,
+            gender,
+            region,
+            district,
+            education_type,
+            school_type,
+            school,
+            class,
+            class_letter
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            user_id,
+            temp_user[user_id].get("role"),
+            temp_user[user_id].get("full_name"),
+            temp_user[user_id].get("birth_date"),
+            temp_user[user_id].get("gender"),
+            temp_user[user_id].get("region"),
+            temp_user[user_id].get("district"),
+            temp_user[user_id].get("education_type"),
+            temp_user[user_id].get("school_type"),
+            temp_user[user_id].get("school"),
+            temp_user[user_id].get("class"),
+            temp_user[user_id].get("class_letter")
+        ))
+
+        conn.commit()
+        conn.close()
 
         await message.answer(
-            "✅ Registratsiya yakunlandi"
+            "✅ Registratsiya yakunlandi",
+            reply_markup=get_main_keyboard(
+                temp_user[user_id].get("role")
+            )
         )
 
-        print(temp_user[user_id])
+
+        user_state[user_id] = None
 
         return
 
