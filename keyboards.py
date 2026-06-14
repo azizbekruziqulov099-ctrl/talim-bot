@@ -5,7 +5,7 @@ from aiogram.types import (
 
 def get_main_keyboard(role=None):
 
-    if "O‘quvchi" in str(role):
+    if "🧒 O‘quvchi" in str(role):
 
         keyboard = [
             [KeyboardButton(text="📚 BILIMNI SINASH"),
@@ -18,7 +18,7 @@ def get_main_keyboard(role=None):
              KeyboardButton(text="⚙️ Akkaunt sozlamalari")]
         ]
 
-    elif "O‘qituvchi" in str(role):
+    elif "👨‍🏫 O‘qituvchi" in str(role):
 
         keyboard = [
             [KeyboardButton(text="🧠 Bilimni sinash"),
