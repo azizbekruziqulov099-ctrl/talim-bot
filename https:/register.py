@@ -22,7 +22,7 @@ EDUCATION_TYPES = [
 
 SCHOOL_TYPES = [
     "🏫 Oddiy maktab",
-    "⭐ Ixtisoslashtirilgan maktab",
+    "⭐️ Ixtisoslashtirilgan maktab",
     "🇺🇿 Prezident maktabi",
     "🧮 Al-Xorazmiy maktabi",
     "🪖 Harbiy maktab",
@@ -31,14 +31,16 @@ SCHOOL_TYPES = [
 ]
 
 CLASS_LETTERS = [
-    "A", "B", "C", "D", "E"
+    "A", "B", "C", "D", "E", "Bilmadim"
 ]
+
 
 def make_keyboard(items):
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=i)] for i in items],
         resize_keyboard=True
     )
+
 
 def base_keyboard(items):
 
@@ -48,7 +50,7 @@ def base_keyboard(items):
     for i, item in enumerate(items, start=1):
 
         row.append(
-            KeyboardButton(text=item)
+            KeyboardButton(text=str(item))
         )
 
         if i % 4 == 0:
@@ -63,19 +65,65 @@ def base_keyboard(items):
         resize_keyboard=True
     )
 
-elif user_state.get(message.from_user.id) == "district":
 
-    temp_user[message.from_user.id]["district"] = message.text
+async def register_handler(message):
 
-    education = temp_user[
-        message.from_user.id
-    ]["education_level"]
+    user_id = message.from_user.id
 
-    if education == "🏫 Maktab":
+    # ROLE
+    if user_state.get(user_id) == "role":
 
-        user_state[
-            message.from_user.id
-        ] = "school_type"
+        temp_user[user_id] = {
+            "role": message.text
+        }
+
+        user_state[user_id] = "full_info"
+
+        await message.answer(
+            "👤 Ma'lumotlarni kiriting:\n\n"
+            "F.I.Sh:\n"
+            "Tug‘ilgan sana:\n"
+            "Jins:\n"
+            "Viloyat:\n"
+            "Tuman:"
+        )
+
+        return
+
+    # FULL INFO
+    elif user_state.get(user_id) == "full_info":
+
+        temp_user[user_id]["full_info"] = message.text
+
+        role = temp_user[user_id]["role"]
+
+        if role == "🧒 O‘quvchi":
+
+            user_state[user_id] = "education_type"
+
+            await message.answer(
+                "🎓 Ta'lim turini tanlang:",
+                reply_markup=make_keyboard(
+                    EDUCATION_TYPES
+                )
+            )
+
+        else:
+
+            user_state[user_id] = "teacher_subject"
+
+            await message.answer(
+                "📚 Faningizni kiriting:"
+            )
+
+        return
+
+    # EDUCATION TYPE
+    elif user_state.get(user_id) == "education_type":
+
+        temp_user[user_id]["education_type"] = message.text
+
+        user_state[user_id] = "school_type"
 
         await message.answer(
             "🏫 Maktab turini tanlang:",
@@ -84,14 +132,76 @@ elif user_state.get(message.from_user.id) == "district":
             )
         )
 
-    else:
+        return
 
-        user_state[
-            message.from_user.id
-        ] = "kindergarten"
+    # SCHOOL TYPE
+    elif user_state.get(user_id) == "school_type":
+
+        temp_user[user_id]["school_type"] = message.text
+
+        user_state[user_id] = "school"
 
         await message.answer(
-            "🏡 Bog‘cha nomini kiriting:"
+            "🏫 Maktab nomi yoki raqamini kiriting:"
         )
 
-    return
+        return
+
+    # SCHOOL
+    elif user_state.get(user_id) == "school":
+
+        temp_user[user_id]["school"] = message.text
+
+        user_state[user_id] = "class"
+
+        await message.answer(
+            "🎓 Sinfni kiriting:\nMasalan: 5, 9, 11"
+        )
+
+        return
+
+    # CLASS
+    elif user_state.get(user_id) == "class":
+
+        temp_user[user_id]["class"] = message.text
+
+        user_state[user_id] = "class_letter"
+
+        await message.answer(
+            "🔤 Harfni tanlang:",
+            reply_markup=make_keyboard(
+                CLASS_LETTERS
+            )
+        )
+
+        return
+
+    # CLASS LETTER
+    elif user_state.get(user_id) == "class_letter":
+
+        temp_user[user_id]["class_letter"] = message.text
+
+        user_state[user_id] = None
+
+        await message.answer(
+            "✅ Registratsiya yakunlandi"
+        )
+
+        print(temp_user[user_id])
+
+        return
+
+    # TEACHER SUBJECT
+    elif user_state.get(user_id) == "teacher_subject":
+
+        temp_user[user_id]["subject"] = message.text
+
+        user_state[user_id] = None
+
+        await message.answer(
+            "✅ O‘qituvchi registratsiyasi yakunlandi"
+        )
+
+        print(temp_user[user_id])
+
+        return
