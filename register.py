@@ -151,11 +151,24 @@ async def register_handler(message):
         name = message.text.strip()
 
         if len(name.split()) < 2:
-            await message.answer(
-                "❌ F.I.Sh ni to'liq kiriting\n\n"
+
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=registration_message[user_id]
+                )
+            except:
+                pass
+
+            msg = await message.answer(
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ F.I.Sh ni to'liq kiriting\n\n"
                 "Masalan:\n"
-                "Familyangiz Ismingiz"
+                "Familiyangiz Ismingiz"
             )
+
+            registration_message[user_id] = msg.message_id
+
             return
 
         temp_user[user_id]["full_name"] = message.text
@@ -172,11 +185,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n🎂 Tug‘ilgan yilingizni tanlang:"
-        )
-
-        await message.answer(
-            "🎂 Tug‘ilgan yilingizni tanlang:",
-            reply_markup=base_keyboard(BIRTH_YEARS)
         )
 
         return
@@ -200,11 +208,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n📅 Tug‘ilgan oyingizni tanlang:"
-        )
-
-        await message.answer(
-            "📅 Tug‘ilgan oyingizni tanlang:",
-            reply_markup=base_keyboard(MONTHS)
         )
 
         return
@@ -243,11 +246,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n📅 Tug‘ilgan kuningizni tanlang:"
-        )
-
-        await message.answer(
-            "📅 Tug‘ilgan kuningizni tanlang:",
-            reply_markup=base_keyboard(DAYS)
         )
 
         return
@@ -314,14 +312,6 @@ async def register_handler(message):
             "\n\n👤 Jinsni tanlang:"
         )
 
-        await message.answer(
-            "👤 Jinsni tanlang:",
-            reply_markup=make_keyboard([
-                "👨 Erkak",
-                "👩 Ayol"
-            ])
-        )
-
         return
 
     elif user_state.get(user_id) == "gender":
@@ -346,13 +336,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n🌍 Viloyatni tanlang:"
-        )
-
-        await message.answer(
-            "🌍 Viloyatni tanlang:",
-            reply_markup=base_keyboard(
-                REGIONS.keys()
-            )
         )
 
         return
@@ -391,11 +374,6 @@ async def register_handler(message):
             "\n\n📍 Tumanni tanlang:"
         )
 
-        await message.answer(
-            "📍 Tumanni tanlang:",
-            reply_markup=base_keyboard(flat)
-        )
-
         return
 
     elif user_state.get(user_id) == "district":
@@ -414,13 +392,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n🎓 Ta'lim turini tanlang:"
-        )
-
-        await message.answer(
-            "🎓 Ta'lim turini tanlang:",
-            reply_markup=make_keyboard(
-                EDUCATION_TYPES
-            )
         )
 
         return
@@ -451,13 +422,6 @@ async def register_handler(message):
                 "\n\n🏫 Maktab turini tanlang:"
             )
 
-            await message.answer(
-                "🏫 Maktab turini tanlang:",
-                reply_markup=make_keyboard(
-                    SCHOOL_TYPES
-                )
-            )
-
         else:
 
             user_state[user_id] = "kindergarten"
@@ -467,10 +431,6 @@ async def register_handler(message):
                 message_id=registration_message[user_id],
                 text=reg_status(temp_user[user_id]) +
                 "\n\n🏡 Bog‘cha nomini kiriting:"
-            )
-
-            await message.answer(
-                "🏡 Bog‘cha nomini kiriting:"
             )
 
         return
@@ -538,10 +498,6 @@ async def register_handler(message):
             "\n\n🏫 Maktab raqamini kiriting:"
         )
 
-        await message.answer(
-            "🏫 Maktab raqamini kiriting:\n\nMasalan:\n25"
-        )
-
         return
         
     elif user_state.get(user_id) == "school":
@@ -570,13 +526,6 @@ async def register_handler(message):
             "\n\n🎓 Sinfni tanlang:"
         )
 
-        await message.answer(
-            "🎓 Sinfni tanlang:",
-            reply_markup=make_keyboard(
-                CLASS_LEVELS
-            )
-        )
-
         return
         
     elif user_state.get(user_id) == "class":
@@ -598,13 +547,6 @@ async def register_handler(message):
             message_id=registration_message[user_id],
             text=reg_status(temp_user[user_id]) +
             "\n\n🔤 Harfni tanlang:"
-        )
-
-        await message.answer(
-            "🔤 Harfni tanlang:",
-            reply_markup=make_keyboard(
-                CLASS_LETTERS
-            )
         )
 
         return
