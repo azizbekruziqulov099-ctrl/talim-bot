@@ -841,6 +841,10 @@ async def handle_all(
         await continue_learning(message)
         return
 
+    if message.text == "🔊 O'qib berish":
+        await read_current_page(message, user_state)
+        return
+
     if message.text == "📈 Rivojlanishim":
         await student_progress(message)
         return
