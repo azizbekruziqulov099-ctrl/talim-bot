@@ -10,9 +10,7 @@ import tempfile
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-async def read_current_page(message, user_state):
-
-    user_id = message.from_user.id
+async def read_current_page(user_id, message, user_state):
 
     text = user_state.get(user_id, {}).get("speak_text")
 
@@ -22,7 +20,11 @@ async def read_current_page(message, user_state):
         )
         return
 
-    await text_to_speech(message, text)
+    await speak_text(
+        user_id,
+        message,
+        text
+    )
 
 async def continue_learning(message: Message):
 
