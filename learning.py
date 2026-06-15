@@ -4,8 +4,25 @@ from aiogram import Router, F
 from aiogram.types import Message
 import os
 import psycopg2
+import edge_tts
+from aiogram.types import FSInputFile
+import tempfile
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+async def read_current_page(message, user_state):
+
+    user_id = message.from_user.id
+
+    text = user_state.get(user_id, {}).get("speak_text")
+
+    if not text:
+        await message.answer(
+            "❌ O'qiladigan matn topilmadi."
+        )
+        return
+
+    await text_to_speech(message, text)
 
 async def continue_learning(message: Message):
 
@@ -63,14 +80,60 @@ async def continue_learning(message: Message):
         mavzu_name = topic[4]
         kichik_name = topic[5]
 
+        text = f"""
+        ☀️ Xush kelibsiz!
+
+        🎓 {grade}-sinf
+
+        ━━━━━━━━━━━━━━
+
+        📚 {subject_name}
+
+        📍 Sizning navbatdagi mavzuingiz:
+
+        📝 {mavzu_name}
+
+        🗣 Kichik mavzu:
+        {kichik_name}
+
+        ━━━━━━━━━━━━━━
+
+        📚 Jami mavzular: {total_topics} ta
+        📖 Qolgan mavzular: {total_topics - completed_topics} ta
+
+        ━━━━━━━━━━━━━━
+
+        🔥 Bugungi vazifa
+
+        Ushbu mavzuni o'rganing va
+        bilim xaritangizdagi navbatdagi
+        qadamni oching.
+
+        🏆 Har bir tugatilgan mavzu
+        sizni maqsadingizga yaqinlashtiradi.
+        """
+
+        user_state[user_id]["speak_text"] = text
+
         await message.answer(
-            f"📚 Fan: {subject_name}\n\n"
-            f"📖 Bob:\n{bob_name}\n\n"
-            f"📘 Bo'lim:\n{bolim_name}\n\n"
-            f"📝 Mavzu:\n{mavzu_name}\n\n"
-            f"📌 Kichik mavzu:\n{kichik_name}\n\n"
-            f"🔑 Kod: {topic_code}\n\n"
-            f"▶️ O'rganishni boshlash"
+            text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [
+                        KeyboardButton(text="🔊 O'qib berish")
+                    ],
+                    [
+                        KeyboardButton(text="▶️ O'rganishni boshlash")
+                    ],
+                    [
+                        KeyboardButton(text="📚 Barcha fanlar")
+                    ],
+                    [
+                        KeyboardButton(text="⬅️ Ortga")
+                    ]
+                ],
+                resize_keyboard=True
+            )
         )
 
     except Exception as e:
