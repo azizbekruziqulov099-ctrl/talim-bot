@@ -472,13 +472,16 @@ async def speak_text(
 
     session = test_sessions.get(user_id)
 
-    if not session:
-        return
+    if session:
 
-    current = session["current"]
-    test = session["questions"][current]
+        current = session["current"]
+        test = session["questions"][current]
 
-    language = str(test[11]).lower()
+        language = str(test[11]).lower()
+
+    else:
+
+        language = "uz"
 
     voices = {
         "uz": "uz-UZ-SardorNeural",
