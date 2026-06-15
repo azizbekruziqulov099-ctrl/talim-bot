@@ -127,6 +127,9 @@ async def continue_learning(message: Message):
         sizni maqsadingizga yaqinlashtiradi.
         """
 
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
         user_state[user_id]["speak_text"] = text
 
         await message.answer(
