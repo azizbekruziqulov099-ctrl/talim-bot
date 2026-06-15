@@ -842,7 +842,13 @@ async def handle_all(
         return
 
     if message.text == "🔊 O'qib berish":
-        await read_current_page(message, user_state)
+
+        await read_current_page(
+            message.from_user.id,
+            message,
+            user_state
+        )
+
         return
 
     if message.text == "📈 Rivojlanishim":
