@@ -7,6 +7,8 @@ import psycopg2
 import edge_tts
 from aiogram.types import FSInputFile
 import tempfile
+from test_engine import speak_text
+from storage import user_state
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -68,6 +70,16 @@ async def continue_learning(message: Message):
         """, (grade,))
 
         topic = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM dts_tree
+            WHERE grade = %s
+        """, (grade,))
+
+        total_topics = cur.fetchone()[0]
+
+        completed_topics = 0
 
         if not topic:
             await message.answer(
