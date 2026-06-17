@@ -6,6 +6,7 @@ from aiogram.types import (
     KeyboardButton
 )
 import os
+from pydub import AudioSegment
 import psycopg2
 import edge_tts
 from aiogram.types import FSInputFile
@@ -39,13 +40,103 @@ async def speak_mixed_text(
     text
 ):
 
-    text = build_ssml(text)
+    blocks = parse_content(text)
 
-    await speak_text(
-        user_id,
-        message,
-        text
+    voices = {
+        "text": "uz-UZ-SardorNeural",
+        "en": "en-US-GuyNeural",
+        "ru": "ru-RU-DmitryNeural"
+    }
+
+    audio_files = []
+
+    for i, block in enumerate(blocks):
+
+        lang = block["type"]
+
+        if lang == "text":
+            voice = voices["text"]
+        else:
+            voice = voices.get(
+                lang,
+                voices["text"]
+            )
+
+        filename = (
+            f"part_{user_id}_{i}.mp3"
+        )
+
+        communicate = edge_tts.Communicate(
+            text=block["content"],
+            voice=voice
+        )
+
+        await communicate.save(
+            filename
+        )
+
+        audio_files.append(
+            filename
+        )
+
+    combined = AudioSegment.empty()
+
+    for file in audio_files:
+
+        combined += AudioSegment.from_mp3(
+            file
+        )
+
+    final_file = (
+        f"mixed_{user_id}.mp3"
     )
+
+    combined.export(
+        final_file,
+        format="mp3"
+    )
+
+    if (
+        user_id in user_state
+        and
+        "voice_message_id"
+        in user_state[user_id]
+    ):
+
+        try:
+
+            await message.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=user_state[user_id][
+                    "voice_message_id"
+                ]
+            )
+
+        except:
+            pass
+
+    voice_msg = await message.answer_voice(
+        FSInputFile(final_file)
+    )
+
+    if user_id not in user_state:
+        user_state[user_id] = {}
+
+    user_state[user_id][
+        "voice_message_id"
+    ] = voice_msg.message_id
+
+    for file in audio_files:
+
+        try:
+            os.remove(file)
+        except:
+            pass
+
+    try:
+        os.remove(final_file)
+    except:
+        pass
 
 async def read_current_page(user_id, message, user_state):
 
@@ -498,7 +589,7 @@ async def lesson_tts(user_id, message):
             user_id,
             message,
             text
-        )        
+        )       
 
     except Exception as e:
 
