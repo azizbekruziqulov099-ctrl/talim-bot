@@ -2114,7 +2114,34 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             call.message
         )
         return
-        
+
+    if call.data == "lesson_next":
+
+        await call.answer("➡️")
+
+        return
+
+
+    if call.data == "lesson_prev":
+
+        await call.answer("⬅️")
+
+        return
+
+
+    if call.data == "lesson_tts":
+
+        await call.answer("🔊")
+
+        return
+
+
+    if call.data == "lesson_help":
+
+        await call.answer("😕")
+
+        return
+
     elif call.data == "dts_navigator":
 
         await dts_navigator(call)
