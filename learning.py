@@ -702,6 +702,11 @@ async def lesson_prev(user_id, message):
                     InlineKeyboardButton(
                         text="😕 Tushunmadim",
                         callback_data="lesson_help"
+                    ),
+                
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
                     )
                 ]
             ]
@@ -803,6 +808,11 @@ async def lesson_help(
                     InlineKeyboardButton(
                         text="🔊 O'qib ber",
                         callback_data="lesson_tts"
+                    ),
+                
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
                     )
                 ]
             ]
@@ -829,6 +839,43 @@ async def lesson_help(
 
         await message.answer(
             f"❌ Xatolik:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_finish(
+    user_id,
+    message
+):
+
+    if user_id in user_state:
+
+        user_state.pop(user_id)
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            DELETE FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        conn.commit()
+
+        await message.edit_text(
+            """
+🏁 Dars yakunlandi
+
+Rahmat.
+"""
         )
 
     finally:
