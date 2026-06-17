@@ -8,3 +8,4 @@ pandas
 edge-tts
 matplotlib
 aiogram-calendar
+pydub==0.25.1
