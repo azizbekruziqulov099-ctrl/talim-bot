@@ -2155,7 +2155,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data == "lesson_help":
 
-        await call.answer("😕")
+        await lesson_help(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
 
         return
 
