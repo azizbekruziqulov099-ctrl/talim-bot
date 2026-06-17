@@ -66,14 +66,19 @@ async def speak_mixed_text(
             f"part_{user_id}_{i}.mp3"
         )
 
+        content = str(
+            block["content"]
+        ).strip()
+
+        if not content:
+            continue
+
         communicate = edge_tts.Communicate(
-            text=block["content"],
+            text=content,
             voice=voice
         )
 
-        await communicate.save(
-            filename
-        )
+        await communicate.save(filename)
 
         audio_files.append(
             filename
