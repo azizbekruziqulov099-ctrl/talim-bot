@@ -1,6 +1,9 @@
 import re
 import edge_tts
 import matplotlib.pyplot as plt
+from pydub import AudioSegment
+import uuid
+import os
 
 VOICE_MAP = {
     "text": "uz-UZ-SardorNeural",
