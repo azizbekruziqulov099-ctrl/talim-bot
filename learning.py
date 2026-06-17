@@ -187,11 +187,13 @@ async def open_teacher_lesson(message):
 
     try:
 
+        topic_code = "TEST_001"
+
         cur.execute("""
             SELECT *
             FROM teacher_lessons
             WHERE topic_code = %s
-        """, ("TEST_001",))
+        """, (topic_code,))
 
         lesson = cur.fetchone()
 
@@ -200,7 +202,6 @@ async def open_teacher_lesson(message):
             await message.answer(
                 "❌ Dars topilmadi"
             )
-
             return
 
         parts = [
@@ -220,6 +221,35 @@ async def open_teacher_lesson(message):
         user_state[user_id]["lesson"] = lesson
         user_state[user_id]["parts"] = parts
         user_state[user_id]["current_step"] = 0
+
+        cur.execute("""
+            DELETE FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        cur.execute("""
+            INSERT INTO lesson_progress
+            (
+                user_id,
+                topic_code,
+                current_step,
+                completed
+            )
+            VALUES
+            (
+                %s,
+                %s,
+                %s,
+                %s
+            )
+        """, (
+            user_id,
+            topic_code,
+            0,
+            False
+        ))
+
+        conn.commit()
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -275,6 +305,295 @@ async def open_teacher_lesson(message):
 
         cur.close()
         conn.close()
+
+async def lesson_next(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        next_step = current_step + 1
+
+        if next_step >= len(parts):
+
+            await message.edit_text(
+                "🏆 Dars yakunlandi"
+            )
+
+            return
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            next_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
+            f"""
+👨‍🏫 USTOZ
+
+📚 Ingliz tili
+
+━━━━━━━━━━━━━━
+
+{parts[next_step]}
+""",
+            reply_markup=keyboard
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_tts(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        text = parts[current_step]
+
+        blocks = parse_content(text)
+
+        clean_text = ""
+
+        for block in blocks:
+
+            if block["type"] == "text":
+
+                clean_text += (
+                    block["content"] + " "
+                )
+
+            else:
+
+                clean_text += (
+                    block["content"] + " "
+                )
+
+        await speak_text(
+            user_id,
+            message,
+            clean_text.strip()
+        )
+
+    except Exception as e:
+
+        await message.answer(
+            f"❌ Xatolik:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_prev(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        prev_step = current_step - 1
+
+        if prev_step < 0:
+            prev_step = 0
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            prev_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
+            f"""
+👨‍🏫 USTOZ
+
+📚 Ingliz tili
+
+━━━━━━━━━━━━━━
+
+{parts[prev_step]}
+""",
+            reply_markup=keyboard
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
 
 async def student_progress(message):
     await message.answer("📈 Rivojlanishim")
