@@ -1447,9 +1447,7 @@ async def handle_all(
         
     async with user_locks[user_id]:
 
-
-
-        action = TEXT_TO_ID.get(message.text)
+      #  action = TEXT_TO_ID.get(message.text)
 
         # 🔙 ORTGA
         if message.text == BACK:
