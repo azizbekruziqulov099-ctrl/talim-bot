@@ -12,6 +12,10 @@ from aiogram.types import FSInputFile
 import tempfile
 from test_engine import speak_text
 from storage import user_state
+from teacher_engine import (
+    build_lesson_steps,
+    get_step_content
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -166,6 +170,26 @@ async def continue_learning(message: Message):
 
         cur.close()
         conn.close()
+
+async def open_teacher_lesson(message):
+
+    await message.answer(
+        """
+👨‍🏫 USTOZ
+
+📚 Ingliz tili
+📝 Greetings
+
+━━━━━━━━━━━━━━
+
+Assalomu alaykum.
+
+Bugun Greetings mavzusini
+o'rganamiz.
+
+━━━━━━━━━━━━━━
+"""
+    )
 
 async def student_progress(message):
     await message.answer("📈 Rivojlanishim")
