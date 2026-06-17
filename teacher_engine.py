@@ -1,4 +1,25 @@
 import re
+import edge_tts
+import matplotlib.pyplot as plt
+
+VOICE_MAP = {
+    "text": "uz-UZ-SardorNeural",
+    "en": "en-US-GuyNeural",
+    "ru": "ru-RU-DmitryNeural",
+    "de": "de-DE-ConradNeural"
+}
+
+def build_ssml(text):
+
+    blocks = parse_content(text)
+
+    ssml = ""
+
+    for block in blocks:
+
+        ssml += block["content"] + " "
+
+    return ssml.strip()
 
 def parse_content(text):
 
@@ -61,6 +82,30 @@ def parse_content(text):
             )
 
     return result
+
+def render_content(text):
+
+    blocks = parse_content(text)
+
+    result = ""
+
+    for block in blocks:
+
+        result += block["content"] + " "
+
+    return result.strip()
+
+def render_content(text):
+
+    blocks = parse_content(text)
+
+    result = ""
+
+    for block in blocks:
+
+        result += block["content"] + " "
+
+    return result.strip()
 
 def build_lesson_steps(lesson):
 
