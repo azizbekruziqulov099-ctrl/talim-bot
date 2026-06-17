@@ -1,5 +1,66 @@
 import re
 
+def parse_content(text):
+
+    pattern = r"\[(\w+)\](.*?)\[/\1\]"
+
+    result = []
+
+    last_end = 0
+
+    for match in re.finditer(
+        pattern,
+        text,
+        re.DOTALL
+    ):
+
+        start, end = match.span()
+
+        if start > last_end:
+
+            plain_text = text[
+                last_end:start
+            ].strip()
+
+            if plain_text:
+
+                result.append(
+                    {
+                        "type": "text",
+                        "lang": "uz",
+                        "content": plain_text
+                    }
+                )
+
+        tag = match.group(1)
+        content = match.group(2).strip()
+
+        result.append(
+            {
+                "type": tag,
+                "content": content
+            }
+        )
+
+        last_end = end
+
+    if last_end < len(text):
+
+        plain_text = text[
+            last_end:
+        ].strip()
+
+        if plain_text:
+
+            result.append(
+                {
+                    "type": "text",
+                    "lang": "uz",
+                    "content": plain_text
+                }
+            )
+
+    return result
 
 def build_lesson_steps(lesson):
 
@@ -241,3 +302,4 @@ def lesson_to_dict(row):
         "exercise_2": row[11],
         "summary": row[12]
     }
+
