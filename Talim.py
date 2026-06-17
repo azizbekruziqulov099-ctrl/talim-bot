@@ -24,6 +24,11 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
+from learning import (
+    lesson_next,
+    lesson_prev,
+    lesson_tts
+)
 import json
 import random
 import time
@@ -2115,26 +2120,38 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         )
         return
 
-    if call.data == "lesson_next":
-
-        await call.answer("➡️")
-
-        return
-
-
     if call.data == "lesson_prev":
 
-        await call.answer("⬅️")
+        await lesson_prev(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
 
         return
 
+    if call.data == "lesson_next":
+
+        await lesson_next(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
+
+        return
 
     if call.data == "lesson_tts":
 
-        await call.answer("🔊")
+        await lesson_tts(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
 
         return
-
 
     if call.data == "lesson_help":
 
