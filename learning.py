@@ -764,6 +764,17 @@ async def lesson_help(
         if not lesson:
             return
 
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        main_text = parts[current_step]
+
         simple_map = {
             1: lesson[7] or "",
             2: lesson[8] or "",
@@ -776,16 +787,42 @@ async def lesson_help(
             "Bu qism uchun izoh mavjud emas."
         )
 
-        await message.answer(
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
             f"""
-💡 Sodda tushuntirish
+👨‍🏫 USTOZ
+
+📚 Ingliz tili
 
 ━━━━━━━━━━━━━━
+
+{render_content(main_text)}
+
+💡 Izoh:
 
 {render_content(simple_text)}
-
-━━━━━━━━━━━━━━
-"""
+""",
+            reply_markup=keyboard
         )
 
     except Exception as e:
