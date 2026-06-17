@@ -73,6 +73,10 @@ async def speak_mixed_text(
         if not content:
             continue
 
+        await message.answer(
+            f"VOICE={voice}\nTEXT={content}"
+        )
+
         communicate = edge_tts.Communicate(
             text=content,
             voice=voice
