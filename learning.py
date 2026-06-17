@@ -593,8 +593,10 @@ async def lesson_tts(user_id, message):
 
     except Exception as e:
 
+        import traceback
+
         await message.answer(
-            f"❌ Xatolik:\n{e}"
+            traceback.format_exc()
         )
 
     finally:
