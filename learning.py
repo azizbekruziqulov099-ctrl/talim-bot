@@ -84,11 +84,19 @@ async def speak_mixed_text(
             voice=voice
         )
 
-        await communicate.save(filename)
+        try:
 
-        audio_files.append(
-            filename
-        )
+            await communicate.save(
+                filename
+            )
+
+            audio_files.append(
+                filename
+            )
+
+        except:
+
+            continue
 
     combined = AudioSegment.empty()
 
@@ -717,7 +725,79 @@ async def lesson_prev(user_id, message):
         cur.close()
         conn.close()
 
+async def lesson_help(
+    user_id,
+    message
+):
 
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code,
+                   current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(
+            current_step,
+            "Bu qism uchun izoh mavjud emas."
+        )
+
+        await message.answer(
+            f"""
+💡 Sodda tushuntirish
+
+━━━━━━━━━━━━━━
+
+{render_content(simple_text)}
+
+━━━━━━━━━━━━━━
+"""
+        )
+
+    except Exception as e:
+
+        await message.answer(
+            f"❌ Xatolik:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
 
 async def student_progress(message):
     await message.answer("📈 Rivojlanishim")
