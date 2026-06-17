@@ -8,6 +8,7 @@ from aiogram.types import (
 import os
 import psycopg2
 import edge_tts
+from teacher_engine import parse_content
 from aiogram.types import FSInputFile
 import tempfile
 from test_engine import speak_text
