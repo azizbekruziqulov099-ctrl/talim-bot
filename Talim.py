@@ -851,6 +851,12 @@ async def handle_all(
 
         return
 
+    if message.text == "▶️ O'rganishni boshlash":
+
+        await open_teacher_lesson(message)
+
+        return
+
     if message.text == "📈 Rivojlanishim":
         await student_progress(message)
         return
