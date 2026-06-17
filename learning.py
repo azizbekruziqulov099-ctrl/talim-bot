@@ -16,6 +16,15 @@ from teacher_engine import (
     build_lesson_steps,
     get_step_content
 )
+from teacher_engine import (
+    create_lesson_state,
+    current_text,
+    build_board_text
+)
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -173,23 +182,99 @@ async def continue_learning(message: Message):
 
 async def open_teacher_lesson(message):
 
-    await message.answer(
-        """
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, ("TEST_001",))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+
+            await message.answer(
+                "❌ Dars topilmadi"
+            )
+
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        user_id = message.from_user.id
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["lesson"] = lesson
+        user_state[user_id]["parts"] = parts
+        user_state[user_id]["current_step"] = 0
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    )
+                ]
+            ]
+        )
+
+        msg = await message.answer(
+            f"""
 👨‍🏫 USTOZ
 
 📚 Ingliz tili
-📝 Greetings
 
 ━━━━━━━━━━━━━━
 
-Assalomu alaykum.
+{parts[0]}
+""",
+            reply_markup=keyboard
+        )
 
-Bugun Greetings mavzusini
-o'rganamiz.
+        user_state[user_id]["board_message_id"] = (
+            msg.message_id
+        )
 
-━━━━━━━━━━━━━━
-"""
-    )
+    except Exception as e:
+
+        await message.answer(
+            f"❌ Xatolik:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
 
 async def student_progress(message):
     await message.answer("📈 Rivojlanishim")
