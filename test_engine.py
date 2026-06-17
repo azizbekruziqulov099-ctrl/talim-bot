@@ -464,6 +464,56 @@ async def stop_test(
         message
     )
 
+async def speak_mixed_text(
+    user_id,
+    message,
+    text
+):
+
+    blocks = parse_content(text)
+
+    voice_map = {
+        "text": "uz-UZ-SardorNeural",
+        "en": "en-US-GuyNeural",
+        "ru": "ru-RU-DmitryNeural",
+        "de": "de-DE-ConradNeural"
+    }
+
+    for block in blocks:
+
+        block_type = block.get("type")
+
+        if block_type == "text":
+
+            voice = voice_map["text"]
+            content = block["content"]
+
+        else:
+
+            voice = voice_map.get(
+                block_type,
+                "uz-UZ-SardorNeural"
+            )
+
+            content = block["content"]
+
+        filename = (
+            f"voice_{user_id}.mp3"
+        )
+
+        communicate = edge_tts.Communicate(
+            text=content,
+            voice=voice
+        )
+
+        await communicate.save(
+            filename
+        )
+
+        await message.answer_voice(
+            FSInputFile(filename)
+        )
+
 async def speak_text(
     user_id,
     message,
