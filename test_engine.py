@@ -7,6 +7,8 @@ import edge_tts
 import asyncio
 import matplotlib.pyplot as plt
 import psycopg2
+from pydub import AudioSegment
+import uuid
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -604,8 +606,31 @@ async def speak_text(
 
     await communicate.save(filename)
 
-    await message.answer_voice(
+    if (
+        user_id in user_state
+        and
+        "voice_message_id" in user_state[user_id]
+    ):
+
+        try:
+
+            await message.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=user_state[user_id]["voice_message_id"]
+            )
+
+        except:
+            pass
+
+    voice_msg = await message.answer_voice(
         FSInputFile(filename)
+    )
+
+    if user_id not in user_state:
+        user_state[user_id] = {}
+
+    user_state[user_id]["voice_message_id"] = (
+        voice_msg.message_id
     )
 
 async def speak_question(
