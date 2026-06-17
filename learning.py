@@ -8,7 +8,6 @@ from aiogram.types import (
 import os
 import psycopg2
 import edge_tts
-from teacher_engine import parse_content
 from aiogram.types import FSInputFile
 import tempfile
 from test_engine import speak_text
@@ -22,12 +21,31 @@ from teacher_engine import (
     current_text,
     build_board_text
 )
+from teacher_engine import (
+    parse_content,
+    render_content,
+    build_ssml
+)
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+async def speak_mixed_text(
+    user_id,
+    message,
+    text
+):
+
+    text = build_ssml(text)
+
+    await speak_text(
+        user_id,
+        message,
+        text
+    )
 
 async def read_current_page(user_id, message, user_state):
 
@@ -280,15 +298,16 @@ async def open_teacher_lesson(message):
         )
 
         msg = await message.answer(
-            f"""
+    f"""
 👨‍🏫 USTOZ
 
 📚 Ingliz tili
 
 ━━━━━━━━━━━━━━
 
-{parts[0]}
+{render_content(parts[0])}
 """,
+
             reply_markup=keyboard
         )
 
@@ -404,7 +423,7 @@ async def lesson_next(user_id, message):
 
 ━━━━━━━━━━━━━━
 
-{parts[next_step]}
+{render_content(parts[next_step])}
 """,
             reply_markup=keyboard
         )
@@ -475,11 +494,11 @@ async def lesson_tts(user_id, message):
                     block["content"] + " "
                 )
 
-        await speak_text(
+        await speak_mixed_text(
             user_id,
             message,
-            clean_text.strip()
-        )
+            text
+        )        
 
     except Exception as e:
 
@@ -584,7 +603,7 @@ async def lesson_prev(user_id, message):
 
 ━━━━━━━━━━━━━━
 
-{parts[prev_step]}
+{render_content(parts[prev_step])}
 """,
             reply_markup=keyboard
         )
