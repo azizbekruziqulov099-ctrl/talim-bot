@@ -309,14 +309,16 @@ async def continue_learning(message: Message):
         cur.close()
         conn.close()
 
-async def open_teacher_lesson(message):
+async def open_teacher_lesson(message, topic_code=None):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
 
-        topic_code = "TEST_001"
+        if not topic_code:
+            await message.answer("❌ Topic code berilmadi")
+            return
 
         cur.execute("""
             SELECT *
@@ -412,13 +414,13 @@ async def open_teacher_lesson(message):
         )
         msg = await message.answer(
     f"""
-👨‍🏫 USTOZ
+👨‍🏫 USTOZ DOSKASI
 
-📚 Ingliz tili
+📚 {topic_code}
 
 ━━━━━━━━━━━━━━
 
-{render_content(parts[0])}
+{build_board_text(parts[0]) or render_content(parts[0])}
 """,
 
             reply_markup=keyboard
@@ -538,13 +540,13 @@ async def lesson_next(user_id, message):
         )
         await message.edit_text(
             f"""
-👨‍🏫 USTOZ
+👨‍🏫 USTOZ DOSKASI
 
-📚 Ingliz tili
+📚 {topic_code}  |  {next_step + 1}/{len(parts)} qadam
 
 ━━━━━━━━━━━━━━
 
-{render_content(parts[next_step])}
+{build_board_text(parts[next_step]) or render_content(parts[next_step])}
 """,
             reply_markup=keyboard
         )
@@ -750,13 +752,13 @@ async def lesson_prev(user_id, message):
 
         await message.edit_text(
             f"""
-👨‍🏫 USTOZ
+👨‍🏫 USTOZ DOSKASI
 
-📚 Ingliz tili
+📚 {topic_code}  |  {prev_step + 1}/{len(parts)} qadam
 
 ━━━━━━━━━━━━━━
 
-{render_content(parts[prev_step])}
+{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}
 """,
             reply_markup=keyboard
         )
@@ -861,13 +863,13 @@ async def lesson_help(
 
         await message.edit_text(
             f"""
-👨‍🏫 USTOZ
+👨‍🏫 USTOZ DOSKASI
 
-📚 Ingliz tili
+📚 {topic_code}
 
 ━━━━━━━━━━━━━━
 
-{render_content(main_text)}
+{build_board_text(main_text) or render_content(main_text)}
 
 💡 Izoh:
 
