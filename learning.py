@@ -764,13 +764,157 @@ async def lesson_help(
             4: lesson[10] or ""
         }
 
-        simple_text = simple_map.get(
-            current_step, ""
-        )
-
+        simple_text = simple_map.get(current_step, "")
         main_text = parts[current_step]
 
-        # doskada faqat asosiy matn — izoh ko'rinmaydi
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        # izoh doskada ko'rinadi + 🔊 bosilsa ovoz chiqadi
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 Izohni o'qi",
+                        callback_data="lesson_tts_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="🔙 Darsga qayt",
+                        callback_data="lesson_back_main"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"💡 Izoh:\n\n"
+            f"{render_content(simple_text)}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"📖 Asosiy matn:\n\n"
+            f"{build_board_text(main_text) or render_content(main_text)}",
+            reply_markup=keyboard
+        )
+
+    except Exception as e:
+
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_tts_help(user_id, message):
+    """🔊 Izohni o'qi bosilganda — izoh matnini ovozda o'qiydi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(current_step, "")
+
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def lesson_back_main(user_id, message):
+    """🔙 Darsga qayt — asosiy dars matni qaytadi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -802,27 +946,22 @@ async def lesson_help(
             ]
         )
 
-        # doska o'zgarmasin — faqat izohni ovozda o'qib beradi
-        if simple_text:
-            await speak_mixed_text(user_id, message, simple_text)
-        else:
-            await speak_mixed_text(
-                user_id,
-                message,
-                "Bu bosqich uchun izoh yo'q"
-            )
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[current_step]) or render_content(parts[current_step])}",
+            reply_markup=keyboard
+        )
 
     except Exception as e:
-
         await message.answer(f"❌ Xatolik:\n{e}")
 
     finally:
-
         cur.close()
         conn.close()
 
-async def lesson_tts_help(user_id, message):
-    """😕 bosilganda izoh matnini o'qib beradi"""
+
+
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
