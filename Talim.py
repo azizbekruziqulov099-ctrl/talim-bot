@@ -2656,6 +2656,61 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             show_alert=True
         )
         return
+@dp.message(F.text == "📋 DB")
+async def show_db(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    
+    # barcha jadvallar
+    cur.execute("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        ORDER BY table_name
+    """)
+    tables = [r[0] for r in cur.fetchall()]
+    conn.close()
+    
+    text = "📋 Jadvallar:\n\n" + "\n".join([f"• {t}" for t in tables])
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=f"🔍 {t}")] for t in tables] + 
+                 [[KeyboardButton(text="🔙 Ortga")]],
+        resize_keyboard=True
+    )
+    
+    await message.answer(text, reply_markup=keyboard)
+
+@dp.message(F.text.startswith("🔍 "))
+async def show_table_columns(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    
+    table_name = message.text.replace("🔍 ", "").strip()
+    
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = %s
+        ORDER BY ordinal_position
+    """, (table_name,))
+    
+    rows = cur.fetchall()
+    conn.close()
+    
+    if not rows:
+        await message.answer("❌ Jadval topilmadi")
+        return
+    
+    text = f"📊 <b>{table_name}</b>\n\n"
+    text += "\n".join([f"• {r[0]} — <i>{r[1]}</i>" for r in rows])
+    
+    await message.answer(text, parse_mode="HTML")
 
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
