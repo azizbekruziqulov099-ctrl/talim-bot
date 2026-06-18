@@ -29,7 +29,14 @@ from learning import (
     lesson_prev,
     lesson_tts,
     lesson_tts_help,
-    lesson_back_main
+    lesson_back_main,
+    lesson_consolidation_test,
+    lesson_test_answer,
+    send_test_question,
+    lesson_review_start,
+    lesson_review_answer,
+    send_review_question,
+    start_main_lesson
 )
 import json
 import random
@@ -403,6 +410,31 @@ def init_db():
         school TEXT,
         role TEXT
     )
+    """)
+
+    # subject ustuni — eski DB uchun
+    cur.execute("""
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS subject TEXT
+    """)
+
+    # Dars tarixi — takrorlash va statistika uchun
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lesson_history (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER NOT NULL,
+        topic_code  TEXT NOT NULL,
+        mavzu       TEXT,
+        fan         TEXT,
+        score       INTEGER DEFAULT 0,
+        total       INTEGER DEFAULT 0,
+        learned_at  TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lesson_history_user
+        ON lesson_history(user_id, learned_at DESC)
     """)
 
     conn.commit()
@@ -2138,6 +2170,97 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         await lesson_next(
             call.from_user.id,
             call.message
+        )
+
+        await call.answer()
+
+        return
+
+    if call.data == "review_start":
+
+        await lesson_review_start(
+            call.from_user.id,
+            call.message
+        )
+        await call.answer()
+        return
+
+    if call.data == "review_skip":
+
+        user_id   = call.from_user.id
+        parts     = user_state.get(user_id, {}).get("parts", [])
+        full_name = user_state.get(user_id, {}).get("full_name", "O'quvchi")
+        sinf      = user_state.get(user_id, {}).get("sinf", "")
+        fan       = user_state.get(user_id, {}).get("fan", "")
+        mavzu     = user_state.get(user_id, {}).get("mavzu", "")
+        bugun     = user_state.get(user_id, {}).get("bugun", "")
+
+        await start_main_lesson(
+            call.message, user_id,
+            parts, full_name, sinf, fan, mavzu, bugun
+        )
+        await call.answer()
+        return
+
+    if call.data.startswith("review_answer_"):
+
+        answer = call.data.replace("review_answer_", "")
+        await lesson_review_answer(
+            call.from_user.id,
+            call.message,
+            answer
+        )
+        await call.answer()
+        return
+
+    if call.data == "review_next":
+
+        user_id   = call.from_user.id
+        questions = user_state.get(user_id, {}).get("review_questions", [])
+        index     = user_state.get(user_id, {}).get("review_index", 0)
+
+        await send_review_question(
+            user_id, call.message, questions, index
+        )
+        await call.answer()
+        return
+
+    if call.data == "lesson_consolidation_test":
+
+        await lesson_consolidation_test(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
+
+        return
+
+    if call.data.startswith("test_answer_"):
+
+        answer = call.data.replace("test_answer_", "")
+
+        await lesson_test_answer(
+            call.from_user.id,
+            call.message,
+            answer
+        )
+
+        await call.answer()
+
+        return
+
+    if call.data == "test_next_question":
+
+        user_id   = call.from_user.id
+        questions = user_state.get(user_id, {}).get("test_questions", [])
+        index     = user_state.get(user_id, {}).get("test_index", 0)
+
+        await send_test_question(
+            user_id,
+            call.message,
+            questions,
+            index
         )
 
         await call.answer()
