@@ -858,7 +858,22 @@ async def handle_all(
 
     if message.text == "▶️ O'rganishni boshlash":
 
-        await open_teacher_lesson(message)
+        user_state[user_id] = "awaiting_topic_code"
+
+        await message.answer(
+            "📌 Topic code kiriting:\n\n"
+            "Misol: _1_01_01_01_01_001"
+        )
+
+        return
+
+    if user_state.get(user_id) == "awaiting_topic_code":
+
+        topic_code = message.text.strip()
+
+        user_state[user_id] = None
+
+        await open_teacher_lesson(message, topic_code)
 
         return
 
