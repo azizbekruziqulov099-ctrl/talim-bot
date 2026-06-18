@@ -309,16 +309,14 @@ async def continue_learning(message: Message):
         cur.close()
         conn.close()
 
-async def open_teacher_lesson(message, topic_code=None):
+async def open_teacher_lesson(message):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
 
-        if not topic_code:
-            await message.answer("❌ Topic code berilmadi")
-            return
+        topic_code = "TEST_001"
 
         cur.execute("""
             SELECT *
@@ -597,62 +595,19 @@ async def lesson_tts(user_id, message):
             lesson[13] or ""
         ]
 
-        if (
-            user_id in user_state
-            and
-            user_state[user_id].get(
-                "help_mode",
-                False
-            )
-        ):
-
-            simple_map = {
-                1: lesson[7] or "",
-                2: lesson[8] or "",
-                3: lesson[9] or "",
-                4: lesson[10] or ""
-            }
-
-            text = simple_map.get(
-                current_step,
-                parts[current_step]
-            )
-
-        else:
-
-            text = parts[current_step]
-
-        blocks = parse_content(text)
-
-        clean_text = ""
-
-        for block in blocks:
-
-            if block["type"] == "text":
-
-                clean_text += (
-                    block["content"] + " "
-                )
-
-            else:
-
-                clean_text += (
-                    block["content"] + " "
-                )
+        # 🔊 bosilsa — asosiy matnni o'qiydi
+        text = parts[current_step]
 
         await speak_mixed_text(
             user_id,
             message,
             text
-        )       
+        )
 
     except Exception as e:
 
         import traceback
-
-        await message.answer(
-            traceback.format_exc()
-        )
+        await message.answer(traceback.format_exc())
 
     finally:
 
@@ -773,17 +728,13 @@ async def lesson_help(
     message
 ):
 
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
+    conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
     try:
 
         cur.execute("""
-            SELECT topic_code,
-                   current_step
+            SELECT topic_code, current_step
             FROM lesson_progress
             WHERE user_id = %s
         """, (user_id,))
@@ -816,8 +767,7 @@ async def lesson_help(
             lesson[13] or ""
         ]
 
-        main_text = parts[current_step]
-
+        # izoh matni (simple_1..4)
         simple_map = {
             1: lesson[7] or "",
             2: lesson[8] or "",
@@ -830,10 +780,7 @@ async def lesson_help(
             "Bu qism uchun izoh mavjud emas."
         )
 
-        if user_id not in user_state:
-            user_state[user_id] = {}
-
-        user_state[user_id]["help_mode"] = True
+        main_text = parts[current_step]
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -849,10 +796,15 @@ async def lesson_help(
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔊 O'qib ber",
+                        text="🔊 Asosiy matn",
                         callback_data="lesson_tts"
                     ),
-                
+                    InlineKeyboardButton(
+                        text="🔊 Izohni o'qi",
+                        callback_data="lesson_tts_help"
+                    )
+                ],
+                [
                     InlineKeyboardButton(
                         text="❌ Darsni tugatish",
                         callback_data="lesson_finish"
@@ -865,12 +817,11 @@ async def lesson_help(
             f"""
 👨‍🏫 USTOZ DOSKASI
 
-📚 {topic_code}
-
 ━━━━━━━━━━━━━━
 
 {build_board_text(main_text) or render_content(main_text)}
 
+━━━━━━━━━━━━━━
 💡 Izoh:
 
 {render_content(simple_text)}
@@ -878,16 +829,77 @@ async def lesson_help(
             reply_markup=keyboard
         )
 
+        # izohni avtomatik o'qib beradi
+        if simple_text and simple_text != "Bu qism uchun izoh mavjud emas.":
+            await speak_mixed_text(user_id, message, simple_text)
+
     except Exception as e:
 
-        await message.answer(
-            f"❌ Xatolik:\n{e}"
-        )
+        await message.answer(f"❌ Xatolik:\n{e}")
 
     finally:
 
         cur.close()
         conn.close()
+
+async def lesson_tts_help(user_id, message):
+    """😕 bosilganda izoh matnini o'qib beradi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(
+            current_step,
+            ""
+        )
+
+        if not simple_text:
+            await message.answer("💡 Bu bosqich uchun izoh yo'q")
+            return
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
 
 async def lesson_finish(
     user_id,
