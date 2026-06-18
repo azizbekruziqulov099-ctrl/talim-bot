@@ -402,11 +402,14 @@ async def open_teacher_lesson(message):
                     InlineKeyboardButton(
                         text="😕 Tushunmadim",
                         callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
                     )
                 ]
             ]
         )
-
         msg = await message.answer(
     f"""
 👨‍🏫 USTOZ
@@ -442,6 +445,11 @@ async def lesson_next(user_id, message):
     cur = conn.cursor()
 
     try:
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["help_mode"] = True
 
         cur.execute("""
             SELECT topic_code, current_step
@@ -520,11 +528,14 @@ async def lesson_next(user_id, message):
                     InlineKeyboardButton(
                         text="😕 Tushunmadim",
                         callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
                     )
                 ]
             ]
         )
-
         await message.edit_text(
             f"""
 👨‍🏫 USTOZ
@@ -584,7 +595,30 @@ async def lesson_tts(user_id, message):
             lesson[13] or ""
         ]
 
-        text = parts[current_step]
+        if (
+            user_id in user_state
+            and
+            user_state[user_id].get(
+                "help_mode",
+                False
+            )
+        ):
+
+            simple_map = {
+                1: lesson[7] or "",
+                2: lesson[8] or "",
+                3: lesson[9] or "",
+                4: lesson[10] or ""
+            }
+
+            text = simple_map.get(
+                current_step,
+                parts[current_step]
+            )
+
+        else:
+
+            text = parts[current_step]
 
         blocks = parse_content(text)
 
@@ -629,6 +663,9 @@ async def lesson_prev(user_id, message):
     cur = conn.cursor()
 
     try:
+
+        if user_id in user_state:
+            user_state[user_id]["help_mode"] = False
 
         cur.execute("""
             SELECT topic_code, current_step
@@ -703,7 +740,6 @@ async def lesson_prev(user_id, message):
                         text="😕 Tushunmadim",
                         callback_data="lesson_help"
                     ),
-                
                     InlineKeyboardButton(
                         text="❌ Darsni tugatish",
                         callback_data="lesson_finish"
@@ -791,6 +827,11 @@ async def lesson_help(
             current_step,
             "Bu qism uchun izoh mavjud emas."
         )
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["help_mode"] = True
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
