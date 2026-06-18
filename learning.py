@@ -62,21 +62,14 @@ async def speak_mixed_text(
                 voices["text"]
             )
 
-        filename = (
-            f"part_{user_id}_{i}.mp3"
-        )
+        filename = f"part_{user_id}_{i}.mp3"
 
-        content = str(
-            block["content"]
-        ).strip()
+        content = str(block["content"]).strip()
 
         if not content:
             continue
 
-        if not any(
-            ch.isalnum()
-            for ch in content
-        ):
+        if not any(ch.isalnum() for ch in content):
             continue
 
         communicate = edge_tts.Communicate(
@@ -86,76 +79,72 @@ async def speak_mixed_text(
 
         try:
 
-            await communicate.save(
-                filename
-            )
+            await communicate.save(filename)
 
-            audio_files.append(
-                filename
-            )
+            # fayl mavjud va bo'sh emasligini tekshir
+            if (
+                os.path.exists(filename)
+                and os.path.getsize(filename) > 0
+            ):
+                audio_files.append(filename)
+            else:
+                continue
 
         except:
-
             continue
 
-    combined = AudioSegment.empty()
-
-    for file in audio_files:
-
-        combined += AudioSegment.from_mp3(
-            file
-        )
-
-    final_file = (
-        f"mixed_{user_id}.mp3"
-    )
-
-    combined.export(
-        final_file,
-        format="mp3"
-    )
-
-    if (
-        user_id in user_state
-        and
-        "voice_message_id"
-        in user_state[user_id]
-    ):
-
-        try:
-
-            await message.bot.delete_message(
-                chat_id=message.chat.id,
-                message_id=user_state[user_id][
-                    "voice_message_id"
-                ]
-            )
-
-        except:
-            pass
-
-    voice_msg = await message.answer_voice(
-        FSInputFile(final_file)
-    )
-
-    if user_id not in user_state:
-        user_state[user_id] = {}
-
-    user_state[user_id][
-        "voice_message_id"
-    ] = voice_msg.message_id
-
-    for file in audio_files:
-
-        try:
-            os.remove(file)
-        except:
-            pass
+    if not audio_files:
+        await message.answer("🔇 Audio yaratib bo'lmadi")
+        return
 
     try:
-        os.remove(final_file)
-    except:
-        pass
+
+        combined = AudioSegment.empty()
+
+        for file in audio_files:
+            segment = AudioSegment.from_file(file, format="mp3")
+            combined += segment
+
+        final_file = f"mixed_{user_id}.mp3"
+
+        combined.export(final_file, format="mp3")
+
+        if (
+            user_id in user_state
+            and "voice_message_id" in user_state[user_id]
+        ):
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=user_state[user_id]["voice_message_id"]
+                )
+            except:
+                pass
+
+        voice_msg = await message.answer_voice(
+            FSInputFile(final_file)
+        )
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["voice_message_id"] = voice_msg.message_id
+
+    except Exception as e:
+        await message.answer(f"❌ Audio xatolik: {e}")
+
+    finally:
+
+        for file in audio_files:
+            try:
+                os.remove(file)
+            except:
+                pass
+
+        try:
+            os.remove(final_file)
+        except:
+            pass
 
 async def read_current_page(user_id, message, user_state):
 
@@ -776,12 +765,12 @@ async def lesson_help(
         }
 
         simple_text = simple_map.get(
-            current_step,
-            "Bu qism uchun izoh mavjud emas."
+            current_step, ""
         )
 
         main_text = parts[current_step]
 
+        # doskada faqat asosiy matn — izoh ko'rinmaydi
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -796,12 +785,12 @@ async def lesson_help(
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔊 Asosiy matn",
+                        text="🔊 O'qib ber",
                         callback_data="lesson_tts"
                     ),
                     InlineKeyboardButton(
-                        text="🔊 Izohni o'qi",
-                        callback_data="lesson_tts_help"
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
                     )
                 ],
                 [
@@ -813,25 +802,15 @@ async def lesson_help(
             ]
         )
 
-        await message.edit_text(
-            f"""
-👨‍🏫 USTOZ DOSKASI
-
-━━━━━━━━━━━━━━
-
-{build_board_text(main_text) or render_content(main_text)}
-
-━━━━━━━━━━━━━━
-💡 Izoh:
-
-{render_content(simple_text)}
-""",
-            reply_markup=keyboard
-        )
-
-        # izohni avtomatik o'qib beradi
-        if simple_text and simple_text != "Bu qism uchun izoh mavjud emas.":
+        # doska o'zgarmasin — faqat izohni ovozda o'qib beradi
+        if simple_text:
             await speak_mixed_text(user_id, message, simple_text)
+        else:
+            await speak_mixed_text(
+                user_id,
+                message,
+                "Bu bosqich uchun izoh yo'q"
+            )
 
     except Exception as e:
 
