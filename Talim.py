@@ -27,7 +27,8 @@ from aiogram.types import (
 from learning import (
     lesson_next,
     lesson_prev,
-    lesson_tts
+    lesson_tts,
+    lesson_tts_help
 )
 import json
 import random
@@ -858,22 +859,7 @@ async def handle_all(
 
     if message.text == "▶️ O'rganishni boshlash":
 
-        user_state[user_id] = "awaiting_topic_code"
-
-        await message.answer(
-            "📌 Topic code kiriting:\n\n"
-            "Misol: _1_01_01_01_01_001"
-        )
-
-        return
-
-    if user_state.get(user_id) == "awaiting_topic_code":
-
-        topic_code = message.text.strip()
-
-        user_state[user_id] = None
-
-        await open_teacher_lesson(message, topic_code)
+        await open_teacher_lesson(message)
 
         return
 
@@ -2160,6 +2146,17 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
     if call.data == "lesson_tts":
 
         await lesson_tts(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
+
+        return
+
+    if call.data == "lesson_tts_help":
+
+        await lesson_tts_help(
             call.from_user.id,
             call.message
         )
