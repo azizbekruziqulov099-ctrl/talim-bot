@@ -443,7 +443,7 @@ async def open_teacher_lesson(message):
                 SELECT question, option_a, option_b,
                        option_c, option_d, correct_answer,
                        explanation
-                FROM dts_tree
+                FROM generated_tests
                 WHERE topic_code = %s
                   AND question IS NOT NULL
                   AND option_a IS NOT NULL
@@ -1239,10 +1239,10 @@ async def lesson_consolidation_test(user_id, message):
 
         topic_code = user_state.get(user_id, {}).get("topic_code", "TEST_001")
 
-        # dts_tree dan o'sha mavzu topic_code lari
+        # generated_tests dan mavzu topic_code lari
         cur.execute("""
-            SELECT topic_code
-            FROM dts_tree
+            SELECT DISTINCT topic_code
+            FROM generated_tests
             WHERE topic_code LIKE %s
             LIMIT 20
         """, (topic_code[:10] + "%",))
@@ -1252,12 +1252,12 @@ async def lesson_consolidation_test(user_id, message):
         if not topic_codes:
             topic_codes = [topic_code]
 
-        # Savollar
+        # generated_tests dan savollar
         cur.execute("""
-            SELECT question, option_a, option_b, 
+            SELECT question, option_a, option_b,
                    option_c, option_d, correct_answer,
                    explanation, question_type
-            FROM dts_tree
+            FROM generated_tests
             WHERE topic_code = ANY(%s)
               AND question IS NOT NULL
               AND option_a IS NOT NULL
