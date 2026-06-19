@@ -975,53 +975,43 @@ async def lesson_help(
         }
 
         simple_text = simple_map.get(current_step, "")
-        main_text = parts[current_step]
+        main_text   = parts[current_step]
 
         if not simple_text:
             simple_text = "Bu bosqich uchun izoh yo'q"
 
-        # izoh doskada ko'rinadi + 🔊 bosilsa ovoz chiqadi
+        u    = user_state.get(user_id, {})
+        fn   = u.get("full_name", "O'quvchi")
+        sinf = u.get("sinf", "")
+        fan  = u.get("fan", "")
+        mav  = u.get("mavzu", topic_code)
+        bgun = u.get("bugun", "")
+
+        # Doska o'zgarmaydi — faqat tugmalar o'zgaradi
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="⬅️",
-                        callback_data="lesson_prev"
-                    ),
-                    InlineKeyboardButton(
-                        text="➡️",
-                        callback_data="lesson_next"
-                    )
+                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="🔊 Izohni o'qi",
-                        callback_data="lesson_tts_help"
-                    ),
-                    InlineKeyboardButton(
-                        text="🔙 Darsga qayt",
-                        callback_data="lesson_back_main"
-                    )
+                    InlineKeyboardButton(text="🔊 Izohni o'qi", callback_data="lesson_tts_help"),
+                    InlineKeyboardButton(text="🔙 Darsga qayt", callback_data="lesson_back_main")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="❌ Darsni tugatish",
-                        callback_data="lesson_finish"
-                    )
+                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
                 ]
             ]
         )
 
-        await message.edit_text(
-            f"👨‍🏫 USTOZ DOSKASI\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"💡 Izoh:\n\n"
-            f"{render_content(simple_text)}\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"📖 Asosiy matn:\n\n"
-            f"{build_board_text(main_text) or render_content(main_text)}",
-            reply_markup=keyboard
-        )
+        # Doska matni o'zgarmaydi — faqat reply_markup yangilanadi
+        try:
+            await message.edit_reply_markup(reply_markup=keyboard)
+        except Exception:
+            pass
+
+        # Izohni ovozda o'qib beradi
+        await speak_mixed_text(user_id, message, simple_text)
 
     except Exception as e:
 
@@ -1128,40 +1118,24 @@ async def lesson_back_main(user_id, message):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="⬅️",
-                        callback_data="lesson_prev"
-                    ),
-                    InlineKeyboardButton(
-                        text="➡️",
-                        callback_data="lesson_next"
-                    )
+                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="🔊 O'qib ber",
-                        callback_data="lesson_tts"
-                    ),
-                    InlineKeyboardButton(
-                        text="😕 Tushunmadim",
-                        callback_data="lesson_help"
-                    )
+                    InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
+                    InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="❌ Darsni tugatish",
-                        callback_data="lesson_finish"
-                    )
+                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
                 ]
             ]
         )
 
-        await message.edit_text(
-            f"👨‍🏫 USTOZ DOSKASI\n\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"{build_board_text(parts[current_step]) or render_content(parts[current_step])}",
-            reply_markup=keyboard
-        )
+        # Faqat tugmalarni asliga qaytaradi — ovoz yuklamaydi
+        try:
+            await message.edit_reply_markup(reply_markup=keyboard)
+        except Exception:
+            pass
 
     except Exception as e:
         await message.answer(f"❌ Xatolik:\n{e}")
