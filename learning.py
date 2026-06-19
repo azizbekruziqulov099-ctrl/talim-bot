@@ -1345,10 +1345,12 @@ async def send_test_question(user_id, message, questions, index):
         except Exception:
             pass
 
+        msg = "Zo'r natija! Davom eting! 🚀" if pct >= 80 else "Yaxshi urindi! Yana mashq qiling! 💡" if pct >= 60 else "Mavzuni qayta ko'rib chiqing! 📖"
+
         await message.edit_text(
             f"{emoji} Test yakunlandi!\n\n"
             f"✅ To'g'ri: {correct}/{total} ({pct}%)\n\n"
-            f"{'Zo\'r natija! Davom eting! 🚀' if pct >= 80 else 'Yaxshi urindi! Yana mashq qiling! 💡' if pct >= 60 else 'Mavzuni qayta ko\'rib chiqing! 📖'}",
+            f"{msg}",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
