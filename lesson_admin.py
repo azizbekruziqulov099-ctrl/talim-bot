@@ -363,7 +363,7 @@ async def la_import_excel(message: Message, state: FSMContext):
     buf.seek(0)
 
     try:
-        df = pd.read_excel(buf, sheet_name="DARSLAR", dtype=str)
+        df = pd.read_excel(buf, sheet_name="DARSLAR", dtype=str, header=1)
     except Exception as e:
         await message.answer(f"❌ Excel o'qib bo'lmadi:\n{e}")
         await state.clear()
