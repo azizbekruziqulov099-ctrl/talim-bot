@@ -1,4 +1,5 @@
 from admin_handlers import *
+from progress import build_welcome, create_auto_exams, get_pending_exams
 from learning import *
 from generator_handlers import *
 from test_engine import *
