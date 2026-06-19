@@ -213,11 +213,11 @@ def get_repeat_topics(user_id):
 
     cur.execute("""
         SELECT lt.topic_code, t.kichik_name, t.subject_name,
-               lt.score, lt.next_repeat
+               lt.score, lt.next_repeat::date
         FROM learned_topics lt
         JOIN dts_tree t ON t.topic_code = lt.topic_code
         WHERE lt.user_id = %s
-          AND lt.next_repeat <= %s
+          AND lt.next_repeat::date <= %s
         ORDER BY lt.next_repeat
         LIMIT 5
     """, (user_id, date.today()))
@@ -307,12 +307,12 @@ def get_pending_exams(user_id):
     conn = db(); cur = conn.cursor()
 
     cur.execute("""
-        SELECT e.id, e.title, e.exam_date,
+        SELECT e.id, e.title, e.exam_date::date,
                e.is_mandatory, er.status
         FROM exam_results er
         JOIN exams e ON e.id = er.exam_id
         WHERE er.user_id = %s
-          AND e.exam_date <= %s
+          AND e.exam_date::date <= %s
           AND er.status = 'pending'
         ORDER BY e.is_mandatory DESC, e.exam_date
     """, (user_id, date.today()))
@@ -327,12 +327,12 @@ def get_upcoming_exams(user_id):
     conn = db(); cur = conn.cursor()
 
     cur.execute("""
-        SELECT e.title, e.exam_date, e.is_mandatory
+        SELECT e.title, e.exam_date::date, e.is_mandatory
         FROM exam_results er
         JOIN exams e ON e.id = er.exam_id
         WHERE er.user_id = %s
-          AND e.exam_date > %s
-          AND e.exam_date <= %s
+          AND e.exam_date::date > %s
+          AND e.exam_date::date <= %s
           AND er.status = 'pending'
         ORDER BY e.exam_date
         LIMIT 3
