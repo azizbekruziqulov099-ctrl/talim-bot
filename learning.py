@@ -208,158 +208,134 @@ async def continue_learning(message: Message):
     user_id = message.from_user.id
 
     conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     try:
 
-        # foydalanuvchi sinfi
         cur.execute("""
-            SELECT class
-            FROM users
+            SELECT full_name, class FROM users
             WHERE user_id = %s
         """, (user_id,))
-
         user = cur.fetchone()
 
         if not user:
-            await message.answer(
-                "❌ Avval registratsiyadan o'ting."
-            )
+            await message.answer("❌ Avval registratsiyadan o'ting.")
             return
 
-        grade = user[0]
+        full_name = user[0] or "O'quvchi"
+        grade     = user[1] or "1"
+        name      = full_name.split()[0]
 
-        # shu sinfdagi birinchi mavzu
+        # Fanlar ro'yxati
         cur.execute("""
-            SELECT
-                topic_code,
-                subject_name,
-                bob_name,
-                bolim_name,
-                mavzu_name,
-                kichik_name
+            SELECT DISTINCT subject_name
             FROM dts_tree
-            WHERE grade = %s
-            ORDER BY topic_code
-            LIMIT 1
+            WHERE grade = %s AND is_deleted = FALSE
+            ORDER BY subject_name
         """, (grade,))
+        subjects = [r[0] for r in cur.fetchall()]
 
-        topic = cur.fetchone()
+        # Har fan uchun progress
+        buttons = []
+        fan_info = []
 
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM dts_tree
-            WHERE grade = %s
-        """, (grade,))
+        for subj in subjects:
+            cur.execute("""
+                SELECT COUNT(*) FROM dts_tree
+                WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
+            """, (grade, subj))
+            total = cur.fetchone()[0]
 
-        total_topics = cur.fetchone()[0]
+            cur.execute("""
+                SELECT COUNT(*) FROM learned_topics lt
+                JOIN dts_tree t ON t.topic_code = lt.topic_code
+                WHERE lt.user_id=%s AND t.grade=%s AND t.subject_name=%s
+            """, (user_id, grade, subj))
+            learned = cur.fetchone()[0]
 
-        completed_topics = 0
+            pct = int(learned * 100 / total) if total else 0
+            bar = "█" * (pct // 20) + "░" * (5 - pct // 20)
 
-        if not topic:
-            await message.answer(
-                f"❌ {grade}-sinf uchun mavzu topilmadi."
+            icon = "✅" if pct == 100 else "📖" if pct > 0 else "🔒"
+            buttons.append([InlineKeyboardButton(
+                text=f"{icon} {subj} {bar} {pct}%",
+                callback_data=f"fan_select|{grade}|{subj}"
+            )])
+            fan_info.append((subj, learned, total, pct))
+
+        # Keyingi o'rganilmagan mavzu
+        from progress import get_next_topic, get_repeat_topics
+        next_topic = get_next_topic(user_id, grade)
+        repeats    = get_repeat_topics(user_id)
+
+        text = f"☀️ Salom, {name}!\n━━━━━━━━━━━━━━\n"
+
+        if repeats:
+            text += f"🔁 {len(repeats)} ta mavzu takrorlash kutmoqda!\n"
+
+        if next_topic:
+            text += (
+                f"\n🎯 Keyingi mavzu:\n"
+                f"📚 {next_topic[3]}\n"
+                f"📝 {next_topic[2]}\n"
+                f"🔑 {next_topic[1]}"
             )
-            return
 
-        topic_code = topic[0]
-        subject_name = topic[1]
-        bob_name = topic[2]
-        bolim_name = topic[3]
-        mavzu_name = topic[4]
-        kichik_name = topic[5]
-
-        text = f"""
-        ☀️ Xush kelibsiz!
-
-        🎓 {grade}-sinf
-
-        ━━━━━━━━━━━━━━
-
-        📚 {subject_name}
-
-        📍 Sizning navbatdagi mavzuingiz:
-
-        📝 {mavzu_name}
-
-        🗣 Kichik mavzu:
-        {kichik_name}
-
-        ━━━━━━━━━━━━━━
-
-        📚 Jami mavzular: {total_topics} ta
-        📖 Qolgan mavzular: {total_topics - completed_topics} ta
-
-        ━━━━━━━━━━━━━━
-
-        🔥 Bugungi vazifa
-
-        Ushbu mavzuni o'rganing va
-        bilim xaritangizdagi navbatdagi
-        qadamni oching.
-
-        🏆 Har bir tugatilgan mavzu
-        sizni maqsadingizga yaqinlashtiradi.
-        """
-
-        if user_id not in user_state:
-            user_state[user_id] = {}
-
-        user_state[user_id]["speak_text"] = text
+        buttons.append([InlineKeyboardButton(
+            text="▶️ Davom etish",
+            callback_data="lesson_continue"
+        )])
+        buttons.append([InlineKeyboardButton(
+            text="🔁 Takrorlash",
+            callback_data="lesson_repeat"
+        )])
 
         await message.answer(
             text,
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[
-                    [
-                        KeyboardButton(text="🔊 O'qib berish")
-                    ],
-                    [
-                        KeyboardButton(text="▶️ O'rganishni boshlash")
-                    ],
-                    [
-                        KeyboardButton(text="📚 Barcha fanlar")
-                    ],
-                    [
-                        KeyboardButton(text="⬅️ Ortga")
-                    ]
-                ],
-                resize_keyboard=True
-            )
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
 
     except Exception as e:
-
-        await message.answer(
-            f"❌ Xatolik:\n{e}"
-        )
+        await message.answer(f"❌ Xatolik:\n{e}")
 
     finally:
-
         cur.close()
         conn.close()
 
-async def open_teacher_lesson(message):
+
+
+async def open_teacher_lesson(message, topic_code=None):
 
     conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     try:
 
-        topic_code = "TEST_001"
         user_id = message.from_user.id
 
         # O'quvchi ma'lumotlari
         cur.execute("""
             SELECT full_name, class, subject
-            FROM users
-            WHERE user_id = %s
+            FROM users WHERE user_id = %s
         """, (user_id,))
         user_info = cur.fetchone()
 
         full_name = user_info[0] if user_info else "O'quvchi"
-        sinf      = user_info[1] if user_info else ""
+        sinf      = user_info[1] if user_info else "1"
         fan       = user_info[2] if user_info else ""
+
+        # topic_code berilmagan bo'lsa — keyingi o'rganilmagan mavzuni top
+        if not topic_code:
+            from progress import get_next_topic
+            next_row = get_next_topic(user_id, sinf)
+            if next_row:
+                topic_code = next_row[0]
+            else:
+                await message.answer(
+                    "🎉 Barcha mavzularni o'rgandingiz!\n"
+                    "Takrorlash uchun navigator dan foydalaning."
+                )
+                return
 
         # Dars matni
         cur.execute("""
@@ -371,7 +347,11 @@ async def open_teacher_lesson(message):
         lesson = cur.fetchone()
 
         if not lesson:
-            await message.answer("❌ Dars topilmadi")
+            await message.answer(
+                f"📝 Bu mavzu uchun dars hali yozilmagan\n\n"
+                f"🔑 {topic_code}\n\n"
+                f"Admin tez orada qo'shadi! ⏳"
+            )
             return
 
         # Mavzu nomi dts_tree dan
