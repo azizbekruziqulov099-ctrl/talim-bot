@@ -327,11 +327,11 @@ async def la_template(call: CallbackQuery):
     sname = rows[0][3] if rows else ""
     mname = rows[0][4] if rows else ""
 
-    filepath = make_excel(rows, lessons, grade, sname, mname)
+    buf = make_excel(rows, lessons, grade, sname, mname)
 
-    meta = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
+    from aiogram.types import BufferedInputFile
     await call.message.answer_document(
-        FSInputFile(filepath),
+        BufferedInputFile(buf.read(), filename=f"lesson_{grade}.xlsx"),
         caption=(
             f"📥 Shablon\n🏫 {grade}-sinf | {sname}\n📖 {mname}\n\n"
             f"✅ Yashil — dars bor\n⬜ Oq — to'ldiring\n\n"
@@ -342,8 +342,6 @@ async def la_template(call: CallbackQuery):
             callback_data="la_imp"
         )]])
     )
-    if os.path.exists(filepath):
-        os.remove(filepath)
 
 # ─── IMPORT ───
 @dp.callback_query(F.data == "la_imp")
@@ -387,7 +385,8 @@ async def la_import_excel(message: Message, state: FSMContext):
 
         fields = (intro, v(row,"part_1"), v(row,"part_2"), v(row,"part_3"), v(row,"part_4"),
                   v(row,"simple_1"), v(row,"simple_2"), v(row,"example_1"), v(row,"example_2"),
-                  v(row,"exercise_1"), v(row,"exercise_2"), v(row,"summary"))
+                  v(row,"exercise_1"), v(row,"exercise_2"), v(row,"summary"),
+                  v(row,"simple_3"), v(row,"simple_4"))
 
         cur.execute("SELECT id FROM teacher_lessons WHERE topic_code=%s", (tc,))
         if cur.fetchone():
@@ -395,7 +394,8 @@ async def la_import_excel(message: Message, state: FSMContext):
                 UPDATE teacher_lessons SET
                     intro=%s,part_1=%s,part_2=%s,part_3=%s,part_4=%s,
                     simple_1=%s,simple_2=%s,example_1=%s,example_2=%s,
-                    exercise_1=%s,exercise_2=%s,summary=%s
+                    exercise_1=%s,exercise_2=%s,summary=%s,
+                    simple_3=%s,simple_4=%s
                 WHERE topic_code=%s
             """, (*fields, tc))
             updated += 1
@@ -403,8 +403,9 @@ async def la_import_excel(message: Message, state: FSMContext):
             cur.execute("""
                 INSERT INTO teacher_lessons
                 (topic_code,intro,part_1,part_2,part_3,part_4,
-                 simple_1,simple_2,example_1,example_2,exercise_1,exercise_2,summary)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 simple_1,simple_2,example_1,example_2,exercise_1,exercise_2,summary,
+                 simple_3,simple_4)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (tc, *fields))
             added += 1
 
@@ -429,6 +430,7 @@ async def noop(call: CallbackQuery):
 
 # ─── EXCEL SHABLON ───
 def make_excel(rows, lessons, grade, subject_name, mavzu_name):
+    import io
     wb = Workbook()
     thin = Side(style="thin", color="CCCCCC")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -437,11 +439,13 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     columns = [
         ("topic_code",16),("grade",8),("subject",18),("mavzu",22),
         ("intro",45),("part_1",45),("part_2",45),("part_3",45),("part_4",45),
-        ("simple_1",38),("simple_2",38),("example_1",38),("example_2",38),
+        ("simple_1",38),("simple_2",38),("simple_3",38),("simple_4",38),
+        ("example_1",38),("example_2",38),
         ("exercise_1",38),("exercise_2",38),("summary",45),
     ]
     editable = {"intro","part_1","part_2","part_3","part_4",
-                "simple_1","simple_2","example_1","example_2","exercise_1","exercise_2","summary"}
+                "simple_1","simple_2","simple_3","simple_4",
+                "example_1","example_2","exercise_1","exercise_2","summary"}
 
     ws = wb.active; ws.title = "DARSLAR"
     ws.merge_cells(f"A1:{get_column_letter(len(columns))}1")
@@ -512,8 +516,7 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
         c.border = border
     ws2.row_dimensions[3].height = 100
 
-    import re
-    safe_name = re.sub(r'[^\w\s-]', '', mavzu_name)[:15].strip()
-    filepath = f"lesson_{grade}_{safe_name}.xlsx"
-    wb.save(filepath)
-    return filepath
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
