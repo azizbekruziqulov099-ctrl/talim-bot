@@ -38,6 +38,7 @@ from learning import (
     send_review_question,
     start_main_lesson
 )
+import lesson_admin
 import json
 import random
 import time
