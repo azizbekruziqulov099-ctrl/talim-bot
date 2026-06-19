@@ -609,39 +609,6 @@ async def lesson_review_answer(user_id, message, answer):
         )
     )
 
-        lesson = cur.fetchone()
-
-        if not lesson:
-
-            await message.answer(
-                "❌ Dars topilmadi"
-            )
-            return
-
-        parts = [
-            lesson[2] or "",
-            lesson[3] or "",
-            lesson[4] or "",
-            lesson[5] or "",
-            lesson[6] or "",
-            lesson[13] or ""
-        ]
-
-        user_id = message.from_user.id
-
-        if user_id not in user_state:
-            user_state[user_id] = {}
-
-    except Exception as e:
-
-        await message.answer(
-            f"❌ Xatolik:\n{e}"
-        )
-
-    finally:
-
-        cur.close()
-        conn.close()
 
 async def lesson_next(user_id, message):
 
@@ -1468,7 +1435,7 @@ async def lesson_test_answer(user_id, message, answer):
     )
 
 
-
+async def lesson_finish(
     user_id,
     message
 ):
