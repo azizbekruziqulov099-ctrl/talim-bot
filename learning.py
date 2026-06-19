@@ -371,13 +371,20 @@ async def open_teacher_lesson(message):
 
         # Mavzu nomi dts_tree dan
         cur.execute("""
-            SELECT small_topic
+            SELECT grade, subject_name, mavzu_name, kichik_name
             FROM dts_tree
             WHERE topic_code = %s
             LIMIT 1
         """, (topic_code,))
         topic_row = cur.fetchone()
-        mavzu = topic_row[0] if topic_row else topic_code
+        if topic_row:
+            sinf_db = topic_row[0] or sinf
+            fan_db  = topic_row[1] or fan
+            mavzu   = topic_row[2] or topic_code
+            sinf    = sinf_db
+            fan     = fan_db
+        else:
+            mavzu = topic_code
 
         parts = [p for p in [
             lesson[2] or "",
