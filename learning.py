@@ -977,7 +977,15 @@ async def lesson_help(
         simple_text = simple_map.get(current_step, "")
         main_text   = parts[current_step]
 
-        # Tugmalarni o'zgartir
+        u    = user_state.get(user_id, {})
+        fn   = u.get("full_name", "O'quvchi")
+        sinf = u.get("sinf", "")
+        fan  = u.get("fan", "")
+        mav  = u.get("mavzu", topic_code)
+        bgun = u.get("bugun", "")
+
+        izoh = simple_text if simple_text else "Bu bosqich uchun izoh yo'q"
+
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -994,16 +1002,16 @@ async def lesson_help(
             ]
         )
 
-        try:
-            await message.edit_reply_markup(reply_markup=keyboard)
-        except Exception:
-            pass
-
-        # Izohni alohida xabar sifatida yubor
-        if simple_text:
-            await message.answer(f"💡 Izoh:\n\n{simple_text}")
-        else:
-            await message.answer("💡 Bu bosqich uchun izoh yo'q")
+        await message.edit_text(
+            f"👤 {fn} | {sinf}\n"
+            f"📘 {fan} • {mav} • {bgun}\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{render_content(main_text)}\n\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💡 Izoh:\n\n"
+            f"{render_content(izoh)}",
+            reply_markup=keyboard
+        )
 
     except Exception as e:
 
