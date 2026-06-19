@@ -2130,6 +2130,56 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
+    if call.data == "lesson_continue":
+        from learning import open_teacher_lesson
+        await open_teacher_lesson(call.message)
+        await call.answer()
+        return
+
+    if call.data == "lesson_repeat":
+        from progress import get_repeat_topics
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (call.from_user.id,))
+        row = cur2.fetchone()
+        cur2.close(); conn2.close()
+        topics = get_repeat_topics(call.from_user.id)
+        if topics:
+            topic_code = topics[0][0]
+            await open_teacher_lesson(call.message, topic_code)
+        else:
+            await call.answer("Takrorlanadigan mavzu yo'q!", show_alert=True)
+        await call.answer()
+        return
+
+    if call.data.startswith("fan_select|"):
+        parts      = call.data.split("|")
+        grade      = parts[1]
+        subj       = parts[2]
+        from progress import get_next_topic
+        next_topic = get_next_topic(call.from_user.id, grade, None)
+        if next_topic and next_topic[3] == subj:
+            await open_teacher_lesson(call.message, next_topic[0])
+        else:
+            conn2 = psycopg2.connect(DATABASE_URL)
+            cur2  = conn2.cursor()
+            cur2.execute("""
+                SELECT t.topic_code FROM dts_tree t
+                LEFT JOIN learned_topics lt
+                    ON lt.topic_code=t.topic_code AND lt.user_id=%s
+                WHERE t.grade=%s AND t.subject_name=%s
+                  AND lt.topic_code IS NULL AND t.is_deleted=FALSE
+                ORDER BY t.topic_code LIMIT 1
+            """, (call.from_user.id, grade, subj))
+            row = cur2.fetchone()
+            cur2.close(); conn2.close()
+            if row:
+                await open_teacher_lesson(call.message, row[0])
+            else:
+                await call.answer(f"✅ {subj} tugallangan!", show_alert=True)
+        await call.answer()
+        return
+
     if call.data == "exam_later":
         await call.answer("⏰ Keyinroq eslatiladi")
         conn = psycopg2.connect(DATABASE_URL)
