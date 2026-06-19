@@ -1,5 +1,4 @@
 from admin_handlers import *
-from progress import build_welcome, create_auto_exams, get_pending_exams
 from learning import *
 from generator_handlers import *
 from test_engine import *
@@ -635,25 +634,7 @@ def get_topic_statistics(topic_code):
     conn.close()
 
     return row
-@dp.message(F.text == "📊 DTS hisob")
-async def dts_count(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT grade, COUNT(DISTINCT mavzu_code), COUNT(DISTINCT topic_code)
-        FROM dts_tree
-        WHERE is_deleted=FALSE
-        GROUP BY grade
-        ORDER BY grade
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    text = "📊 Sinf | Mavzu | Kichik mavzu\n\n"
-    for grade, mavzu, kichik in rows:
-        text += f"{grade}-sinf: {mavzu} mavzu, {kichik} kichik\n"
-    await message.answer(f"<pre>{text}</pre>", parse_mode="HTML")
+
 async def show_topics_page(
     message,
     user_id
@@ -748,7 +729,7 @@ async def start(message: types.Message):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT role FROM users WHERE user_id=%s",
+        "SELECT role, full_name, class FROM users WHERE user_id=%s",
         (message.from_user.id,)
     )
 
@@ -759,16 +740,67 @@ async def start(message: types.Message):
     # RO'YXATDAN O'TGAN FOYDALANUVCHI
     if user:
 
-        role = user[0]
+        role, full_name, grade = user
 
         if message.from_user.id in ADMINS:
             role = "Admin"
 
-        await message.answer(
-            f"👋 Qaytganingiz bilan!\n\n"
-            f"🎭 Rol: {role}",
-            reply_markup=get_main_keyboard(role)
-        )
+        if role == "Admin":
+            await message.answer(
+                f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
+                reply_markup=get_main_keyboard(role)
+            )
+            return
+
+        # O'quvchi uchun yoshga mos kutib olish
+        if role in ("🧒 O'quvchi", "O'quvchi"):
+
+            from progress import build_welcome, get_pending_exams, create_auto_exams, update_streak
+
+            # Streak yangilash
+            update_streak(message.from_user.id)
+
+            # Kutib olish matni
+            welcome_text = build_welcome(
+                message.from_user.id,
+                full_name or "O'quvchi",
+                grade or "5"
+            )
+
+            # Majburiy imtihon bormi?
+            pending = get_pending_exams(message.from_user.id)
+            mandatory = [e for e in pending if e[3]]
+
+            if mandatory:
+                exam = mandatory[0]
+                await message.answer(
+                    f"{welcome_text}\n\n"
+                    f"🚨 MAJBURIY IMTIHON:\n"
+                    f"📘 {exam[1]}\n"
+                    f"📅 Sana: {exam[2]}",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(
+                                text="▶️ Imtihonni boshlash",
+                                callback_data=f"exam_start_{exam[0]}"
+                            )],
+                            [InlineKeyboardButton(
+                                text="⏭ Keyinroq",
+                                callback_data="exam_later"
+                            )]
+                        ]
+                    )
+                )
+            else:
+                await message.answer(
+                    welcome_text,
+                    reply_markup=get_main_keyboard(role)
+                )
+        else:
+            await message.answer(
+                f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
+                reply_markup=get_main_keyboard(role)
+            )
 
         return
 
@@ -2097,6 +2129,18 @@ async def handle_all(
 async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
+
+    if call.data == "exam_later":
+        await call.answer("⏰ Keyinroq eslatiladi")
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        cur.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        row  = cur.fetchone()
+        cur.close(); conn.close()
+        role = row[0] if row else "🧒 O'quvchi"
+        await call.message.delete()
+        await call.message.answer("🏠 Asosiy menyu", reply_markup=get_main_keyboard(role))
+        return
 
     if call.data == "dts_import":
 
