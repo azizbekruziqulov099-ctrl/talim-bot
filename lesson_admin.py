@@ -146,7 +146,7 @@ async def la_grade(call: CallbackQuery):
     for code, name in subjects:
         buttons.append([InlineKeyboardButton(
             text=f"📘 {name}",
-            callback_data=f"la_subject_{grade}_{code}"
+            callback_data=f"la_sub|{grade}|{code}"
         )])
 
     buttons.append(back_btn("la_back_grades"))
@@ -162,22 +162,16 @@ async def la_grade(call: CallbackQuery):
 # 3. FAN → MAVZULAR (10 talik, dars bor/yo'q)
 # ─────────────────────────────────────────
 
-@dp.callback_query(F.data.startswith("la_subject_"))
+@dp.callback_query(F.data.startswith("la_sub|"))
 async def la_subject(call: CallbackQuery):
     if call.from_user.id not in ADMINS:
         return
     await call.answer()
 
-    parts = call.data.replace("la_subject_", "").split("_")
-
-    if parts[-1].startswith("page"):
-        page         = int(parts[-1].replace("page", ""))
-        grade        = parts[0]
-        subject_code = "_".join(parts[1:-1])
-    else:
-        page         = 0
-        grade        = parts[0]
-        subject_code = "_".join(parts[1:])
+    parts        = call.data.split("|")
+    grade        = parts[1]
+    subject_code = parts[2]
+    page         = int(parts[3]) if len(parts) > 3 else 0
 
     conn = db()
     cur  = conn.cursor()
@@ -226,17 +220,16 @@ async def la_subject(call: CallbackQuery):
     for code, name in chunk:
         filled = stats.get(code, 0)
         icon   = "✅" if filled > 0 else "❌"
-
         buttons.append([InlineKeyboardButton(
             text=f"{icon} {name}",
-            callback_data=f"la_mavzu_{grade}_{subject_code}_{code}"
+            callback_data=f"la_mav|{grade}|{subject_code}|{code}"
         )])
 
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(
             text="⬅️",
-            callback_data=f"la_subject_{grade}_{subject_code}_page{page-1}"
+            callback_data=f"la_sub|{grade}|{subject_code}|{page-1}"
         ))
     nav.append(InlineKeyboardButton(
         text=f"{page+1}/{(len(mavzular)-1)//PAGE_SIZE+1}",
@@ -245,7 +238,7 @@ async def la_subject(call: CallbackQuery):
     if end < len(mavzular):
         nav.append(InlineKeyboardButton(
             text="➡️",
-            callback_data=f"la_subject_{grade}_{subject_code}_page{page+1}"
+            callback_data=f"la_sub|{grade}|{subject_code}|{page+1}"
         ))
     if nav:
         buttons.append(nav)
@@ -268,19 +261,16 @@ async def la_subject(call: CallbackQuery):
 # 4. MAVZU → KICHIK MAVZULAR + SHABLON/IMPORT
 # ─────────────────────────────────────────
 
-@dp.callback_query(F.data.startswith("la_mavzu_"))
+@dp.callback_query(F.data.startswith("la_mav|"))
 async def la_mavzu(call: CallbackQuery):
     if call.from_user.id not in ADMINS:
         return
     await call.answer()
 
-    # format: la_mavzu_{grade}_{subject_code}_{mavzu_code}
-    # grade — bitta token, mavzu_code — oxirgi token
-    raw          = call.data.replace("la_mavzu_", "")
-    parts        = raw.split("_")
-    grade        = parts[0]
-    mavzu_code   = parts[-1]
-    subject_code = "_".join(parts[1:-1])
+    parts        = call.data.split("|")
+    grade        = parts[1]
+    subject_code = parts[2]
+    mavzu_code   = parts[3]
 
     conn = db()
     cur  = conn.cursor()
@@ -331,13 +321,13 @@ async def la_mavzu(call: CallbackQuery):
 
     buttons.append([InlineKeyboardButton(
         text="📥 Shablon yuklab ol",
-        callback_data=f"la_template_{grade}_{subject_code}_{mavzu_code}"
+        callback_data=f"la_tmpl|{grade}|{subject_code}|{mavzu_code}"
     )])
     buttons.append([InlineKeyboardButton(
         text="📤 Import qilish",
-        callback_data=f"la_import_{grade}_{subject_code}_{mavzu_code}"
+        callback_data=f"la_imp|{grade}|{subject_code}|{mavzu_code}"
     )])
-    buttons.append(back_btn(f"la_subject_{grade}_{subject_code}"))
+    buttons.append(back_btn(f"la_sub|{grade}|{subject_code}"))
     buttons.append(admin_menu_btn())
 
     await call.message.edit_text(
@@ -355,17 +345,16 @@ async def la_mavzu(call: CallbackQuery):
 # 5. SHABLON YUKLAB OLISH
 # ─────────────────────────────────────────
 
-@dp.callback_query(F.data.startswith("la_template_"))
+@dp.callback_query(F.data.startswith("la_tmpl|"))
 async def la_template(call: CallbackQuery):
     if call.from_user.id not in ADMINS:
         return
     await call.answer("📥 Shablon tayyorlanmoqda...")
 
-    raw          = call.data.replace("la_template_", "")
-    parts        = raw.split("_")
-    grade        = parts[0]
-    mavzu_code   = parts[-1]
-    subject_code = "_".join(parts[1:-1])
+    parts        = call.data.split("|")
+    grade        = parts[1]
+    subject_code = parts[2]
+    mavzu_code   = parts[3]
 
     conn = db()
     cur  = conn.cursor()
@@ -411,7 +400,7 @@ async def la_template(call: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
                 text="📤 Import qilish",
-                callback_data=f"la_import_{grade}_{subject_code}_{mavzu_code}"
+                callback_data=f"la_imp|{grade}|{subject_code}|{mavzu_code}"
             )
         ]])
     )
@@ -592,17 +581,16 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
 # 6. IMPORT
 # ─────────────────────────────────────────
 
-@dp.callback_query(F.data.startswith("la_import_"))
+@dp.callback_query(F.data.startswith("la_imp|"))
 async def la_import_prompt(call: CallbackQuery, state: FSMContext):
     if call.from_user.id not in ADMINS:
         return
     await call.answer()
 
-    raw          = call.data.replace("la_import_", "")
-    parts        = raw.split("_")
-    grade        = parts[0]
-    mavzu_code   = parts[-1]
-    subject_code = "_".join(parts[1:-1])
+    parts        = call.data.split("|")
+    grade        = parts[1]
+    subject_code = parts[2]
+    mavzu_code   = parts[3]
 
     await state.update_data(import_meta=call.data)
     await state.set_state(LessonAdminState.waiting_excel)
