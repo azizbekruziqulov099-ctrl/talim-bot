@@ -271,7 +271,7 @@ async def la_mavzu(call: CallbackQuery):
         )])
 
     from storage import user_state as us
-    if call.from_user.id not in us:
+    if not isinstance(us.get(call.from_user.id), dict):
         us[call.from_user.id] = {}
     us[call.from_user.id]["la_meta"] = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
 
