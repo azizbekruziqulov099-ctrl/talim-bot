@@ -1,2193 +1,536 @@
-from admin_handlers import *
-from learning import *
-from generator_handlers import *
-from test_engine import *
-from register import *
-from learning import continue_learning
-import asyncio
-from aiogram.types import ReplyKeyboardRemove
-from aiogram import Bot, Dispatcher, types
-from urllib.parse import quote
-from aiogram.filters import *
-from dts_import_handlers import *
-from ai_generatori import *
-from storage import user_state, temp_user
 from keyboards import get_main_keyboard
-from loader import dp, bot
-from test_generator import save_test
-from aiogram import F
-import pandas as pd
-from aiogram.fsm.context import FSMContext
+from aiogram import Router, F
 from aiogram.types import (
+    Message,
     ReplyKeyboardMarkup,
-    KeyboardButton,
+    KeyboardButton
+)
+import os
+from pydub import AudioSegment
+import psycopg2
+import edge_tts
+from aiogram.types import FSInputFile
+import tempfile
+from test_engine import speak_text
+from storage import user_state
+from teacher_engine import (
+    build_lesson_steps,
+    get_step_content
+)
+from teacher_engine import (
+    create_lesson_state,
+    current_text,
+    build_board_text
+)
+from teacher_engine import (
+    parse_content,
+    render_content,
+    build_ssml
+)
+from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
-from learning import (
-    lesson_next,
-    lesson_prev,
-    lesson_tts,
-    lesson_tts_help,
-    lesson_back_main,
-    lesson_consolidation_test,
-    lesson_test_answer,
-    send_test_question,
-    lesson_review_start,
-    lesson_review_answer,
-    send_review_question,
-    start_main_lesson
+from latex_utils import (
+    parse_blocks,
+    send_blocks,
+    latex_to_image,
+    latex_to_voice
 )
-import json
-import random
-import time
-import edge_tts
-from aiogram.types import FSInputFile
-import psycopg2
-import re
-import os
-import subprocess
-from openpyxl import Workbook
-from openpyxl.styles import Font
-
-with open("regions.json", "r", encoding="utf-8") as f:
-    REGIONS = json.load(f)
-
-ADMINS = [401251407]
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-API_TOKEN = os.getenv("BOT_TOKEN")
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
-
-user_locks = {}
-admin_state = {}
-state_history = {}
-generator_process = None
-topic_stats_state = {}
-
-wb = Workbook()
-
-# README
-ws1 = wb.active
-ws1.title = "README"
-
-ws1["A1"] = "DIFFICULTY"
-ws1["A1"].font = Font(bold=True)
-
-ws1["A2"] = "oson"
-ws1["A3"] = "o'rta"
-ws1["A4"] = "qiyin"
-ws1["A5"] = "murakkab"
-
-ws1["C1"] = "QUESTION_TYPE"
-ws1["C1"].font = Font(bold=True)
-
-ws1["C2"] = "single_choice"
-ws1["C3"] = "multiple_choice"
-ws1["C4"] = "true_false"
-ws1["C5"] = "write_answer"
-ws1["C6"] = "image_question"
-
-ws1["E1"] = "LIFE_LEVEL"
-ws1["E1"].font = Font(bold=True)
-
-ws1["E2"] = "0"
-ws1["E3"] = "1"
-ws1["E4"] = "2"
-ws1["E5"] = "3"
-ws1["E6"] = "4"
-
-ws1["G1"] = "LANGUAGE"
-ws1["G1"].font = Font(bold=True)
-
-ws1["G2"] = "uz"
-ws1["G3"] = "ru"
-ws1["G4"] = "en"
-
-
-# TESTLAR
-ws2 = wb.create_sheet("TESTLAR")
-
-headers = [
-    "topic_code",
-    "difficulty",
-    "situation",
-    "question",
-    "option_a",
-    "option_b",
-    "option_c",
-    "option_d",
-    "correct_answer",
-    "explanation",
-    "question_type",
-    "is_latex",
-    "image_url",
-    "audio_text",
-    "language",
-    "life_level",
-    "age_group",
-    "time_limit"
-]
-
-for col_num, header in enumerate(headers, start=1):
-    cell = ws2.cell(row=1, column=col_num)
-    cell.value = header
-    cell.font = Font(bold=True)
-
-
-# NAMUNA
-ws3 = wb.create_sheet("NAMUNA")
-
-ws3.append(headers)
-
-ws3.append([
-    "_1_01_01_01_01_001",
-    "oson",
-    "oddiy",
-    "What animal gives us milk?",
-    "Cow",
-    "Cat",
-    "Dog",
-    "Horse",
-    "Cow",
-    "A cow gives milk",
-    "single_choice",
-    False,
-    "",
-    "",
-    "uz",
-    1,
-    "10-11",
-    60
-])
-
-wb.save("test_import_template.xlsx")
-
-print("test_import_template.xlsx yaratildi")
-
-# BUTTON ID (faqat shu bilan ishlaymiz)
-BTN_SURVEY = "survey"
-BTN_STATS = "stats"
-
-BTN_MY = "my_stats"
-BTN_GLOBAL = "global_stats"
-
-BACK = "🔙 Ortga"
-HOME = "🏠 Bosh menyu"
-
-SUBJECTS_BY_LEVEL = {
-
-    "👶 Boshlang‘ich": [
-        "Matematika",
-        "Ona tili",
-        "O‘qish",
-        "Tabiiy fan"
-    ],
-
-    "📘 O‘rta": [
-        "Algebra",
-        "Geometriya",
-        "Fizika",
-        "Kimyo",
-        "Biologiya",
-        "Tarix",
-        "Geografiya"
-    ],
-
-    "🎓 Yuqori": [
-        "Algebra",
-        "Geometriya",
-        "Fizika",
-        "Kimyo",
-        "Biologiya",
-        "Huquq",
-        "Iqtisod",
-        "Informatika"
-    ]
-}
-
-SUBJECTS_BY_CLASS = {
-
-    "0-sinf": [
-        ["🔤 O‘zbekcha so‘zlar","🇬🇧 English Kids"],
-        ["🇷🇺 Русский детям","🔢 Sonlar olami"],
-        ["🎨 Ranglar","🐶 Hayvonlar"],
-        ["🧩 Jumboqlar","👀 Diqqat"],
-        ["🎯 Mantiqiy o‘yinlar"]
-    ]
-}
-
-# 1-4 sinf
-PRIMARY_SUBJECTS = [
-    ["Matematika", "Ona tili", "O‘qish"],
-    ["Ingliz tili", "Tabiiy fan", "Tarbiya"],
-    ["Musiqa", "Rasm"]
-]
-
-# 5-6 sinf
-MIDDLE_SUBJECTS = [
-    ["Matematika", "Ona tili", "Adabiyot"],
-    ["Ingliz tili", "Rus tili", "Tarix"],
-    ["Biologiya", "Geografiya", "Informatika"],
-    ["Texnologiya"]
-]
-
-# 7-9 sinf
-UPPER_SUBJECTS = [
-    ["Algebra", "Geometriya", "Fizika"],
-    ["Kimyo", "Biologiya", "Tarix"],
-    ["Geografiya", "Informatika", "Ingliz tili"],
-    ["Ona tili", "Adabiyot"]
-]
-
-# 10-11 sinf
-HIGH_SUBJECTS = [
-    ["Algebra", "Geometriya", "Fizika"],
-    ["Kimyo", "Biologiya", "Tarix"],
-    ["Huquq", "Iqtisod", "Geografiya"],
-    ["Informatika", "Ingliz tili", "Ona tili"],
-    ["Adabiyot"]
-]
-
-ZERO_TEST_TYPES = [
-    "🔤 Harflar",
-    "📖 So‘zlar",
-    "🖼 Rasmli o‘yin",
-    "🎵 Eshit va top",
-    "🎁 Aralash"
-]
-
-def set_state(user_id, state):
-
-    user_state[user_id] = state
-
-    if user_id not in state_history:
-        state_history[user_id] = []
-
-    state_history[user_id].append(state)
-
-def base_keyboard(extra=[]):
-
-    keyboard = []
-    row = []
-
-    for i, item in enumerate(extra, start=1):
-
-        row.append(KeyboardButton(text=item))
-
-        # har 3 tadan keyin yangi qator
-        if i % 4 == 0:
-            keyboard.append(row)
-            row = []
-
-    # qolganlari
-    if row:
-        keyboard.append(row)
-
-    # pastki tugmalar
-    keyboard.append([KeyboardButton(text=BACK)])
-    keyboard.append([KeyboardButton(text=HOME)])
-
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
-
-def make_keyboard(items):
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=i)] for i in items],
-        resize_keyboard=True
-    )
-
-def question_nav_keyboard(test):
-
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="➡️"),
-                KeyboardButton(text=FINISH)
-            ]
-        ],
-        resize_keyboard=True
-    )
-
-def get_stats_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📚 DTS")],
-            [KeyboardButton(text="📈 Umumiy statistika")],
-            [KeyboardButton(text=BACK)],
-            [KeyboardButton(text=HOME)]
-        ],
-        resize_keyboard=True
-    )
-
-def check_survey(user_id):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT survey_done
-    FROM users
-    WHERE user_id=%s
-    """, (user_id,))
-
-    row = cur.fetchone()
-
-    conn.close()
-
-    if not row:
-        return False
-
-    return row[0] == 1
-
-
-def init_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS survey_answers (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER,
-        survey_id INTEGER,
-        answer TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS images(
-        id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE,
-        file_id TEXT
-    )
-    """)
-
-    # USERS
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER,
-        full_name TEXT,
-        role TEXT,
-        region TEXT,
-        district TEXT,
-        school TEXT,
-        class TEXT,
-        survey_done INTEGER DEFAULT 0
-    )
-    """)
-
-    # SURVEY
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS surveys (
-        id SERIAL PRIMARY KEY,
-        role TEXT,
-        question TEXT,
-        q_type TEXT,
-        a TEXT,
-        b TEXT,
-        c TEXT,
-        d TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS results (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER,
-        class TEXT,
-        subject TEXT,
-        score INTEGER,
-        total INTEGER,
-        region TEXT,
-        district TEXT,
-        school TEXT,
-        role TEXT
-    )
-    """)
-
-    # subject ustuni — eski DB uchun
-    cur.execute("""
-        ALTER TABLE users 
-        ADD COLUMN IF NOT EXISTS subject TEXT
-    """)
-
-    # Dars tarixi — takrorlash va statistika uchun
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS lesson_history (
-        id          SERIAL PRIMARY KEY,
-        user_id     INTEGER NOT NULL,
-        topic_code  TEXT NOT NULL,
-        mavzu       TEXT,
-        fan         TEXT,
-        score       INTEGER DEFAULT 0,
-        total       INTEGER DEFAULT 0,
-        learned_at  TIMESTAMP DEFAULT NOW()
-    )
-    """)
-
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_lesson_history_user
-        ON lesson_history(user_id, learned_at DESC)
-    """)
-
-    conn.commit()
-    conn.close()
-
-def get_grades():
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT DISTINCT grade
-        FROM dts_tree
-        ORDER BY grade
-    """)
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return [row[0] for row in rows]
-
-def get_subjects_by_grade(grade):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT DISTINCT subject_name
-        FROM dts_tree
-        WHERE grade = %s
-        ORDER BY subject_name
-    """, (grade,))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return [row[0] for row in rows]
-
-def get_topics_by_grade_subject(
-    grade,
-    subject_name
-):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-            topic_code,
-            kichik_name
-        FROM dts_tree
-        WHERE grade = %s
-        AND subject_name = %s
-        ORDER BY topic_code
-    """, (
-        grade,
-        subject_name
-    ))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return rows
-
-def get_topic_name(topic_code):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-            grade,
-            subject_name,
-            quarter,
-            bob_name,
-            bolim_name,
-            mavzu_name,
-            kichik_name
-        FROM dts_tree
-        WHERE topic_code=%s
-        LIMIT 1
-    """, (topic_code,))
-
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return row
-
-def get_topic_test_count(topic_code):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT COUNT(*)
-        FROM generated_tests
-        WHERE topic_code=%s
-    """, (topic_code,))
-
-    count = cur.fetchone()[0]
-
-    cur.close()
-    conn.close()
-
-    return count
-
-def get_topic_statistics(topic_code):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-
-            COUNT(*) as total,
-
-            SUM(
-                CASE
-                WHEN difficulty='oson'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN difficulty='o''rta'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN difficulty='qiyin'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN difficulty='murakkab'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN question_type='single_choice'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN question_type='multiple_choice'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN question_type='true_false'
-                THEN 1
-                ELSE 0
-                END
-            ),
-
-            SUM(
-                CASE
-                WHEN question_type='write_answer'
-                THEN 1
-                ELSE 0
-                END
-            )
-
-        FROM generated_tests
-        WHERE topic_code=%s
-    """, (topic_code,))
-
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return row
-
-async def show_topics_page(
+async def speak_mixed_text(
+    user_id,
     message,
-    user_id
+    text
 ):
+    """
+    Matn ichidagi barcha bloklarni qayta ishlaydi:
+    - [latex]...[/latex] → rasm + ovoz
+    - [img]...[/img]     → photo
+    - [en]...[/en]       → ingliz ovoz
+    - [ru]...[/ru]       → rus ovoz
+    - oddiy matn         → o'zbek ovoz
+    """
 
-    data = topic_stats_state[user_id]
+    blocks = parse_blocks(text)
 
-    topics = data["topics"]
-    page = data["page"]
+    voices = {
+        "text": "uz-UZ-SardorNeural",
+        "en":   "en-US-GuyNeural",
+        "ru":   "ru-RU-DmitryNeural"
+    }
 
-    start = page * 10
-    end = start + 10
+    audio_files = []
 
-    current_topics = topics[start:end]
+    for i, block in enumerate(blocks):
 
-    keyboard = []
+        btype   = block["type"]
+        content = str(block["content"]).strip()
 
-    text = "📚 MAVZULAR\n\n"
+        if not content:
+            continue
 
-    for row in current_topics:
+        # LaTeX blok — rasm + ovoz alohida
+        if btype == "latex":
 
-        topic_code = row[0]
-        kichik_name = row[1]
+            # Rasm
+            try:
+                img_path = latex_to_image(content, user_id)
+                await message.answer_photo(
+                    FSInputFile(img_path),
+                    caption=f"📐 `{content}`",
+                    parse_mode="Markdown"
+                )
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+            except Exception:
+                await message.answer(
+                    f"📐 `{content}`",
+                    parse_mode="Markdown"
+                )
 
-        count = get_topic_test_count(
-            topic_code
+            # Ovoz
+            try:
+                voice_path, uzbek = await latex_to_voice(content, user_id)
+                if (
+                    os.path.exists(voice_path)
+                    and os.path.getsize(voice_path) > 0
+                ):
+                    audio_files.append(voice_path)
+            except Exception:
+                pass
+
+            continue
+
+        # Rasm blok
+        if btype == "img":
+            try:
+                await message.answer_photo(content)
+            except Exception:
+                pass
+            continue
+
+        # Matn / en / ru — ovoz faylga
+        voice = voices.get(btype, voices["text"])
+        filename = f"part_{user_id}_{i}.mp3"
+
+        if not any(ch.isalnum() for ch in content):
+            continue
+
+        communicate = edge_tts.Communicate(
+            text=content,
+            voice=voice
         )
-
-        keyboard.append([
-            KeyboardButton(
-                text=f"{kichik_name} ({count})"
-            )
-        ])
-
-        topic_stats_state[user_id][
-            f"topic_{kichik_name} ({count})"
-        ] = topic_code
-
-    keyboard.append([
-        KeyboardButton(text="⬅️ Oldingi"),
-        KeyboardButton(text="➡️ Keyingi")
-    ])
-
-    keyboard.append([
-        KeyboardButton(text="🔍 Mavzu qidirish")
-    ])
-
-    keyboard.append([
-        KeyboardButton(text="🔙 Ortga")
-    ])
-
-    await message.answer(
-        text,
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=keyboard,
-            resize_keyboard=True
-        )
-    )
-    
-@dp.message(F.photo)
-async def save_image(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-    if not message.caption:
-        await message.answer(
-            "Rasm nomini captionga yozing")
-        return
-    name = message.caption.strip()
-    file_id = message.photo[-1].file_id
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("""
-    INSERT INTO images(
-        name,
-        file_id
-    )
-    VALUES(%s,%s)
-    ON CONFLICT (name)
-    DO UPDATE SET
-    file_id = EXCLUDED.file_id
-    """, (name, file_id))
-    conn.commit()
-    conn.close()
-    await message.answer(
-        f"✅ Saqlandi: {name}")
-
-# ====== START ======
-@dp.message(CommandStart())
-async def start(message: types.Message):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute(
-        "SELECT role FROM users WHERE user_id=%s",
-        (message.from_user.id,)
-    )
-
-    user = cur.fetchone()
-
-    conn.close()
-
-    # RO'YXATDAN O'TGAN FOYDALANUVCHI
-    if user:
-
-        role = user[0]
-
-        if message.from_user.id in ADMINS:
-            role = "Admin"
-
-        await message.answer(
-            f"👋 Qaytganingiz bilan!\n\n"
-            f"🎭 Rol: {role}",
-            reply_markup=get_main_keyboard(role)
-        )
-
-        return
-
-    # YANGI FOYDALANUVCHI
-    user_state[message.from_user.id] = "role"
-
-    await message.answer(
-        "🎓 TA'LIM PLATFORMASI\n\n"
-        "Xush kelibsiz!\n\n"
-        "Platformadan foydalanish uchun "
-        "o'zingizga mos rolni tanlang.",
-        reply_markup=make_keyboard([
-            "🧒 O‘quvchi",
-            "👨‍🏫 O‘qituvchi",
-            "👨‍👩‍👧 Ota-ona"
-        ])
-    )
-
-async def import_tests_excel(message):
-
-    file = await bot.get_file(
-        message.document.file_id
-    )
-
-    path = "temp_import.xlsx"
-
-    await bot.download_file(
-        file.file_path,
-        path
-    )
-
-    df = pd.read_excel(path,sheet_name="TESTLAR")
-
-    success = 0
-    duplicates = 0
-    errors = 0
-
-    error_rows = []
-
-    for index, row in df.iterrows():
 
         try:
+            await communicate.save(filename)
+            if (
+                os.path.exists(filename)
+                and os.path.getsize(filename) > 0
+            ):
+                audio_files.append(filename)
+        except Exception:
+            continue
 
-            test_data = {
-                "topic_code": str(row["topic_code"]).strip(),
-                "difficulty": str(row["difficulty"]).strip(),
-                "situation": "" if pd.isna(row["situation"]) else str(row["situation"]),
-                "question": str(row["question"]).strip(),
-                "option_a": "" if pd.isna(row["option_a"]) else str(row["option_a"]),
-                "option_b": "" if pd.isna(row["option_b"]) else str(row["option_b"]),
-                "option_c": "" if pd.isna(row["option_c"]) else str(row["option_c"]),
-                "option_d": "" if pd.isna(row["option_d"]) else str(row["option_d"]),
-                "correct_answer": str(row["correct_answer"]).strip(),
-                "explanation": "" if pd.isna(row["explanation"]) else str(row["explanation"]),
-                "question_type": str(row["question_type"]).strip(),
-                "is_latex": False if pd.isna(row["is_latex"]) else row["is_latex"],
-                "image_url": None if pd.isna(row["image_url"]) else str(row["image_url"]),
-                "audio_text": None if pd.isna(row["audio_text"]) else str(row["audio_text"]),
-                "language": "uz" if pd.isna(row["language"]) else str(row["language"]),
-                "life_level": 1 if pd.isna(row["life_level"]) else int(row["life_level"]),
-                "age_group": None if pd.isna(row["age_group"]) else str(row["age_group"]),
-                "time_limit": 60 if pd.isna(row["time_limit"]) else int(row["time_limit"])
-            }
-
-            result = save_test(test_data)
-
-            if result == "saved":
-                success += 1
-
-            elif result == "duplicate":
-
-                duplicates += 1
-
-                error_rows.append({
-                    "row_number": index + 2,
-                    "question": row.get("question"),
-                    "error": "Duplikat yoki o'xshash savol"
-                })
-
-            else:
-                errors += 1
-
-        except Exception as e:
-
-            errors += 1
-
-            error_rows.append({
-                "row_number": index + 2,
-                "question": row.get("question"),
-                "error": str(e)
-            })
-
-    if error_rows:
-
-        error_file = "import_errors.xlsx"
-
-        df_errors = pd.DataFrame(error_rows)
-
-        df_errors.to_excel(
-            error_file,
-            index=False
-        )
-
-    await message.answer(
-        f"✅ Import tugadi\n\n"
-        f"📥 Saqlandi: {success}\n"
-        f"⚠️ Duplikat: {duplicates}\n"
-        f"❌ Xato: {errors}"
-    )
-
-    if error_rows:
-
-        await message.answer_document(
-            FSInputFile("import_errors.xlsx"),
-            caption="📋 Import xatolari hisoboti"
-        )
-
-    admin_state[message.from_user.id] = None
-
-@dp.message()
-async def handle_all(
-    message: Message,
-    state: FSMContext
-):
-    
-    user_id = message.from_user.id
-
-    if message.text == "🎯 Bugungi reja":
-        await continue_learning(message)
-        return
-
-    if message.text == "🔊 O'qib berish":
-
-        await read_current_page(
-            message.from_user.id,
-            message,
-            user_state
-        )
-
-        return
-
-    if message.text == "▶️ O'rganishni boshlash":
-
-        await open_teacher_lesson(message)
-
-        return
-
-    if message.text == "📈 Rivojlanishim":
-        await student_progress(message)
-        return
-
-    if message.text == "🌍 Hamjamiyat":
-        await student_community(message)
-        return
-
-    if message.text == "👤 Kabinet":
-        await student_profile(message)
-        return
-
-    if user_id not in temp_user:
-        temp_user[user_id] = {}
-
-    if user_id not in user_state:
-        user_state[user_id] = None
-
-    if user_id not in user_locks:
-        user_locks[user_id] = asyncio.Lock()
-
-    # REGISTRATSIYA
-    if user_state.get(user_id):
-
-        await register_handler(message)
+    if not audio_files:
+        await message.answer("🔇 Audio yaratib bo'lmadi")
         return
 
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        combined = AudioSegment.empty()
+        for file in audio_files:
+            segment = AudioSegment.from_file(file, format="mp3")
+            combined += segment
 
+        final_file = f"mixed_{user_id}.mp3"
+        combined.export(final_file, format="mp3")
+
+        if (
+            user_id in user_state
+            and "voice_message_id" in user_state[user_id]
+        ):
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=user_state[user_id]["voice_message_id"]
+                )
+            except Exception:
+                pass
+
+        voice_msg = await message.answer_voice(
+            FSInputFile(final_file)
+        )
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["voice_message_id"] = voice_msg.message_id
+
+    except Exception as e:
+        await message.answer(f"❌ Audio xatolik: {e}")
+
+    finally:
+        for file in audio_files:
+            try:
+                os.remove(file)
+            except Exception:
+                pass
+        try:
+            os.remove(final_file)
+        except Exception:
+            pass
+
+async def read_current_page(user_id, message, user_state):
+
+    text = user_state.get(user_id, {}).get("speak_text")
+
+    if not text:
+        await message.answer(
+            "❌ O'qiladigan matn topilmadi."
+        )
+        return
+
+    await speak_text(
+        user_id,
+        message,
+        text
+    )
+
+async def continue_learning(message: Message):
+
+    user_id = message.from_user.id
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        # foydalanuvchi sinfi
         cur.execute("""
-        UPDATE users
-        SET last_seen=NOW()
-        WHERE user_id=%s
+            SELECT class
+            FROM users
+            WHERE user_id = %s
         """, (user_id,))
 
-        conn.commit()
-        conn.close()
+        user = cur.fetchone()
 
-    except:
-        pass
-
-    if (
-        admin_state.get(user_id) == "dts_import"
-        and message.document
-    ):
-
-        await dts_excel_import(
-            message,
-            state
-        )
-
-        return
-
-    if (
-        admin_state.get(user_id) == "test_import"
-        and message.document
-    ):
-
-        await import_tests_excel(
-            message
-        )
-
-        return
-
-    elif user_state.get(message.from_user.id) == "text_answer":
-
-        await check_text_answer(
-            message.from_user.id,
-            message.text,
-            message
-        )
-
-        return
-
-    if message.text == "👥 Foydalanuvchilar statistikasi":
-
-        if message.from_user.id not in ADMINS:
+        if not user:
+            await message.answer(
+                "❌ Avval registratsiyadan o'ting."
+            )
             return
 
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        grade = user[0]
 
-        cur.execute("SELECT COUNT(*) FROM users")
-        total = cur.fetchone()[0]
+        # shu sinfdagi birinchi mavzu
+        cur.execute("""
+            SELECT
+                topic_code,
+                subject_name,
+                bob_name,
+                bolim_name,
+                mavzu_name,
+                kichik_name
+            FROM dts_tree
+            WHERE grade = %s
+            ORDER BY topic_code
+            LIMIT 1
+        """, (grade,))
+
+        topic = cur.fetchone()
 
         cur.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE DATE(last_seen)=CURRENT_DATE
-        """)
-        today = cur.fetchone()[0]
+            SELECT COUNT(*)
+            FROM dts_tree
+            WHERE grade = %s
+        """, (grade,))
 
-        cur.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE last_seen >= NOW() - INTERVAL '30 day'
-        """)
-        month = cur.fetchone()[0]
+        total_topics = cur.fetchone()[0]
 
-        conn.close()
+        completed_topics = 0
 
-        await message.answer(
-            f"👥 Jami foydalanuvchilar: {total}\n\n"
-            f"📅 Bugun kirganlar: {today}\n"
-            f"🗓 Oxirgi 30 kun: {month}"
-        )
-
-        return
-
-    elif message.text == "📚 DTS boshqaruvi":
-
-        await dts_menu(
-                message
+        if not topic:
+            await message.answer(
+                f"❌ {grade}-sinf uchun mavzu topilmadi."
             )
-        return
+            return
 
-    elif message.text == "🤖 Test generator":
+        topic_code = topic[0]
+        subject_name = topic[1]
+        bob_name = topic[2]
+        bolim_name = topic[3]
+        mavzu_name = topic[4]
+        kichik_name = topic[5]
+
+        text = f"""
+        ☀️ Xush kelibsiz!
+
+        🎓 {grade}-sinf
+
+        ━━━━━━━━━━━━━━
+
+        📚 {subject_name}
+
+        📍 Sizning navbatdagi mavzuingiz:
+
+        📝 {mavzu_name}
+
+        🗣 Kichik mavzu:
+        {kichik_name}
+
+        ━━━━━━━━━━━━━━
+
+        📚 Jami mavzular: {total_topics} ta
+        📖 Qolgan mavzular: {total_topics - completed_topics} ta
+
+        ━━━━━━━━━━━━━━
+
+        🔥 Bugungi vazifa
+
+        Ushbu mavzuni o'rganing va
+        bilim xaritangizdagi navbatdagi
+        qadamni oching.
+
+        🏆 Har bir tugatilgan mavzu
+        sizni maqsadingizga yaqinlashtiradi.
+        """
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["speak_text"] = text
 
         await message.answer(
-            "Generator boshqaruvi",
+            text,
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[
-                    [KeyboardButton(text="📄 Excel shablon"),
-                    KeyboardButton(text="📥 Test import qilish")],
-                    [KeyboardButton(text="📚 Mavzular statistikasi"),
-                    KeyboardButton(text="▶️ Generatorni boshlash")],
-                    [KeyboardButton(text="⏹ Generatorni to‘xtatish"),
-                    KeyboardButton(text="📊 Generator statistikasi")],
-                    [KeyboardButton(text="📚 Mavzular statistikasi"),
-                    KeyboardButton(text="🔙 Ortga")]
-                ],               
-                  resize_keyboard=True
-            )
-        )
-
-        return
-
-    elif message.text == "📚 Mavzular statistikasi":
-
-        grades = get_grades()
-
-        keyboard = []
-
-        for grade in grades:
-
-            keyboard.append([
-                KeyboardButton(
-                    text=f"{grade}-sinf"
-                )
-            ])
-
-        keyboard.append([
-            KeyboardButton(text="🔙 Ortga")
-        ])
-
-        await message.answer(
-            "📚 Sinfni tanlang",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=keyboard,
-                resize_keyboard=True
-            )
-        )
-
-        return
-
-    elif message.text.endswith("-sinf"):
-
-        grade = message.text.replace("-sinf", "")
-
-        topic_stats_state[user_id] = {
-            "grade": grade,
-            "level": "subjects"
-        }
-
-        subjects = get_subjects_by_grade(
-            grade
-        )
-
-        keyboard = []
-
-        for subject in subjects:
-
-            keyboard.append([
-                KeyboardButton(text=subject)
-            ])
-
-        keyboard.append([
-            KeyboardButton(text="🔙 Ortga")
-        ])
-
-        await message.answer(
-            "📖 Fanni tanlang",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=keyboard,
-                resize_keyboard=True
-            )
-        )
-
-        return
-
-    elif (
-        user_id in topic_stats_state
-        and f"topic_{message.text}" in topic_stats_state[user_id]
-    ):
-        topic_stats_state[user_id]["level"] = "topic_stats"
-        topic_code = topic_stats_state[user_id][
-            f"topic_{message.text}"
-        ]
-
-        info = get_topic_name(topic_code)
-        stats = get_topic_statistics(topic_code)
-
-        topic_stats_state[user_id]["selected_topic"] = topic_code
-
-        await message.answer(
-            f"🔑 {topic_code}\n\n"
-
-            f"🎓 Sinf: {info[0]}\n"
-            f"📚 Fan: {info[1]}\n"
-            f"🗓 Chorak: {info[2]}\n"
-            f"📖 Bob: {info[3]}\n"
-            f"📂 Bo'lim: {info[4]}\n"
-            f"📘 Mavzu: {info[5]}\n"
-            f"📌 Kichik mavzu: {info[6]}\n\n"
-
-            f"📊 Jami test: {stats[0]}\n"
-            f"🟢 Oson: {stats[1] or 0}\n"
-            f"🟡 O'rta: {stats[2] or 0}\n"
-            f"🟠 Qiyin: {stats[3] or 0}\n"
-            f"🔴 Murakkab: {stats[4] or 0}",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="📄 Excel shablon")],
-                    [KeyboardButton(text="📥 Test import qilish")],
-                    [KeyboardButton(text="🔙 Ortga")]
+                    [
+                        KeyboardButton(text="🔊 O'qib berish")
+                    ],
+                    [
+                        KeyboardButton(text="▶️ O'rganishni boshlash")
+                    ],
+                    [
+                        KeyboardButton(text="📚 Barcha fanlar")
+                    ],
+                    [
+                        KeyboardButton(text="⬅️ Ortga")
+                    ]
                 ],
                 resize_keyboard=True
             )
         )
 
-        return
-
-
-    elif message.text == "📥 Test import qilish":
-
-        admin_state[user_id] = "test_import"
+    except Exception as e:
 
         await message.answer(
-            "Excel fayl yuboring"
+            f"❌ Xatolik:\n{e}"
         )
 
-        return
-
-    elif message.text == "📥 DTS import":
-
-        await dts_import_menu(
-            message,
-            admin_state,
-            user_id
-        )
-
-        return
-
-    elif (
-        user_id in topic_stats_state
-        and "grade" in topic_stats_state[user_id]
-        and "topics" not in topic_stats_state[user_id]
-    ):
-
-        grade = topic_stats_state[user_id]["grade"]
-
-        subject_name = message.text
-
-        topics = get_topics_by_grade_subject(
-            grade,
-            subject_name
-        )
-
-        topic_stats_state[user_id]["subject"] = subject_name
-        topic_stats_state[user_id]["topics"] = topics
-        topic_stats_state[user_id]["page"] = 0
-        topic_stats_state[user_id]["level"] = "topics"
-
-        await show_topics_page(
-            message,
-            user_id
-        )
-
-        return
-
-    elif message.text == "⬅️ Oldingi":
-
-        if user_id not in topic_stats_state:
-            return
-
-        if topic_stats_state[user_id]["page"] > 0:
-
-            topic_stats_state[user_id]["page"] -= 1
-
-        await show_topics_page(
-            message,
-            user_id
-        )
-
-        return
-
-    elif message.text == "➡️ Keyingi":
-
-        if user_id not in topic_stats_state:
-            return
-
-        total = len(
-            topic_stats_state[user_id]["topics"]
-        )
-
-        current_page = topic_stats_state[user_id]["page"]
-
-        max_page = (total - 1) // 10
-
-        if current_page < max_page:
-
-            topic_stats_state[user_id]["page"] += 1
-
-        await show_topics_page(
-            message,
-            user_id
-        )
-
-        return
-
-    elif message.text == "🔙 Ortga":
-
-        if user_id not in topic_stats_state:
-            return
-
-        level = topic_stats_state[user_id].get("level")
-
-        if level == "topic_stats":
-
-            topic_stats_state[user_id]["level"] = "topics"
-
-            await show_topics_page(
-                message,
-                user_id
-            )
-
-            return
-
-        elif level == "topics":
-
-            grade = topic_stats_state[user_id]["grade"]
-
-            keyboards = []
-
-            subjects = get_subjects_by_grade(
-                grade
-            )
-
-            for subject in subjects:
-                keyboards.append([
-                    KeyboardButton(
-                        text=subject
-                    )
-                ])
-
-            keyboards.append([
-                KeyboardButton(
-                    text="🔙 Ortga"
-                )
-            ])
-
-            topic_stats_state[user_id]["level"] = "subjects"
-
-            await message.answer(
-                "📖 Fanni tanlang",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=keyboards,
-                    resize_keyboard=True
-                )
-            )
-
-            return
-
-        elif level == "subjects":
-
-            grade = topic_stats_state[user_id]["grade"]
-
-            subjects = get_subjects_by_grade(
-                grade
-            )
-
-            keyboard = []
-
-            for subject in subjects:
-
-                keyboard.append([
-                    KeyboardButton(
-                        text=subject
-                    )
-                ])
-
-            keyboard.append([
-                KeyboardButton(
-                    text="🔙 Ortga"
-                )
-            ])
-
-            await message.answer(
-                "📖 Fanni tanlang",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=keyboard,
-                    resize_keyboard=True
-                )
-            )
-
-            return
-
-    elif "-" in message.text:
-
-        topic_code = message.text.strip()
-
-        info = get_topic_name(
-            topic_code
-        )
-
-        if not info:
-            return
-
-        stats = get_topic_statistics(
-            topic_code
-        )
-
-        mavzu = info[0]
-        kichik = info[1]
-
-        await message.answer(
-
-            f"🔑 {topic_code}\n\n"
-
-            f"📖 Mavzu:\n"
-            f"{mavzu}\n\n"
-
-            f"📌 Kichik mavzu:\n"
-            f"{kichik}\n\n"
-
-            f"📊 Jami test: {stats[0]}\n\n"
-
-            f"🟢 Oson: {stats[1] or 0}\n"
-            f"🟡 O'rta: {stats[2] or 0}\n"
-            f"🟠 Qiyin: {stats[3] or 0}\n"
-            f"🔴 Murakkab: {stats[4] or 0}\n\n"
-
-            f"📝 Single choice: {stats[5] or 0}\n"
-            f"☑️ Multiple choice: {stats[6] or 0}\n"
-            f"✅ True/False: {stats[7] or 0}\n"
-            f"✍️ Write answer: {stats[8] or 0}"
-        )
-
-        return
-
-    elif message.text == "📄 Excel shablon":
-
-        await message.answer_document(
-            FSInputFile("test_import_template.xlsx"),
-            caption="📋 Test import shabloni"
-        )
-
-        return
-    
-    elif message.text == "▶️ Generatorni boshlash":
-
-        global generator_process
-
-        if generator_process and generator_process.poll() is None:
-
-            await message.answer(
-                "Generator ishlayapti"
-            )
-
-            return
-
-        generator_process = subprocess.Popen(
-            ["python", "test_generator.py"]
-        )
-
-        await message.answer(
-            "Generator ishga tushdi"
-        )
-
-        return
-
-    elif message.text == "⏹ Generatorni to‘xtatish":
-
-        if generator_process and generator_process.poll() is None:
-
-            generator_process.terminate()
-
-            await message.answer(
-                "Generator to‘xtatildi"
-            )
-
-        else:
-
-            await message.answer(
-                "Generator ishlamayapti"
-            )
-
-        return
-    elif message.text == "📊 Generator statistikasi":
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM dts_tree
-        """)
-        total_topics = cur.fetchone()[0]
-
-        cur.execute("""
-            SELECT COUNT(DISTINCT topic_code)
-            FROM generated_tests
-        """)
-        completed_topics = cur.fetchone()[0]
-
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM generated_tests
-        """)
-        total_tests = cur.fetchone()[0]
-
-        remaining_topics = total_topics - completed_topics
-
-        progress = round(
-            completed_topics * 100 / total_topics,
-            1
-        ) if total_topics else 0
+    finally:
 
         cur.close()
         conn.close()
 
-        await message.answer(
-            f"📚 Jami mavzular: {total_topics}\n"
-            f"✅ Test yaratilgan mavzular: {completed_topics}\n"
-            f"❌ Qolgan mavzular: {remaining_topics}\n"
-            f"📝 Jami testlar: {total_tests}\n"
-            f"📈 Progress: {progress}%"
-        )
+async def open_teacher_lesson(message):
 
-    elif message.text == "⬅ Ortga":
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-        await admin_main_menu(
-            message
-        )
+    try:
 
-        return
+        topic_code = "TEST_001"
+        user_id = message.from_user.id
 
-    elif message.text == "📊 DTS statistika":
+        # O'quvchi ma'lumotlari
+        cur.execute("""
+            SELECT full_name, class, subject
+            FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+        user_info = cur.fetchone()
 
-        await dts_statistics(
-            message
-        )
+        full_name = user_info[0] if user_info else "O'quvchi"
+        sinf      = user_info[1] if user_info else ""
+        fan       = user_info[2] if user_info else ""
 
-        return
+        # Dars matni
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
 
-    elif message.text == "📤 DTS export":
+        lesson = cur.fetchone()
 
-        await dts_export_menu(
-            message
-        )
+        if not lesson:
+            await message.answer("❌ Dars topilmadi")
+            return
 
-        return
+        # Mavzu nomi dts_tree dan
+        cur.execute("""
+            SELECT small_topic
+            FROM dts_tree
+            WHERE topic_code = %s
+            LIMIT 1
+        """, (topic_code,))
+        topic_row = cur.fetchone()
+        mavzu = topic_row[0] if topic_row else topic_code
 
-    elif message.text == "📤 Hammasini export":
+        parts = [p for p in [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ] if p.strip()]
 
-        await dts_export_all(
-            message
-        )
+        from datetime import date
+        bugun = date.today().strftime("%d.%m.%Y")
 
-        return
-        
-    # parallel message bloklash
-    
-    if user_id not in user_locks:
-        user_locks[user_id] = asyncio.Lock()
-        
-    async with user_locks[user_id]:
+        if user_id not in user_state:
+            user_state[user_id] = {}
 
-      #  action = TEXT_TO_ID.get(message.text)
+        user_state[user_id]["lesson"]       = lesson
+        user_state[user_id]["parts"]        = parts
+        user_state[user_id]["current_step"] = 0
+        user_state[user_id]["topic_code"]   = topic_code
+        user_state[user_id]["full_name"]    = full_name
+        user_state[user_id]["sinf"]         = sinf
+        user_state[user_id]["fan"]          = fan
+        user_state[user_id]["mavzu"]        = mavzu
+        user_state[user_id]["bugun"]        = bugun
 
-        # 🔙 ORTGA
-        if message.text == BACK:
+        cur.execute("""
+            DELETE FROM lesson_progress WHERE user_id = %s
+        """, (user_id,))
 
-            user_id = message.from_user.id
+        cur.execute("""
+            INSERT INTO lesson_progress
+            (user_id, topic_code, current_step, completed)
+            VALUES (%s, %s, %s, %s)
+        """, (user_id, topic_code, 0, False))
 
-            # history bo‘lsa
-            if user_id in state_history and len(state_history[user_id]) > 1:
+        conn.commit()
 
-                # hozirgi state ni olib tashlash
-                state_history[user_id].pop()
+        # ── BOSHIDA TAKRORLASH ──
+        # Oxirgi o'rganilgan mavzudan savol bormi?
+        cur.execute("""
+            SELECT topic_code, mavzu
+            FROM lesson_history
+            WHERE user_id = %s
+            ORDER BY learned_at DESC
+            LIMIT 1
+        """, (user_id,))
 
-                # oldingi state
-                prev_state = state_history[user_id][-1]
+        last = cur.fetchone()
 
-                user_state[user_id] = prev_state
-
-                # CLASS ga qaytish
-                if prev_state == "class":
-
-                    await message.answer(
-                        "Sinf tanlang:",
-                        reply_markup=base_keyboard(CLASSES)
-                    )
-                    return
-
-                # SUBJECT ga qaytish
-                elif prev_state == "subject":
-
-                    selected_class = temp_user[user_id]["class"]
-
-                    subjects = SUBJECTS_BY_CLASS.get(selected_class)
-
-                    flat_subjects = []
-
-                    for row in subjects:
-                        flat_subjects.extend(row)
-
-                    await message.answer(
-                        "Fan tanlang:",
-                        reply_markup=base_keyboard(flat_subjects)
-                    )
-                    return
-
-                elif prev_state == "db_school":
-
-                    await message.answer(
-                        "🏫 Maktab turini tanlang:",
-                        reply_markup=base_keyboard([
-                            "all",
-                            "🏫 Oddiy",
-                            "⭐ IDUM",
-                            "🏆 Prezident",
-                            "🏢 Xususiy"
-                        ])
-                    )
-                    return
-
-        # ===== SURVEY RESULTS =====
-        elif message.text == "📋 So‘rovnoma natijalari":
-
-            if message.from_user.id not in ADMINS:
-                return
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
+        if last:
+            last_topic_code = last[0]
+            last_mavzu      = last[1]
 
             cur.execute("""
-            SELECT surveys.question,
-            survey_answers.answer,
-            COUNT(*)
-            FROM survey_answers
-            JOIN surveys
-            ON surveys.id = survey_answers.survey_id
-            GROUP BY surveys.question, survey_answers.answer
-            """)
+                SELECT question, option_a, option_b,
+                       option_c, option_d, correct_answer,
+                       explanation
+                FROM dts_tree
+                WHERE topic_code = %s
+                  AND question IS NOT NULL
+                  AND option_a IS NOT NULL
+                ORDER BY RANDOM()
+                LIMIT 3
+            """, (last_topic_code,))
 
-            rows = cur.fetchall()
+            review_qs = cur.fetchall()
 
-            conn.close()
-
-            if not rows:
+            if review_qs:
+                # Takrorlash testini boshlaylik
+                user_state[user_id]["review_questions"] = review_qs
+                user_state[user_id]["review_index"]     = 0
+                user_state[user_id]["review_correct"]   = 0
+                user_state[user_id]["after_review"]     = "start_lesson"
 
                 await message.answer(
-                    "❌ Natijalar yo‘q"
-                )
-                return
-
-            text = "📋 So‘rovnoma natijalari\n\n"
-
-            current_question = ""
-
-            for question, answer, count in rows:
-
-                if question != current_question:
-
-                    current_question = question
-
-                    text += f"\n📝 {question}\n"
-
-                text += f"• {answer} — {count} ta\n"
-
-            await message.answer(text)
-
-            return
-
-        elif user_state.get(message.from_user.id) == "admin_region":
-
-            temp_user[message.from_user.id]["admin_region"] = message.text
-
-            districts = REGIONS.get(message.text, [])
-
-            flat = []
-
-            for row in districts:
-                flat.extend(row)
-
-            user_state[message.from_user.id] = "admin_district"
-
-            await message.answer(
-                "Tuman tanlang:",
-                reply_markup=base_keyboard(flat)
-            )
-
-            return
-
-        elif user_state.get(message.from_user.id) == "admin_district":
-
-            temp_user[message.from_user.id]["admin_district"] = message.text
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            SELECT DISTINCT school
-            FROM users
-            WHERE district=%s
-            """, (message.text,))
-
-            rows = cur.fetchall()
-
-            conn.close()
-
-            schools = [r[0] for r in rows if r[0]]
-
-            user_state[message.from_user.id] = "admin_school"
-
-            await message.answer(
-                "Maktab tanlang:",
-                reply_markup=base_keyboard(schools)
-            )
-
-            return
-
-        elif user_state.get(message.from_user.id) == "admin_school":
-
-            school = message.text
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            SELECT AVG(score * 100.0 / total)
-            FROM results
-            WHERE school=%s
-            """, (school,))
-
-            avg = cur.fetchone()[0]
-
-            conn.close()
-
-            if avg is None:
-
-                await message.answer(
-                    "❌ Ma’lumot yo‘q"
-                )
-                return
-
-            avg = round(avg, 1)
-
-            bar = "█" * int(avg // 10)
-            empty = "░" * (10 - int(avg // 10))
-
-            text = (
-                f"🏫 {school}\n\n"
-                f"{bar}{empty}\n"
-                f"📊 O‘rtacha: {avg}%"
-            )
-
-            await message.answer(text)
-
-            user_state[message.from_user.id] = None
-
-            return
-
-        elif user_state.get(message.from_user.id) == "teacher_level":
-
-            temp_user[message.from_user.id]["teacher_level"] = message.text
-
-            subjects = SUBJECTS_BY_LEVEL.get(message.text, [])
-
-            user_state[message.from_user.id] = "teacher_subject"
-
-            await message.answer(
-                "Fan tanlang:",
-                reply_markup=base_keyboard(subjects)
-            )
-
-            return
-
-        elif user_state.get(message.from_user.id) == "teacher_subject":
-
-            temp_user[message.from_user.id]["subject"] = message.text
-
-            user_state[message.from_user.id] = "test_type"
-
-            await message.answer(
-                "Test turini tanlang:",
-                reply_markup=base_keyboard(TEST_TYPES)
-            )
-
-            return
-
-        # 🏠 HOME
-        elif message.text == HOME:
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            SELECT role FROM users
-            WHERE user_id=%s
-            """, (message.from_user.id,))
-
-            user = cur.fetchone()
-            conn.close()
-
-            role = user[0] if user else None
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                "🏠 Bosh menyu",
-                reply_markup=get_main_keyboard(role)
-            )
-            return
-
-        elif message.text == "⚙️ Akkaunt sozlamalari":
-
-            await message.answer(
-                "Sozlamalar:",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[
-                        [KeyboardButton(text="🔄 Rolni almashtirish")],
-                        [KeyboardButton(text="🌍 Hududni almashtirish")],
-                        [KeyboardButton(text="🏫 Maktabni almashtirish")],
-                        [KeyboardButton(text="🎓 Sinfni almashtirish")],
-                        [KeyboardButton(text=BACK)]
-                    ],
-                    resize_keyboard=True
-                )
-            )
-        elif message.text == "🔄 Rolni almashtirish":
-
-            user_state[message.from_user.id] = "change_role"
-
-            await message.answer(
-                "Yangi rolni tanlang:",
-                reply_markup=make_keyboard(["🧒 O‘quvchi", "👨‍🏫 O‘qituvchi"])
-            )
-
-        elif user_state.get(message.from_user.id) == "change_role":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            UPDATE users
-            SET role=%s
-            WHERE user_id=%s
-            """, (
-                message.text,
-                message.from_user.id
-            ))
-
-            conn.commit()
-            conn.close()
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                f"✅ Rol o‘zgartirildi: {message.text}",
-                reply_markup=get_main_keyboard(message.text)
-            )
-
-        elif message.text == "🌍 Hududni almashtirish":
-
-            user_state[message.from_user.id] = "change_region"
-
-            await message.answer(
-                "Viloyatni tanlang:",
-                reply_markup=make_keyboard(REGIONS.keys())
-            )
-
-            return
-
-
-        elif user_state.get(message.from_user.id) == "change_region":
-
-            temp_user[message.from_user.id] = {
-                "new_region": message.text
-            }
-
-            districts = REGIONS.get(message.text, [])
-
-            flat = []
-
-            for row in districts:
-                flat.extend(row)
-
-            user_state[message.from_user.id] = "change_district"
-
-            await message.answer(
-                "Tumanni tanlang:",
-                reply_markup=base_keyboard(flat)
-            )
-
-            return
-
-
-        elif user_state.get(message.from_user.id) == "change_district":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            UPDATE users
-            SET region=%s, district=%s
-            WHERE user_id=%s
-            """, (
-                temp_user[message.from_user.id]["new_region"],
-                message.text,
-                message.from_user.id
-            ))
-
-            conn.commit()
-
-            cur.execute(
-                "SELECT role FROM users WHERE user_id=%s",
-                (message.from_user.id,)
-            )
-
-            role = cur.fetchone()[0]
-
-            conn.close()
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                "✅ Hudud o‘zgartirildi",
-                reply_markup=get_main_keyboard(role)
-            )
-
-            return
-
-# ===== MAKTABNI ALMASHTIRISH =====
-
-        elif message.text == "🏫 Maktabni almashtirish":
-
-            user_state[user_id] = "change_school_type"
-
-            await message.answer(
-                "Maktab turini tanlang:",
-                reply_markup=make_keyboard(SCHOOL_TYPES)
-            )
-
-            return
-
-
-        elif user_state.get(user_id) == "change_school_type":
-
-            temp_user[user_id]["new_school_type"] = message.text
-
-            user_state[user_id] = "change_school"
-
-            await message.answer(
-                "Maktab raqami kiriting:"
-            )
-
-            return
-
-
-        elif user_state.get(user_id) == "change_school":
-
-            temp_user[user_id]["new_school"] = (
-                f"{temp_user[user_id]['new_school_type']} - {message.text}"
-            )
-
-            school_type = temp_user[user_id]["new_school_type"]
-
-            if school_type == "🏫 Oddiy davlat maktabi":
-                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
-
-            elif school_type == "⭐ Ixtisoslashgan (IDUM)":
-                classes = [c for c in CLASSES if "⭐ IDUM" in c]
-
-            elif school_type == "🏆 Prezident maktabi":
-                classes = [c for c in CLASSES if "🏆 Prezident" in c]
-
-            else:
-                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
-
-            user_state[user_id] = "change_school_class"
-
-            await message.answer(
-                "Sinfni tanlang:",
-                reply_markup=base_keyboard(classes)
-            )
-
-            return
-
-
-        elif user_state.get(user_id) == "change_school_class":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            UPDATE users
-            SET school=%s, class=%s
-            WHERE user_id=%s
-            """, (
-                temp_user[user_id]["new_school"],
-                message.text,
-                user_id
-            ))
-
-            conn.commit()
-
-            cur.execute("""
-            SELECT role
-            FROM users
-            WHERE user_id=%s
-            """, (user_id,))
-
-            row = cur.fetchone()
-
-            conn.close()
-
-            role = row[0] if row else "🧒 O‘quvchi"
-
-            user_state[user_id] = None
-
-            await message.answer(
-                "✅ Maktab va sinf o‘zgartirildi",
-                reply_markup=get_main_keyboard(role)
-            )
-
-            return
-
-
-        # ===== SINFNI ALMASHTIRISH =====
-        elif message.text == "🎓 Sinfni almashtirish":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            SELECT school
-            FROM users
-            WHERE user_id=%s
-            """, (message.from_user.id,))
-
-            row = cur.fetchone()
-
-            conn.close()
-
-            school = row[0] if row else ""
-
-            if "🏫 Oddiy" in school:
-                classes = [c for c in CLASSES if "🏫 Oddiy" in c]
-
-            elif "⭐ IDUM" in school:
-                classes = [c for c in CLASSES if "⭐ IDUM" in c]
-
-            elif "🏆 Prezident" in school:
-                classes = [c for c in CLASSES if "🏆 Prezident" in c]
-
-            else:
-                classes = [c for c in CLASSES if "🏢 Xususiy" in c]
-
-            user_state[message.from_user.id] = "change_class"
-
-            await message.answer(
-                "Yangi sinfni tanlang:",
-                reply_markup=base_keyboard(classes)
-            )
-
-            return
-
-
-        elif user_state.get(message.from_user.id) == "change_class":
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute("""
-            UPDATE users
-            SET class=%s
-            WHERE user_id=%s
-            """, (
-                message.text,
-                message.from_user.id
-            ))
-
-            conn.commit()
-
-            cur.execute("""
-            SELECT role FROM users
-            WHERE user_id=%s
-            """, (message.from_user.id,))
-
-            row = cur.fetchone()
-
-            conn.close()
-
-            role = row[0] if row else "🧒 O‘quvchi"
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                f"✅ Sinf o‘zgartirildi: {message.text}",
-                reply_markup=get_main_keyboard(role)
-            )
-
-            return
-        
-        elif user_state.get(message.from_user.id) == "survey_work":
-
-            data = user_test[message.from_user.id]
-
-            data["answers"][data["index"]] = message.text.upper()
-
-            # oxiri
-            if data["index"] >= len(data["surveys"]) - 1:
-
-                conn = psycopg2.connect(DATABASE_URL)
-                cur = conn.cursor()
-
-                cur.execute("""
-                UPDATE users
-                SET survey_done=1
-                WHERE user_id=%s
-                """, (message.from_user.id,))
-
-                conn.commit()
-                conn.close()
-
-                user_state[message.from_user.id] = None
-
-                await message.answer(
-                    "✅ So‘rovnoma tugadi",
-                    reply_markup=get_main_keyboard(
-                        temp_user[message.from_user.id]["role"]
+                    f"🔁 Avval kechagi mavzuni eslab olaylik!\n\n"
+                    f"📘 {last_mavzu}\n\n"
+                    f"3 ta savol — tez javob bering! 💨",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="▶️ Boshlash",
+                                callback_data="review_start"
+                            ),
+                            InlineKeyboardButton(
+                                text="⏭ O'tkazish",
+                                callback_data="review_skip"
+                            )
+                        ]]
                     )
                 )
-
                 return
 
-            data["index"] += 1
+        # Takrorlash yo'q — darsni boshlash
+        await start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun)
 
-            q = data["surveys"][data["index"]]
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
 
-            text = (
-                f"{data['index']+1}/{len(data['surveys'])}\n\n"
-                f"{q[2]}\n\n"
-                f"A) {q[4]}\n"
-                f"B) {q[5]}\n"
-                f"C) {q[6]}\n"
-                f"D) {q[7]}"
-            )
-
-            await message.answer(text)
-
-            return
-
-@dp.callback_query()
-async def test_buttons(call: CallbackQuery, state: FSMContext):
-
-    user_id = call.from_user.id
-
-    if call.data == "dts_import":
-
-        await dts_import(
-            call,
-            state
-        )
-
-        return
+    finally:
+        cur.close()
+        conn.close()
 
 
-    if call.data.startswith("ans_"):
+async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun):
+    """Asosiy darsni ko'rsatadi"""
 
-        answer = call.data.replace(
-            "ans_",
-            ""
-        )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                InlineKeyboardButton(text="➡️", callback_data="lesson_next")
+            ],
+            [
+                InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
+                InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
+            ]
+        ]
+    )
 
-        await check_button_answer(
-            call.from_user.id,
-            answer,
-            call.message
-        )
+    msg = await message.answer(
+        f"👤 {full_name} | {sinf}\n"
+        f"📘 {fan} • {mavzu} • {bugun}\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"{build_board_text(parts[0]) or render_content(parts[0])}\n\n"
+        f"📄 1/{len(parts)} qadam",
+        reply_markup=keyboard
+    )
 
-        return
+    user_state[user_id]["board_message_id"] = msg.message_id
 
-    if call.data == "test_stop":
 
-        await stop_test(
-            call.from_user.id,
-            call.message
-        )
+async def lesson_review_start(user_id, message):
+    """Takrorlash testini boshlaydi"""
 
-        return
+    questions = user_state.get(user_id, {}).get("review_questions", [])
+    await send_review_question(user_id, message, questions, 0)
 
-    if call.data == "speak_question":
 
-        await speak_question(
-            call.from_user.id,
-            call.message
-        )
+async def send_review_question(user_id, message, questions, index):
+    """Takrorlash savolini yuboradi"""
 
-        return
+    if index >= len(questions):
+        # Takrorlash tugadi — darsni boshlash
+        correct = user_state.get(user_id, {}).get("review_correct", 0)
+        total   = len(questions)
 
-    if call.data == "speak_a":
+        emoji = "🔥" if correct == total else "👍" if correct >= total // 2 else "💪"
 
-        await speak_a(
-            call.from_user.id,
-            call.message
-        )
-
-        return
-
-    if call.data == "speak_b":
-
-        await speak_b(
-            call.from_user.id,
-            call.message
-        )
-        return
-
-    if call.data == "speak_c":
-
-        await speak_c(
-            call.from_user.id,
-            call.message
-        )
-        return
-
-    if call.data == "speak_d":
-
-        await speak_d(
-            call.from_user.id,
-            call.message
-        )
-        return
-
-    if call.data == "lesson_prev":
-
-        await lesson_prev(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_next":
-
-        await lesson_next(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "review_start":
-
-        await lesson_review_start(
-            call.from_user.id,
-            call.message
-        )
-        await call.answer()
-        return
-
-    if call.data == "review_skip":
-
-        user_id   = call.from_user.id
         parts     = user_state.get(user_id, {}).get("parts", [])
         full_name = user_state.get(user_id, {}).get("full_name", "O'quvchi")
         sinf      = user_state.get(user_id, {}).get("sinf", "")
@@ -2195,607 +538,945 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         mavzu     = user_state.get(user_id, {}).get("mavzu", "")
         bugun     = user_state.get(user_id, {}).get("bugun", "")
 
+        await message.answer(
+            f"{emoji} Takrorlash: {correct}/{total}\n\n"
+            f"Endi yangi darsni boshlaymiz! 📖"
+        )
+
         await start_main_lesson(
-            call.message, user_id,
-            parts, full_name, sinf, fan, mavzu, bugun
+            message, user_id, parts,
+            full_name, sinf, fan, mavzu, bugun
         )
-        await call.answer()
         return
 
-    if call.data.startswith("review_answer_"):
+    q = questions[index]
 
-        answer = call.data.replace("review_answer_", "")
-        await lesson_review_answer(
-            call.from_user.id,
-            call.message,
-            answer
-        )
-        await call.answer()
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"A) {q[1]}", callback_data="review_answer_A")],
+            [InlineKeyboardButton(text=f"B) {q[2]}", callback_data="review_answer_B")],
+            [InlineKeyboardButton(text=f"C) {q[3]}", callback_data="review_answer_C")],
+            [InlineKeyboardButton(text=f"D) {q[4]}", callback_data="review_answer_D")]
+        ]
+    )
+
+    await message.answer(
+        f"🔁 Takrorlash | {index + 1}/{len(questions)}\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"❓ {q[0]}",
+        reply_markup=keyboard
+    )
+
+
+async def lesson_review_answer(user_id, message, answer):
+    """Takrorlash javobini tekshiradi"""
+
+    questions = user_state.get(user_id, {}).get("review_questions", [])
+    index     = user_state.get(user_id, {}).get("review_index", 0)
+
+    if not questions or index >= len(questions):
         return
 
-    if call.data == "review_next":
+    q          = questions[index]
+    correct    = q[5]
+    explanation = q[6] or ""
 
-        user_id   = call.from_user.id
-        questions = user_state.get(user_id, {}).get("review_questions", [])
-        index     = user_state.get(user_id, {}).get("review_index", 0)
+    is_correct = answer.upper() == correct.upper()
 
-        await send_review_question(
-            user_id, call.message, questions, index
+    if is_correct:
+        user_state[user_id]["review_correct"] = (
+            user_state[user_id].get("review_correct", 0) + 1
         )
-        await call.answer()
-        return
+        result = "✅ To'g'ri!"
+    else:
+        result = f"❌ Noto'g'ri! To'g'ri: {correct}"
 
-    if call.data == "lesson_consolidation_test":
+    if explanation:
+        result += f"\n💡 {explanation}"
 
-        await lesson_consolidation_test(
-            call.from_user.id,
-            call.message
+    next_index = index + 1
+    user_state[user_id]["review_index"] = next_index
+
+    await message.answer(
+        result,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="➡️ Keyingi",
+                    callback_data="review_next"
+                )
+            ]]
+        )
+    )
+
+
+async def lesson_next(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["help_mode"] = True
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [p for p in [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ] if p.strip()]
+
+        next_step = current_step + 1
+
+        if next_step >= len(parts):
+
+            # Dars tugadi — mustahkamlash testiga o'tish
+            await message.edit_text(
+                f"🎉 Dars tugadi!\n\n"
+                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"Bilimingizni mustahkamlash uchun\n"
+                f"5 ta savol javob bering! 🧠",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="▶️ Testni boshlash",
+                            callback_data="lesson_consolidation_test"
+                        ),
+                        InlineKeyboardButton(
+                            text="⏭ O'tkazib yuborish",
+                            callback_data="lesson_finish"
+                        )
+                    ]]
+                )
+            )
+            return
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            next_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+        await message.edit_text(
+            f"""
+👤 {user_state.get(user_id, {}).get('full_name', 'O\'quvchi')} | {user_state.get(user_id, {}).get('sinf', '')}
+📘 {user_state.get(user_id, {}).get('fan', '')} • {user_state.get(user_id, {}).get('mavzu', topic_code)} • {user_state.get(user_id, {}).get('bugun', '')}
+━━━━━━━━━━━━━━
+
+{build_board_text(parts[next_step]) or render_content(parts[next_step])}
+
+📄 {next_step + 1}/{len(parts)} qadam
+""",
+            reply_markup=keyboard
         )
 
-        await call.answer()
+    finally:
 
-        return
+        cur.close()
+        conn.close()
 
-    if call.data.startswith("test_answer_"):
+async def lesson_tts(user_id, message):
 
-        answer = call.data.replace("test_answer_", "")
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-        await lesson_test_answer(
-            call.from_user.id,
-            call.message,
-            answer
-        )
+    try:
 
-        await call.answer()
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
 
-        return
+        progress = cur.fetchone()
 
-    if call.data == "test_next_question":
+        if not progress:
+            return
 
-        user_id   = call.from_user.id
-        questions = user_state.get(user_id, {}).get("test_questions", [])
-        index     = user_state.get(user_id, {}).get("test_index", 0)
+        topic_code = progress[0]
+        current_step = progress[1]
 
-        await send_test_question(
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        # 🔊 bosilsa — asosiy matnni o'qiydi
+        text = parts[current_step]
+
+        await speak_mixed_text(
             user_id,
-            call.message,
-            questions,
-            index
+            message,
+            text
         )
 
-        await call.answer()
+    except Exception as e:
 
-        return
+        import traceback
+        await message.answer(traceback.format_exc())
 
-    if call.data == "lesson_tts":
+    finally:
 
-        await lesson_tts(
-            call.from_user.id,
-            call.message
+        cur.close()
+        conn.close()
+
+async def lesson_prev(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        if user_id in user_state:
+            user_state[user_id]["help_mode"] = False
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        prev_step = current_step - 1
+
+        if prev_step < 0:
+            prev_step = 0
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            prev_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
         )
 
-        await call.answer()
+        await message.edit_text(
+            f"""
+👤 {user_state.get(user_id, {}).get('full_name', 'O\'quvchi')} | {user_state.get(user_id, {}).get('sinf', '')}
+📘 {user_state.get(user_id, {}).get('fan', '')} • {user_state.get(user_id, {}).get('mavzu', topic_code)} • {user_state.get(user_id, {}).get('bugun', '')}
+━━━━━━━━━━━━━━
 
-        return
+{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}
 
-    if call.data == "lesson_tts_help":
-
-        await lesson_tts_help(
-            call.from_user.id,
-            call.message
+📄 {prev_step + 1}/{len(parts)} qadam
+""",
+            reply_markup=keyboard
         )
 
-        await call.answer()
+    finally:
 
-        return
+        cur.close()
+        conn.close()
 
-    if call.data == "lesson_back_main":
+async def lesson_help(
+    user_id,
+    message
+):
 
-        await lesson_back_main(
-            call.from_user.id,
-            call.message
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        # izoh matni (simple_1..4)
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(current_step, "")
+        main_text = parts[current_step]
+
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        # izoh doskada ko'rinadi + 🔊 bosilsa ovoz chiqadi
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 Izohni o'qi",
+                        callback_data="lesson_tts_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="🔙 Darsga qayt",
+                        callback_data="lesson_back_main"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
         )
 
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_help":
-
-        await lesson_help(
-            call.from_user.id,
-            call.message
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"💡 Izoh:\n\n"
+            f"{render_content(simple_text)}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"📖 Asosiy matn:\n\n"
+            f"{build_board_text(main_text) or render_content(main_text)}",
+            reply_markup=keyboard
         )
 
-        await call.answer()
+    except Exception as e:
 
-        return
+        await message.answer(f"❌ Xatolik:\n{e}")
 
-    if call.data == "lesson_finish":
+    finally:
 
-        await lesson_finish(
-            call.from_user.id,
-            call.message
+        cur.close()
+        conn.close()
+
+async def lesson_tts_help(user_id, message):
+    """🔊 Izohni o'qi bosilganda — izoh matnini ovozda o'qiydi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(current_step, "")
+
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def lesson_back_main(user_id, message):
+    """🔙 Darsga qayt — asosiy dars matni qaytadi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    ),
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
         )
 
-        await call.answer()
-
-        return
-
-    elif call.data == "dts_navigator":
-
-        await dts_navigator(call)
-
-        return   
-
-    elif call.data.startswith(
-        "dts_nav_"
-    ):
-
-        page = int(
-            call.data.split("_")[-1]
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[current_step]) or render_content(parts[current_step])}",
+            reply_markup=keyboard
         )
 
-        await dts_navigator(
-            call,
-            page
-        )
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
 
-        return
+    finally:
+        cur.close()
+        conn.close()
 
-    elif call.data.startswith(
-        "dts_grade_"
-    ):
 
-        await dts_grade(call)
 
-        return
 
-    elif call.data.startswith(
-        "dts_subject_"
-    ):
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-        await dts_subject(call)
+    try:
 
-        return
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
 
-    elif call.data.startswith(
-        "dts_quarter_"
-    ):
+        progress = cur.fetchone()
 
-        await dts_quarter(call)
+        if not progress:
+            return
 
-        return
+        topic_code = progress[0]
+        current_step = progress[1]
 
-    elif call.data.startswith(
-        "dts_bob_"
-    ):
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
 
-        await dts_bob(call)
+        lesson = cur.fetchone()
 
-        return
+        if not lesson:
+            return
 
-    elif call.data.startswith(
-        "dts_bolim_"
-    ):
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
 
-        await dts_bolim(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_mavzu_"
-    ):
-
-        await dts_mavzu(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_small_"
-    ):
-
-        await dts_small(call)
-
-        return
-
-    elif call.data.startswith(
-        "test_grade_"
-    ):
-
-        grade = call.data.replace(
-            "test_grade_",
+        simple_text = simple_map.get(
+            current_step,
             ""
         )
 
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        if not simple_text:
+            await message.answer("💡 Bu bosqich uchun izoh yo'q")
+            return
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def lesson_consolidation_test(user_id, message):
+    """Dars tugagach mustahkamlash testi — 5 savol"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        topic_code = user_state.get(user_id, {}).get("topic_code", "TEST_001")
+
+        # dts_tree dan o'sha mavzu topic_code lari
+        cur.execute("""
+            SELECT topic_code
+            FROM dts_tree
+            WHERE topic_code LIKE %s
+            LIMIT 20
+        """, (topic_code[:10] + "%",))
+
+        topic_codes = [r[0] for r in cur.fetchall()]
+
+        if not topic_codes:
+            topic_codes = [topic_code]
+
+        # Savollar
+        cur.execute("""
+            SELECT question, option_a, option_b, 
+                   option_c, option_d, correct_answer,
+                   explanation, question_type
+            FROM dts_tree
+            WHERE topic_code = ANY(%s)
+              AND question IS NOT NULL
+              AND option_a IS NOT NULL
+            ORDER BY RANDOM()
+            LIMIT 5
+        """, (topic_codes,))
+
+        questions = cur.fetchall()
+
+        if not questions:
+            # lesson_history ga saqlash
+            try:
+                cur.execute("""
+                    INSERT INTO lesson_history
+                    (user_id, topic_code, mavzu, fan, score, total)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    topic_code,
+                    user_state.get(user_id, {}).get("mavzu", ""),
+                    user_state.get(user_id, {}).get("fan", ""),
+                    0, 0
+                ))
+                conn.commit()
+            except Exception:
+                pass
+
+            await message.edit_text(
+                f"✅ Dars muvaffaqiyatli tugallandi!\n\n"
+                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"⚠️ Bu mavzu bo'yicha testlar hali qo'shilmagan.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="🏠 Bosh menyu",
+                            callback_data="lesson_finish"
+                        )
+                    ]]
+                )
+            )
+            return
+
+        # Testni user_state ga saqlaymiz
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["test_questions"] = questions
+        user_state[user_id]["test_index"]     = 0
+        user_state[user_id]["test_correct"]   = 0
+        user_state[user_id]["test_mode"]      = "consolidation"
+
+        await send_test_question(user_id, message, questions, 0)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def send_test_question(user_id, message, questions, index):
+    """Bitta test savolini yuboradi"""
+
+    if index >= len(questions):
+        correct = user_state.get(user_id, {}).get("test_correct", 0)
+        total   = len(questions)
+        pct     = int(correct / total * 100)
+
+        emoji = "🏆" if pct >= 80 else "👍" if pct >= 60 else "💪"
+
+        # lesson_history ga saqlash
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur  = conn.cursor()
+            topic_code = user_state.get(user_id, {}).get("topic_code", "")
+            cur.execute("""
+                INSERT INTO lesson_history
+                (user_id, topic_code, mavzu, fan, score, total)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                user_id,
+                topic_code,
+                user_state.get(user_id, {}).get("mavzu", ""),
+                user_state.get(user_id, {}).get("fan", ""),
+                correct,
+                total
+            ))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+        await message.edit_text(
+            f"{emoji} Test yakunlandi!\n\n"
+            f"✅ To'g'ri: {correct}/{total} ({pct}%)\n\n"
+            f"{'Zo\'r natija! Davom eting! 🚀' if pct >= 80 else 'Yaxshi urindi! Yana mashq qiling! 💡' if pct >= 60 else 'Mavzuni qayta ko\'rib chiqing! 📖'}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🏠 Bosh menyu",
+                        callback_data="lesson_finish"
+                    )
+                ]]
+            )
+        )
+        return
+
+    q = questions[index]
+    question   = q[0]
+    option_a   = q[1]
+    option_b   = q[2]
+    option_c   = q[3]
+    option_d   = q[4]
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"A) {option_a}",
+                callback_data=f"test_answer_A"
+            )],
+            [InlineKeyboardButton(
+                text=f"B) {option_b}",
+                callback_data=f"test_answer_B"
+            )],
+            [InlineKeyboardButton(
+                text=f"C) {option_c}",
+                callback_data=f"test_answer_C"
+            )],
+            [InlineKeyboardButton(
+                text=f"D) {option_d}",
+                callback_data=f"test_answer_D"
+            )]
+        ]
+    )
+
+    await message.edit_text(
+        f"🧠 Mustahkamlash testi\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"❓ {index + 1}/{len(questions)}\n\n"
+        f"{question}",
+        reply_markup=keyboard
+    )
+
+
+async def lesson_test_answer(user_id, message, answer):
+    """Test javobini tekshiradi"""
+
+    questions = user_state.get(user_id, {}).get("test_questions", [])
+    index     = user_state.get(user_id, {}).get("test_index", 0)
+
+    if not questions or index >= len(questions):
+        return
+
+    q             = questions[index]
+    correct       = q[5]
+    explanation   = q[6] or ""
+
+    is_correct = answer.upper() == correct.upper()
+
+    if is_correct:
+        user_state[user_id]["test_correct"] = (
+            user_state[user_id].get("test_correct", 0) + 1
+        )
+        result_text = "✅ To'g'ri!"
+    else:
+        result_text = f"❌ Noto'g'ri! To'g'ri javob: {correct}"
+
+    if explanation:
+        result_text += f"\n\n💡 {explanation}"
+
+    next_index = index + 1
+    user_state[user_id]["test_index"] = next_index
+
+    await message.edit_text(
+        f"🧠 Mustahkamlash testi\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"{result_text}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="➡️ Keyingi savol",
+                    callback_data="test_next_question"
+                )
+            ]]
+        )
+    )
+
+
+async def lesson_finish(
+    user_id,
+    message
+):
+
+    if user_id in user_state:
+
+        user_state.pop(user_id)
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    try:
 
         cur.execute("""
-            SELECT
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer,
-                explanation,
-                question_type,
-                is_latex,
-                image_url,
-                audio_text,
-                language,
-                time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (grade,))
+            DELETE FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
 
-        tests = cur.fetchall()
+        conn.commit()
+
+        await message.edit_text(
+            """
+🏁 Dars yakunlandi
+
+Rahmat.
+"""
+        )
+
+    finally:
 
         cur.close()
         conn.close()
 
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
+async def student_progress(message):
+    await message.answer("📈 Rivojlanishim")
 
-        return
+async def student_community(message):
+    await message.answer("🌍 Hamjamiyat")
 
-    elif call.data.startswith("test_subject_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer,
-                explanation,
-                question_type,
-                is_latex,
-                image_url,
-                audio_text,
-                language,
-                time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_quarter_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter
-        ) = call.data.split("_")
-
-        print("CALL:", call.data)
-        print("PARAMS:", grade, subject_code, quarter)
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_bob_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_bolim_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-                AND bolim_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_mavzu_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code,
-            mavzu_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-                AND bolim_code=%s
-                AND mavzu_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code,
-            mavzu_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data == "dts_menu":
-
-        await dts_menu(call.message)
-
-        return
-
-    elif call.data == "dts_confirm_import":
-
-        await dts_confirm_import(call)
-
-        return
-
-    elif call.data == "dts_problems":
-
-        await dts_problems(call)
-
-        return
-
-    elif call.data == "dts_download_errors":
-
-        await dts_download_errors(call)
-
-        return
-
-    elif call.data == "dts_cancel_import":
-
-        await dts_cancel_import(call)
-
-        return
-
-    # =========================
-    # test_buttons
-    # =========================
-
-    elif call.data == "dts_search":
-        await dts_search(call)
-        return
-
-    elif call.data == "dts_fast_search":
-        await dts_fast_search(
-            call,
-            state
-        )
-        return
-
-    elif call.data == "dts_adv_search":
-        await dts_adv_search(call)
-        return
-
-    elif call.data.startswith(
-        "dts_adv_grade_"
-    ):
-        await dts_adv_grade(call)
-        return
-
-    elif call.data == "dts_export":
-
-        await dts_export(call)
-
-        return
-
-    elif user_id not in user_test:
-        await call.answer(
-            "♻️ Bot yangilangan.  qayta boshlang.",
-            show_alert=True
-        )
-        return
-
-async def main():
-    print("BOT ISHGA TUSHDI 🚀")
-    init_db()
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+async def student_profile(message):
+    await message.answer("👤 Kabinet")
