@@ -722,16 +722,19 @@ async def lesson_next(user_id, message):
                 ]
             ]
         )
+        u = user_state.get(user_id, {})
+        fn   = u.get('full_name', "O'quvchi")
+        sinf = u.get('sinf', '')
+        fan  = u.get('fan', '')
+        mav  = u.get('mavzu', topic_code)
+        bgun = u.get('bugun', '')
+
         await message.edit_text(
-            f"""
-👤 {user_state.get(user_id, {}).get('full_name', 'O\'quvchi')} | {user_state.get(user_id, {}).get('sinf', '')}
-📘 {user_state.get(user_id, {}).get('fan', '')} • {user_state.get(user_id, {}).get('mavzu', topic_code)} • {user_state.get(user_id, {}).get('bugun', '')}
-━━━━━━━━━━━━━━
-
-{build_board_text(parts[next_step]) or render_content(parts[next_step])}
-
-📄 {next_step + 1}/{len(parts)} qadam
-""",
+            f"👤 {fn} | {sinf}\n"
+            f"📘 {fan} • {mav} • {bgun}\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[next_step]) or render_content(parts[next_step])}\n\n"
+            f"📄 {next_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
 
@@ -891,16 +894,19 @@ async def lesson_prev(user_id, message):
             ]
         )
 
+        u = user_state.get(user_id, {})
+        fn   = u.get('full_name', "O'quvchi")
+        sinf = u.get('sinf', '')
+        fan  = u.get('fan', '')
+        mav  = u.get('mavzu', topic_code)
+        bgun = u.get('bugun', '')
+
         await message.edit_text(
-            f"""
-👤 {user_state.get(user_id, {}).get('full_name', 'O\'quvchi')} | {user_state.get(user_id, {}).get('sinf', '')}
-📘 {user_state.get(user_id, {}).get('fan', '')} • {user_state.get(user_id, {}).get('mavzu', topic_code)} • {user_state.get(user_id, {}).get('bugun', '')}
-━━━━━━━━━━━━━━
-
-{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}
-
-📄 {prev_step + 1}/{len(parts)} qadam
-""",
+            f"👤 {fn} | {sinf}\n"
+            f"📘 {fan} • {mav} • {bgun}\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}\n\n"
+            f"📄 {prev_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
 
