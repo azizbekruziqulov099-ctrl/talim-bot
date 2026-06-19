@@ -8,374 +8,300 @@ from openpyxl.utils import get_column_letter
 
 from aiogram import F
 from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    FSInputFile
+    Message, CallbackQuery,
+    InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-
 from loader import dp, bot
-from storage import user_state
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMINS = [int(x) for x in os.getenv("ADMINS", "401251407").split(",")]
-
 PAGE_SIZE = 10
-
 
 class LessonAdminState(StatesGroup):
     waiting_excel = State()
 
-
-# ─────────────────────────────────────────
-# YORDAMCHI FUNKSIYALAR
-# ─────────────────────────────────────────
-
 def db():
     return psycopg2.connect(DATABASE_URL)
 
+def kb(buttons):
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def back_btn(callback_data, text="⬅️ Ortga"):
-    return [InlineKeyboardButton(text=text, callback_data=callback_data)]
+def back_btn(cb):
+    return [InlineKeyboardButton(text="⬅️ Ortga", callback_data=cb)]
 
+def home_btn():
+    return [InlineKeyboardButton(text="🏠 Admin menyu", callback_data="la_home")]
 
-def admin_menu_btn():
-    return [InlineKeyboardButton(text="🏠 Admin menyu", callback_data="lesson_admin_home")]
-
-
-def paginate(items, page, prefix, label_fn):
-    """10 talik sahifalash"""
-    start   = page * PAGE_SIZE
-    end     = start + PAGE_SIZE
-    chunk   = items[start:end]
-    buttons = []
-
-    for item in chunk:
-        buttons.append([InlineKeyboardButton(
-            text=label_fn(item),
-            callback_data=f"{prefix}{item[0]}"
-        )])
-
-    nav = []
+def nav_row(items, page, prefix):
+    row = []
+    total = (len(items)-1)//PAGE_SIZE+1
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"{prefix}page_{page-1}"))
-    nav.append(InlineKeyboardButton(
-        text=f"{page+1}/{(len(items)-1)//PAGE_SIZE+1}",
-        callback_data="noop"
-    ))
-    if end < len(items):
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"{prefix}page_{page+1}"))
-    if nav:
-        buttons.append(nav)
+        row.append(InlineKeyboardButton(text="◀️", callback_data=f"{prefix}|p|{page-1}"))
+    row.append(InlineKeyboardButton(text=f"{page+1}/{total}", callback_data="noop"))
+    if (page+1)*PAGE_SIZE < len(items):
+        row.append(InlineKeyboardButton(text="▶️", callback_data=f"{prefix}|p|{page+1}"))
+    return row
 
-    return buttons
-
-
-# ─────────────────────────────────────────
-# 1. KIRISH — Admin menyudan
-# ─────────────────────────────────────────
-
+# ─── ENTRY ───
 @dp.message(F.text == "📝 Dars boshqaruvi")
-async def lesson_admin_entry(message: Message):
+async def la_entry(message: Message):
     if message.from_user.id not in ADMINS:
         return
-    await show_grades(message)
+    await la_show_grades(message)
 
+async def la_show_grades(target, page=0):
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE ORDER BY grade")
+    items = cur.fetchall()
+    cur.close(); conn.close()
 
-async def show_grades(message_or_call, page=0):
-    conn = db()
-    cur  = conn.cursor()
-    cur.execute("""
-        SELECT DISTINCT grade FROM dts_tree
-        WHERE is_deleted=FALSE ORDER BY grade
-    """)
-    grades = cur.fetchall()
-    cur.close()
-    conn.close()
+    chunk   = items[page*PAGE_SIZE:(page+1)*PAGE_SIZE]
+    buttons = [[InlineKeyboardButton(text=f"🏫 {r[0]}-sinf", callback_data=f"la_g|{r[0]}")] for r in chunk]
+    nav = nav_row(items, page, "la_gs")
+    if nav: buttons.append(nav)
+    buttons.append(home_btn())
 
-    buttons = paginate(
-        grades, page,
-        prefix="la_grade_",
-        label_fn=lambda r: f"🏫 {r[0]}-sinf"
-    )
-    buttons.append(admin_menu_btn())
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    text = "📝 Dars boshqaruvi\n\nSinf tanlang:"
-
-    if isinstance(message_or_call, Message):
-        await message_or_call.answer(text, reply_markup=kb)
+    text = "📝 Dars boshqaruvi\nSinf tanlang:"
+    if hasattr(target, 'message'):
+        await target.message.edit_text(text, reply_markup=kb(buttons))
     else:
-        await message_or_call.message.edit_text(text, reply_markup=kb)
+        await target.answer(text, reply_markup=kb(buttons))
 
+@dp.callback_query(F.data.startswith("la_gs|p|"))
+async def la_grades_page(call: CallbackQuery):
+    page = int(call.data.split("|")[2])
+    await call.answer()
+    await la_show_grades(call, page)
 
-# ─────────────────────────────────────────
-# 2. SINF → FAN
-# ─────────────────────────────────────────
-
-@dp.callback_query(F.data.startswith("la_grade_"))
+# ─── SINF → FAN ───
+@dp.callback_query(F.data.startswith("la_g|"))
 async def la_grade(call: CallbackQuery):
-    if call.from_user.id not in ADMINS:
-        return
+    if call.from_user.id not in ADMINS: return
     await call.answer()
+    grade = call.data.split("|")[1]
 
-    data = call.data.replace("la_grade_", "")
-
-    if data.startswith("page_"):
-        page = int(data.replace("page_", ""))
-        await show_grades(call, page)
-        return
-
-    grade = data
-    conn  = db()
-    cur   = conn.cursor()
+    conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT subject_code, subject_name
-        FROM dts_tree
-        WHERE grade=%s AND is_deleted=FALSE
-        ORDER BY subject_name
+        SELECT DISTINCT subject_code, subject_name FROM dts_tree
+        WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name
     """, (grade,))
-    subjects = cur.fetchall()
-    cur.close()
-    conn.close()
+    items = cur.fetchall()
+    cur.close(); conn.close()
 
-    buttons = []
-    for code, name in subjects:
-        buttons.append([InlineKeyboardButton(
-            text=f"📘 {name}",
-            callback_data=f"la_sub|{grade}|{code}"
-        )])
-
+    buttons = [[InlineKeyboardButton(
+        text=f"📘 {name}",
+        callback_data=f"la_s|{grade}|{code}"
+    )] for code, name in items]
     buttons.append(back_btn("la_back_grades"))
-    buttons.append(admin_menu_btn())
+    buttons.append(home_btn())
 
-    await call.message.edit_text(
-        f"📝 {grade}-sinf\nFan tanlang:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    await call.message.edit_text(f"📝 {grade}-sinf\nFan tanlang:", reply_markup=kb(buttons))
 
-
-# ─────────────────────────────────────────
-# 3. FAN → MAVZULAR (10 talik, dars bor/yo'q)
-# ─────────────────────────────────────────
-
-@dp.callback_query(F.data.startswith("la_sub|"))
+# ─── FAN → CHORAK ───
+@dp.callback_query(F.data.startswith("la_s|"))
 async def la_subject(call: CallbackQuery):
-    if call.from_user.id not in ADMINS:
-        return
+    if call.from_user.id not in ADMINS: return
     await call.answer()
+    _, grade, scode = call.data.split("|")
 
-    parts        = call.data.split("|")
-    grade        = parts[1]
-    subject_code = parts[2]
-    page         = int(parts[3]) if len(parts) > 3 else 0
-
-    conn = db()
-    cur  = conn.cursor()
-
+    conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT mavzu_code, mavzu_name
-        FROM dts_tree
-        WHERE grade=%s AND subject_code=%s AND is_deleted=FALSE
-        ORDER BY mavzu_name
-    """, (grade, subject_code))
+        SELECT DISTINCT quarter FROM dts_tree
+        WHERE grade=%s AND subject_code=%s AND is_deleted=FALSE ORDER BY quarter
+    """, (grade, scode))
+    items = cur.fetchall()
+    cur.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND subject_code=%s LIMIT 1", (grade, scode))
+    sname = (cur.fetchone() or [scode])[0]
+    cur.close(); conn.close()
+
+    buttons = [[InlineKeyboardButton(
+        text=f"🗓 {r[0]}-chorak",
+        callback_data=f"la_q|{grade}|{scode}|{r[0]}"
+    )] for r in items]
+    buttons.append(back_btn(f"la_g|{grade}"))
+    buttons.append(home_btn())
+
+    await call.message.edit_text(f"📘 {grade}-sinf | {sname}", reply_markup=kb(buttons))
+
+# ─── CHORAK → BOB ───
+@dp.callback_query(F.data.startswith("la_q|"))
+async def la_quarter(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    _, grade, scode, quarter = call.data.split("|")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT bob_code, bob_name FROM dts_tree
+        WHERE grade=%s AND subject_code=%s AND quarter=%s AND is_deleted=FALSE
+        ORDER BY bob_code
+    """, (grade, scode, quarter))
+    items = cur.fetchall()
+    cur.close(); conn.close()
+
+    buttons = [[InlineKeyboardButton(
+        text=f"📖 {name}",
+        callback_data=f"la_b|{grade}|{scode}|{quarter}|{code}"
+    )] for code, name in items]
+    buttons.append(back_btn(f"la_s|{grade}|{scode}"))
+    buttons.append(home_btn())
+
+    await call.message.edit_text(f"🗓 {quarter}-chorak", reply_markup=kb(buttons))
+
+# ─── BOB → BO'LIM ───
+@dp.callback_query(F.data.startswith("la_b|"))
+async def la_bob(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    _, grade, scode, quarter, bcode = call.data.split("|")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT bolim_code, bolim_name FROM dts_tree
+        WHERE grade=%s AND subject_code=%s AND quarter=%s AND bob_code=%s AND is_deleted=FALSE
+        ORDER BY bolim_code
+    """, (grade, scode, quarter, bcode))
+    items = cur.fetchall()
+    cur.execute("SELECT DISTINCT bob_name FROM dts_tree WHERE grade=%s AND bob_code=%s LIMIT 1", (grade, bcode))
+    bname = (cur.fetchone() or [bcode])[0]
+    cur.close(); conn.close()
+
+    buttons = [[InlineKeyboardButton(
+        text=f"📑 {name}",
+        callback_data=f"la_bl|{grade}|{scode}|{quarter}|{bcode}|{code}"
+    )] for code, name in items]
+    buttons.append(back_btn(f"la_q|{grade}|{scode}|{quarter}"))
+    buttons.append(home_btn())
+
+    await call.message.edit_text(f"📖 {bname}", reply_markup=kb(buttons))
+
+# ─── BO'LIM → MAVZULAR ───
+@dp.callback_query(F.data.startswith("la_bl|"))
+async def la_bolim(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    _, grade, scode, quarter, bcode, blcode = call.data.split("|")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT mavzu_code, mavzu_name FROM dts_tree
+        WHERE grade=%s AND subject_code=%s AND quarter=%s
+          AND bob_code=%s AND bolim_code=%s AND is_deleted=FALSE
+        ORDER BY mavzu_code
+    """, (grade, scode, quarter, bcode, blcode))
     mavzular = cur.fetchall()
 
-    # Har mavzu uchun dars bor/yo'q — topic_code orqali
+    # Har mavzu uchun dars bor/yo'q
     cur.execute("""
-        SELECT DISTINCT t.mavzu_code,
-               COUNT(DISTINCT tl.topic_code) as filled
+        SELECT DISTINCT t.mavzu_code, COUNT(DISTINCT tl.topic_code)
         FROM dts_tree t
         LEFT JOIN teacher_lessons tl ON tl.topic_code = t.topic_code
-        WHERE t.grade=%s AND t.subject_code=%s AND t.is_deleted=FALSE
+        WHERE t.grade=%s AND t.subject_code=%s AND t.quarter=%s
+          AND t.bob_code=%s AND t.bolim_code=%s AND t.is_deleted=FALSE
         GROUP BY t.mavzu_code
-    """, (grade, subject_code))
+    """, (grade, scode, quarter, bcode, blcode))
     stats = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("""
-        SELECT DISTINCT subject_name FROM dts_tree
-        WHERE grade=%s AND subject_code=%s LIMIT 1
-    """, (grade, subject_code))
-    subj_row = cur.fetchone()
-    subject_name = subj_row[0] if subj_row else subject_code
-
-    cur.close()
-    conn.close()
-
-    # Sahifalash
-    start = page * PAGE_SIZE
-    end   = start + PAGE_SIZE
-    chunk = mavzular[start:end]
+    cur.execute("SELECT DISTINCT bolim_name FROM dts_tree WHERE grade=%s AND bolim_code=%s LIMIT 1", (grade, blcode))
+    blname = (cur.fetchone() or [blcode])[0]
+    cur.close(); conn.close()
 
     buttons = []
-    for code, name in chunk:
-        filled = stats.get(code, 0)
+    for mcode, mname in mavzular:
+        filled = stats.get(mcode, 0)
         icon   = "✅" if filled > 0 else "❌"
-        import urllib.parse
-        safe_name = urllib.parse.quote(name, safe='')
         buttons.append([InlineKeyboardButton(
-            text=f"{icon} {name}",
-            callback_data=f"la_mav|{grade}|{subject_code}|{code}"
+            text=f"{icon} {mname}",
+            callback_data=f"la_m|{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
         )])
-
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton(
-            text="⬅️",
-            callback_data=f"la_sub|{grade}|{subject_code}|{page-1}"
-        ))
-    nav.append(InlineKeyboardButton(
-        text=f"{page+1}/{(len(mavzular)-1)//PAGE_SIZE+1}",
-        callback_data="noop"
-    ))
-    if end < len(mavzular):
-        nav.append(InlineKeyboardButton(
-            text="➡️",
-            callback_data=f"la_sub|{grade}|{subject_code}|{page+1}"
-        ))
-    if nav:
-        buttons.append(nav)
-
-    buttons.append(back_btn(f"la_grade_{grade}"))
-    buttons.append(admin_menu_btn())
 
     total_all  = len(mavzular)
     filled_all = sum(1 for v in stats.values() if v > 0)
 
+    buttons.append(back_btn(f"la_b|{grade}|{scode}|{quarter}|{bcode}"))
+    buttons.append(home_btn())
+
     await call.message.edit_text(
-        f"📝 {grade}-sinf | {subject_name}\n"
-        f"Mavzular: {filled_all}/{total_all} ta dars bor\n\n"
-        f"✅ Dars bor  ❌ Bo'sh",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        f"📑 {blname}\nMavzular: {filled_all}/{total_all}\n✅ Dars bor  ❌ Bo'sh",
+        reply_markup=kb(buttons)
     )
 
-
-# ─────────────────────────────────────────
-# 4. MAVZU → KICHIK MAVZULAR + SHABLON/IMPORT
-# ─────────────────────────────────────────
-
-@dp.callback_query(F.data.startswith("la_mav|"))
+# ─── MAVZU → KICHIK MAVZULAR ───
+@dp.callback_query(F.data.startswith("la_m|"))
 async def la_mavzu(call: CallbackQuery):
-    if call.from_user.id not in ADMINS:
-        return
+    if call.from_user.id not in ADMINS: return
     await call.answer()
+    _, grade, scode, quarter, bcode, blcode, mcode = call.data.split("|")
 
-    parts        = call.data.split("|")
-    grade        = parts[1]
-    subject_code = parts[2]
-    mavzu_code   = parts[3]
-
-    conn = db()
-    cur  = conn.cursor()
-
+    conn = db(); cur = conn.cursor()
     cur.execute("""
         SELECT DISTINCT kichik_code, kichik_name, topic_code,
-               subject_name, mavzu_name,
-               quarter, bob_name, bolim_name
+               subject_name, mavzu_name
         FROM dts_tree
-        WHERE grade=%s AND subject_code=%s AND mavzu_code=%s
+        WHERE grade=%s AND subject_code=%s AND quarter=%s
+          AND bob_code=%s AND bolim_code=%s AND mavzu_code=%s
           AND is_deleted=FALSE
         ORDER BY kichik_code
-    """, (grade, subject_code, mavzu_code))
+    """, (grade, scode, quarter, bcode, blcode, mcode))
     rows = cur.fetchall()
 
     if not rows:
-        # mavzu_code bilan topilmasa mavzu_name bilan qidirish
-        cur.execute("""
-            SELECT DISTINCT kichik_code, kichik_name, topic_code,
-                   subject_name, mavzu_name,
-                   quarter, bob_name, bolim_name
-            FROM dts_tree
-            WHERE grade=%s AND subject_code=%s AND mavzu_name=%s
-              AND is_deleted=FALSE
-            ORDER BY kichik_code
-        """, (grade, subject_code, mavzu_code))
-        rows = cur.fetchall()
-
-    if not rows:
         await call.message.edit_text("❌ Kichik mavzular topilmadi")
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         return
 
     topic_codes = [r[2] for r in rows]
-    cur.execute("""
-        SELECT topic_code FROM teacher_lessons
-        WHERE topic_code = ANY(%s)
-    """, (topic_codes,))
+    cur.execute("SELECT topic_code FROM teacher_lessons WHERE topic_code = ANY(%s)", (topic_codes,))
     existing = {r[0] for r in cur.fetchall()}
+    cur.close(); conn.close()
 
-    cur.close()
-    conn.close()
-
-    subject_name = rows[0][3]
-    mavzu_name   = rows[0][4]
-    quarter      = rows[0][5]
-    bob_name     = rows[0][6]
-    bolim_name   = rows[0][7]
-
+    sname  = rows[0][3]
+    mname  = rows[0][4]
     filled = len([r for r in rows if r[2] in existing])
     total  = len(rows)
 
     buttons = []
-    for code, name, topic_code, *_ in rows:
+    for kcode, kname, topic_code, *_ in rows:
         icon = "✅" if topic_code in existing else "❌"
         buttons.append([InlineKeyboardButton(
-            text=f"{icon} {name}",
-            callback_data=f"la_small_{topic_code}"
+            text=f"{icon} {kname}",
+            callback_data="noop"
         )])
 
-    buttons.append([InlineKeyboardButton(
-        text="📥 Shablon yuklab ol",
-        callback_data=f"la_tmpl|{grade}|{subject_code}|{mavzu_code}"
-    )])
-    buttons.append([InlineKeyboardButton(
-        text="📤 Import qilish",
-        callback_data=f"la_imp|{grade}|{subject_code}|{mavzu_code}"
-    )])
-    buttons.append(back_btn(f"la_sub|{grade}|{subject_code}"))
-    buttons.append(admin_menu_btn())
+    meta = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
+    buttons.append([InlineKeyboardButton(text="📥 Shablon yuklab ol", callback_data=f"la_tmpl|{meta}")])
+    buttons.append([InlineKeyboardButton(text="📤 Import qilish",     callback_data=f"la_imp|{meta}")])
+    buttons.append(back_btn(f"la_bl|{grade}|{scode}|{quarter}|{bcode}|{blcode}"))
+    buttons.append(home_btn())
 
     await call.message.edit_text(
-        f"📝 {grade}-sinf | {subject_name}\n"
-        f"📖 {mavzu_name}\n"
-        f"📌 {quarter}-chorak | {bob_name} | {bolim_name}\n"
+        f"📝 {grade}-sinf | {sname}\n"
+        f"📖 {mname}\n"
         f"━━━━━━━━━━━━━━\n"
-        f"Kichik mavzular: {filled}/{total} to'liq\n\n"
+        f"Kichik mavzular: {filled}/{total}\n"
         f"✅ Dars bor  ❌ Bo'sh",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        reply_markup=kb(buttons)
     )
 
-
-# ─────────────────────────────────────────
-# 5. SHABLON YUKLAB OLISH
-# ─────────────────────────────────────────
-
+# ─── SHABLON ───
 @dp.callback_query(F.data.startswith("la_tmpl|"))
 async def la_template(call: CallbackQuery):
-    if call.from_user.id not in ADMINS:
-        return
-    await call.answer("📥 Shablon tayyorlanmoqda...")
+    if call.from_user.id not in ADMINS: return
+    await call.answer("📥 Tayyor bo'lmoqda...")
 
-    parts        = call.data.split("|")
-    grade        = parts[1]
-    subject_code = parts[2]
-    mavzu_code   = parts[3]
+    _, grade, scode, quarter, bcode, blcode, mcode = call.data.split("|")
 
-    conn = db()
-    cur  = conn.cursor()
-
+    conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT kichik_code, kichik_name, topic_code,
-               subject_name, mavzu_name
+        SELECT DISTINCT kichik_code, kichik_name, topic_code, subject_name, mavzu_name
         FROM dts_tree
-        WHERE grade=%s AND subject_code=%s AND mavzu_code=%s
+        WHERE grade=%s AND subject_code=%s AND quarter=%s
+          AND bob_code=%s AND bolim_code=%s AND mavzu_code=%s
           AND is_deleted=FALSE
         ORDER BY kichik_code
-    """, (grade, subject_code, mavzu_code))
+    """, (grade, scode, quarter, bcode, blcode, mcode))
     rows = cur.fetchall()
 
     topic_codes = [r[2] for r in rows]
@@ -383,232 +309,40 @@ async def la_template(call: CallbackQuery):
         SELECT topic_code, intro, part_1, part_2, part_3, part_4,
                simple_1, simple_2, example_1, example_2,
                exercise_1, exercise_2, summary
-        FROM teacher_lessons
-        WHERE topic_code = ANY(%s)
+        FROM teacher_lessons WHERE topic_code = ANY(%s)
     """, (topic_codes,))
     lessons = {r[0]: r for r in cur.fetchall()}
+    cur.close(); conn.close()
 
-    cur.close()
-    conn.close()
+    sname = rows[0][3] if rows else ""
+    mname = rows[0][4] if rows else ""
 
-    subject_name = rows[0][3] if rows else ""
-    mavzu_name   = rows[0][4] if rows else ""
+    filepath = make_excel(rows, lessons, grade, sname, mname)
 
-    filepath = make_excel(rows, lessons, grade, subject_name, mavzu_name)
-
+    meta = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
     await call.message.answer_document(
         FSInputFile(filepath),
         caption=(
-            f"📥 Shablon tayyor!\n\n"
-            f"🏫 {grade}-sinf | {subject_name}\n"
-            f"📖 {mavzu_name}\n\n"
-            f"✅ Yashil — dars bor (tahrirlasa bo'ladi)\n"
-            f"⬜ Oq — bo'sh, to'ldiring\n\n"
+            f"📥 Shablon\n🏫 {grade}-sinf | {sname}\n📖 {mname}\n\n"
+            f"✅ Yashil — dars bor\n⬜ Oq — to'ldiring\n\n"
             f"To'ldirib yuborish uchun 👇"
         ),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="📤 Import qilish",
-                callback_data=f"la_imp|{grade}|{subject_code}|{mavzu_code}"
-            )
-        ]])
+        reply_markup=kb([[InlineKeyboardButton(
+            text="📤 Import qilish",
+            callback_data=f"la_imp|{meta}"
+        )]])
     )
-
     if os.path.exists(filepath):
         os.remove(filepath)
 
-
-def make_excel(rows, lessons, grade, subject_name, mavzu_name):
-    wb  = Workbook()
-    thin   = Side(style="thin", color="CCCCCC")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    HEADER = "1F4E79"
-    EXISTS = "E2EFDA"
-    EMPTY  = "FFFFFF"
-    FIXED  = "D6E4F0"
-
-    columns = [
-        ("topic_code", 16),
-        ("grade",       8),
-        ("subject",    18),
-        ("mavzu",      22),
-        ("intro",      45),
-        ("part_1",     45),
-        ("part_2",     45),
-        ("part_3",     45),
-        ("part_4",     45),
-        ("simple_1",   38),
-        ("simple_2",   38),
-        ("example_1",  38),
-        ("example_2",  38),
-        ("exercise_1", 38),
-        ("exercise_2", 38),
-        ("summary",    45),
-    ]
-
-    # ── Sheet 1: DARSLAR ──
-    ws = wb.active
-    ws.title = "DARSLAR"
-
-    ws.merge_cells(f"A1:{get_column_letter(len(columns))}1")
-    t = ws["A1"]
-    t.value     = f"📝 {grade}-sinf | {subject_name} | {mavzu_name}"
-    t.font      = Font(bold=True, color="FFFFFF", name="Arial", size=12)
-    t.fill      = PatternFill("solid", start_color=HEADER)
-    t.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 30
-
-    for col, (name, width) in enumerate(columns, 1):
-        c           = ws.cell(row=2, column=col, value=name)
-        c.font      = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-        c.fill      = PatternFill("solid", start_color=HEADER)
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border    = border
-        ws.column_dimensions[get_column_letter(col)].width = width
-    ws.row_dimensions[2].height = 25
-
-    col_map = {name: i+1 for i, (name, _) in enumerate(columns)}
-    editable = {"intro","part_1","part_2","part_3","part_4",
-                "simple_1","simple_2","example_1","example_2",
-                "exercise_1","exercise_2","summary"}
-
-    for row_idx, (kichik_code, kichik_name, topic_code, *_) in enumerate(rows, 3):
-        lesson    = lessons.get(topic_code)
-        is_filled = lesson is not None
-
-        lesson_map = {}
-        if lesson:
-            keys = ["topic_code","intro","part_1","part_2","part_3","part_4",
-                    "simple_1","simple_2","example_1","example_2",
-                    "exercise_1","exercise_2","summary"]
-            lesson_map = {k: (lesson[i] or "") for i, k in enumerate(keys)}
-
-        fixed = {
-            "topic_code": topic_code,
-            "grade":      grade,
-            "subject":    subject_name,
-            "mavzu":      kichik_name,
-        }
-
-        for col_name, col_idx in col_map.items():
-            if col_name in fixed:
-                val = fixed[col_name]
-                bg  = FIXED
-            elif col_name in editable:
-                val = lesson_map.get(col_name, "")
-                bg  = EXISTS if is_filled else EMPTY
-            else:
-                val = ""
-                bg  = EMPTY
-
-            c           = ws.cell(row=row_idx, column=col_idx, value=val)
-            c.font      = Font(name="Arial", size=10)
-            c.fill      = PatternFill("solid", start_color=bg)
-            c.alignment = Alignment(vertical="top", wrap_text=True)
-            c.border    = border
-
-        ws.row_dimensions[row_idx].height = 80
-
-    # ── Sheet 2: NAMUNA ──
-    ws2 = wb.create_sheet("NAMUNA")
-    ws2.merge_cells(f"A1:{get_column_letter(len(columns))}1")
-    n           = ws2["A1"]
-    n.value     = "✅ NAMUNA — qanday to'ldirish kerak"
-    n.font      = Font(bold=True, color="FFFFFF", name="Arial", size=12)
-    n.fill      = PatternFill("solid", start_color="375623")
-    n.alignment = Alignment(horizontal="center", vertical="center")
-    ws2.row_dimensions[1].height = 30
-
-    for col, (name, width) in enumerate(columns, 1):
-        c           = ws2.cell(row=2, column=col, value=name)
-        c.font      = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-        c.fill      = PatternFill("solid", start_color=HEADER)
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = border
-        ws2.column_dimensions[get_column_letter(col)].width = width
-
-    sample = [
-        "TEST_001", grade, subject_name, "Namuna kichik mavzu",
-        "🌟 Bugun qiziqarli mavzuni o'rganamiz!\nSiz hech o'ylab ko'rganmisiz...",
-        "📖 1-qism. [en]Hello[/en] degani...\n[latex]\\frac{1}{2}[/latex]",
-        "📌 2-qism. Qoidalar:\n• Birinchi...\n• Ikkinchi...",
-        "", "",
-        "💡 Oddiyroq: ...",
-        "",
-        "🎬 Misol: ...",
-        "", "", "",
-        "✅ Bugun o'rgandik:\n1) ...\n2) ..."
-    ]
-    for col, val in enumerate(sample, 1):
-        c           = ws2.cell(row=3, column=col, value=val)
-        c.font      = Font(name="Arial", size=10)
-        c.fill      = PatternFill("solid", start_color="FFFFFF")
-        c.alignment = Alignment(vertical="top", wrap_text=True)
-        c.border    = border
-    ws2.row_dimensions[3].height = 120
-
-    # ── Sheet 3: TEGLAR ──
-    ws3 = wb.create_sheet("TEGLAR")
-    ws3.column_dimensions["A"].width = 30
-    ws3.column_dimensions["B"].width = 55
-
-    ws3.merge_cells("A1:B1")
-    t           = ws3["A1"]
-    t.value     = "🏷 TEG FORMATLARI VA QOIDALAR"
-    t.font      = Font(bold=True, color="FFFFFF", name="Arial", size=12)
-    t.fill      = PatternFill("solid", start_color="7030A0")
-    t.alignment = Alignment(horizontal="center", vertical="center")
-    ws3.row_dimensions[1].height = 28
-
-    tags = [
-        ("TEG", "MISOL / IZOH"),
-        ("[en]...[/en]", "[en]Hello[/en] — inglizcha, boshqa ovozda"),
-        ("[ru]...[/ru]", "[ru]Привет[/ru] — ruscha ovozda"),
-        ("[latex]...[/latex]", "[latex]\\frac{1}{2}[/latex] — formula rasmi + ovoz"),
-        ("[img]nom[/img]", "[img]kasrlar_rasm[/img] — DB dagi rasm"),
-        ("", ""),
-        ("MAJBURIY", "intro, part_1, part_2, summary — bo'sh qoldirmang!"),
-        ("IXTIYORIY", "part_3, part_4, simple_*, example_*, exercise_*"),
-    ]
-    for i, (a, b) in enumerate(tags, 2):
-        for col, val in [(1, a), (2, b)]:
-            c           = ws3.cell(row=i, column=col, value=val)
-            c.font      = Font(bold=(i == 2 or a == "MAJBURIY"), name="Arial", size=10)
-            c.alignment = Alignment(vertical="center", wrap_text=True)
-            c.border    = border
-            if i == 2 or a == "MAJBURIY":
-                c.fill = PatternFill("solid", start_color="D9D9D9")
-        ws3.row_dimensions[i].height = 28
-
-    filepath = f"lesson_{grade}_{mavzu_name[:15]}.xlsx"
-    wb.save(filepath)
-    return filepath
-
-
-# ─────────────────────────────────────────
-# 6. IMPORT
-# ─────────────────────────────────────────
-
+# ─── IMPORT ───
 @dp.callback_query(F.data.startswith("la_imp|"))
 async def la_import_prompt(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in ADMINS:
-        return
+    if call.from_user.id not in ADMINS: return
     await call.answer()
-
-    parts        = call.data.split("|")
-    grade        = parts[1]
-    subject_code = parts[2]
-    mavzu_code   = parts[3]
-
-    await state.update_data(import_meta=call.data)
     await state.set_state(LessonAdminState.waiting_excel)
-
-    await call.message.answer(
-        "📤 To'ldirilgan Excel faylini yuboring:\n\n"
-        "⚠️ Faqat 'DARSLAR' sheetidagi ma'lumotlar saqlanadi"
-    )
-
+    await state.update_data(meta=call.data)
+    await call.message.answer("📤 To'ldirilgan Excel faylini yuboring:")
 
 @dp.message(LessonAdminState.waiting_excel)
 async def la_import_excel(message: Message, state: FSMContext):
@@ -628,89 +362,147 @@ async def la_import_excel(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    conn = db()
-    cur  = conn.cursor()
-
-    added   = 0
-    updated = 0
-    skipped = 0
+    conn = db(); cur = conn.cursor()
+    added = updated = skipped = 0
 
     def v(row, col):
         val = row.get(col, "")
-        return "" if str(val) in ("nan", "None", "") else str(val).strip()
+        return "" if str(val) in ("nan","None","") else str(val).strip()
 
     for _, row in df.iterrows():
-        topic_code = v(row, "topic_code")
-        intro      = v(row, "intro")
-
-        if not topic_code or not intro:
+        tc    = v(row, "topic_code")
+        intro = v(row, "intro")
+        if not tc or not intro:
             skipped += 1
             continue
 
-        cur.execute(
-            "SELECT id FROM teacher_lessons WHERE topic_code=%s",
-            (topic_code,)
-        )
-        exists = cur.fetchone()
+        fields = (intro, v(row,"part_1"), v(row,"part_2"), v(row,"part_3"), v(row,"part_4"),
+                  v(row,"simple_1"), v(row,"simple_2"), v(row,"example_1"), v(row,"example_2"),
+                  v(row,"exercise_1"), v(row,"exercise_2"), v(row,"summary"))
 
-        fields = (
-            intro,
-            v(row, "part_1"), v(row, "part_2"),
-            v(row, "part_3"), v(row, "part_4"),
-            v(row, "simple_1"), v(row, "simple_2"),
-            v(row, "example_1"), v(row, "example_2"),
-            v(row, "exercise_1"), v(row, "exercise_2"),
-            v(row, "summary")
-        )
-
-        if exists:
+        cur.execute("SELECT id FROM teacher_lessons WHERE topic_code=%s", (tc,))
+        if cur.fetchone():
             cur.execute("""
                 UPDATE teacher_lessons SET
-                    intro=%s, part_1=%s, part_2=%s, part_3=%s, part_4=%s,
-                    simple_1=%s, simple_2=%s, example_1=%s, example_2=%s,
-                    exercise_1=%s, exercise_2=%s, summary=%s
+                    intro=%s,part_1=%s,part_2=%s,part_3=%s,part_4=%s,
+                    simple_1=%s,simple_2=%s,example_1=%s,example_2=%s,
+                    exercise_1=%s,exercise_2=%s,summary=%s
                 WHERE topic_code=%s
-            """, (*fields, topic_code))
+            """, (*fields, tc))
             updated += 1
         else:
             cur.execute("""
                 INSERT INTO teacher_lessons
-                (topic_code, intro, part_1, part_2, part_3, part_4,
-                 simple_1, simple_2, example_1, example_2,
-                 exercise_1, exercise_2, summary)
+                (topic_code,intro,part_1,part_2,part_3,part_4,
+                 simple_1,simple_2,example_1,example_2,exercise_1,exercise_2,summary)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (topic_code, *fields))
+            """, (tc, *fields))
             added += 1
 
-    conn.commit()
-    cur.close()
-    conn.close()
+    conn.commit(); cur.close(); conn.close()
     await state.clear()
+    await message.answer(f"✅ Import tugadi!\n➕ Yangi: {added}\n✏️ Yangilandi: {updated}\n⏭ O'tkazildi: {skipped}")
 
-    await message.answer(
-        f"✅ Import tugadi!\n\n"
-        f"➕ Yangi qo'shildi: {added}\n"
-        f"✏️ Yangilandi: {updated}\n"
-        f"⏭ O'tkazildi (bo'sh): {skipped}"
-    )
-
-
-# ─────────────────────────────────────────
-# 7. ORTGA QAYTISH
-# ─────────────────────────────────────────
-
+# ─── ORTGA / HOME ───
 @dp.callback_query(F.data == "la_back_grades")
 async def la_back_grades(call: CallbackQuery):
     await call.answer()
-    await show_grades(call)
+    await la_show_grades(call)
 
-
-@dp.callback_query(F.data == "lesson_admin_home")
+@dp.callback_query(F.data == "la_home")
 async def la_home(call: CallbackQuery):
     await call.answer()
     await call.message.delete()
 
-
 @dp.callback_query(F.data == "noop")
 async def noop(call: CallbackQuery):
     await call.answer()
+
+# ─── EXCEL SHABLON ───
+def make_excel(rows, lessons, grade, subject_name, mavzu_name):
+    wb = Workbook()
+    thin = Side(style="thin", color="CCCCCC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    HEADER = "1F4E79"; EXISTS = "E2EFDA"; EMPTY = "FFFFFF"; FIXED = "D6E4F0"
+
+    columns = [
+        ("topic_code",16),("grade",8),("subject",18),("mavzu",22),
+        ("intro",45),("part_1",45),("part_2",45),("part_3",45),("part_4",45),
+        ("simple_1",38),("simple_2",38),("example_1",38),("example_2",38),
+        ("exercise_1",38),("exercise_2",38),("summary",45),
+    ]
+    editable = {"intro","part_1","part_2","part_3","part_4",
+                "simple_1","simple_2","example_1","example_2","exercise_1","exercise_2","summary"}
+
+    ws = wb.active; ws.title = "DARSLAR"
+    ws.merge_cells(f"A1:{get_column_letter(len(columns))}1")
+    t = ws["A1"]
+    t.value = f"📝 {grade}-sinf | {subject_name} | {mavzu_name}"
+    t.font = Font(bold=True, color="FFFFFF", name="Arial", size=12)
+    t.fill = PatternFill("solid", start_color=HEADER)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    for col, (name, width) in enumerate(columns, 1):
+        c = ws.cell(row=2, column=col, value=name)
+        c.font = Font(bold=True, color="FFFFFF", name="Arial", size=9)
+        c.fill = PatternFill("solid", start_color=HEADER)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = border
+        ws.column_dimensions[get_column_letter(col)].width = width
+    ws.row_dimensions[2].height = 25
+
+    col_map = {name: i+1 for i, (name, _) in enumerate(columns)}
+
+    for row_idx, (kcode, kname, topic_code, *_) in enumerate(rows, 3):
+        lesson = lessons.get(topic_code)
+        lm = {}
+        if lesson:
+            keys = ["topic_code","intro","part_1","part_2","part_3","part_4",
+                    "simple_1","simple_2","example_1","example_2","exercise_1","exercise_2","summary"]
+            lm = {k: (lesson[i] or "") for i, k in enumerate(keys)}
+
+        fixed = {"topic_code": topic_code, "grade": grade, "subject": subject_name, "mavzu": kname}
+
+        for cname, cidx in col_map.items():
+            if cname in fixed:
+                val = fixed[cname]; bg = FIXED
+            elif cname in editable:
+                val = lm.get(cname, ""); bg = EXISTS if lesson else EMPTY
+            else:
+                val = ""; bg = EMPTY
+            c = ws.cell(row=row_idx, column=cidx, value=val)
+            c.font = Font(name="Arial", size=10)
+            c.fill = PatternFill("solid", start_color=bg)
+            c.alignment = Alignment(vertical="top", wrap_text=True)
+            c.border = border
+        ws.row_dimensions[row_idx].height = 80
+
+    # Namuna sheet
+    ws2 = wb.create_sheet("NAMUNA")
+    ws2.merge_cells(f"A1:{get_column_letter(len(columns))}1")
+    n = ws2["A1"]
+    n.value = "✅ NAMUNA"; n.font = Font(bold=True, color="FFFFFF", name="Arial", size=12)
+    n.fill = PatternFill("solid", start_color="375623")
+    n.alignment = Alignment(horizontal="center", vertical="center")
+    for col, (name, width) in enumerate(columns, 1):
+        c = ws2.cell(row=2, column=col, value=name)
+        c.font = Font(bold=True, color="FFFFFF", name="Arial", size=9)
+        c.fill = PatternFill("solid", start_color=HEADER)
+        c.border = border
+        ws2.column_dimensions[get_column_letter(col)].width = width
+    sample = ["TEST_001",grade,subject_name,"Namuna mavzu",
+              "🌟 Kirish matni...","📖 1-qism...","📌 2-qism...","","",
+              "💡 Sodda izoh...","","🎬 Misol...","","","",
+              "✅ Xulosa: 1)... 2)..."]
+    for col, val in enumerate(sample, 1):
+        c = ws2.cell(row=3, column=col, value=val)
+        c.font = Font(name="Arial", size=10)
+        c.fill = PatternFill("solid", start_color="FFFFFF")
+        c.alignment = Alignment(vertical="top", wrap_text=True)
+        c.border = border
+    ws2.row_dimensions[3].height = 100
+
+    filepath = f"lesson_{grade}_{mavzu_name[:15]}.xlsx"
+    wb.save(filepath)
+    return filepath
