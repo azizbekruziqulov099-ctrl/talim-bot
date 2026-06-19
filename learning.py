@@ -37,11 +37,6 @@ from latex_utils import (
     latex_to_image,
     latex_to_voice
 )
-from progress import (
-    add_xp, update_streak, mark_learned,
-    get_next_topic, build_welcome,
-    check_badges, get_progress, get_group
-)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -958,16 +953,16 @@ async def lesson_help(
 
         # izoh matni (simple_1..4)
         simple_map = {
-            1: lesson[7] or "",
-            2: lesson[8] or "",
-            3: lesson[14] if len(lesson) > 14 else (lesson[9] or ""),
-            4: lesson[15] if len(lesson) > 15 else (lesson[10] or "")
+            1: str(lesson[7] or ""),
+            2: str(lesson[8] or ""),
+            3: str(lesson[14] if len(lesson) > 14 and lesson[14] else (lesson[9] or "")),
+            4: str(lesson[15] if len(lesson) > 15 and lesson[15] else (lesson[10] or ""))
         }
 
         simple_text = simple_map.get(current_step, "")
-        main_text   = parts[current_step]
-
-        u    = user_state.get(user_id, {})
+        if simple_text in ("None", "none"):
+            simple_text = ""
+        main_text = str(parts[current_step])
         fn   = u.get("full_name", "O'quvchi")
         sinf = u.get("sinf", "")
         fan  = u.get("fan", "")
@@ -1044,13 +1039,15 @@ async def lesson_tts_help(user_id, message):
             return
 
         simple_map = {
-            1: lesson[7] or "",
-            2: lesson[8] or "",
-            3: lesson[14] if len(lesson) > 14 else (lesson[9] or ""),
-            4: lesson[15] if len(lesson) > 15 else (lesson[10] or "")
+            1: str(lesson[7] or ""),
+            2: str(lesson[8] or ""),
+            3: str(lesson[14] if len(lesson) > 14 and lesson[14] else (lesson[9] or "")),
+            4: str(lesson[15] if len(lesson) > 15 and lesson[15] else (lesson[10] or ""))
         }
 
         simple_text = simple_map.get(current_step, "")
+        if simple_text in ("None", "none"):
+            simple_text = ""
 
         if not simple_text:
             await speak_mixed_text(user_id, message, "Bu bosqich uchun izoh yo'q")
@@ -1267,6 +1264,7 @@ async def send_test_question(user_id, message, questions, index):
         msg = "Zo'r natija! Davom eting! 🚀" if pct >= 80 else "Yaxshi urindi! Yana mashq qiling! 💡" if pct >= 60 else "Mavzuni qayta ko'rib chiqing! 📖"
 
         # XP qo'shish
+        from progress import add_xp, update_streak, mark_learned, get_progress
         xp_reason = "test_100" if pct == 100 else "test_80" if pct >= 80 else "test_60" if pct >= 60 else "lesson"
         xp_earned = add_xp(user_id, xp_reason)
         streak    = update_streak(user_id)
@@ -1392,13 +1390,17 @@ async def lesson_finish(
     message
 ):
 
-    if user_id in user_state:
-        user_state.pop(user_id)
-
     conn = psycopg2.connect(DATABASE_URL)
     cur  = conn.cursor()
 
     try:
+
+        # Mavzu topic_code ni oldindan saqlab olamiz
+        topic_code = user_state.get(user_id, {}).get("topic_code", "") if isinstance(user_state.get(user_id), dict) else ""
+        grade      = user_state.get(user_id, {}).get("sinf", "") if isinstance(user_state.get(user_id), dict) else ""
+
+        if user_id in user_state:
+            user_state.pop(user_id)
 
         cur.execute("""
             DELETE FROM lesson_progress
@@ -1409,17 +1411,47 @@ async def lesson_finish(
 
         # Rolni aniqla
         cur.execute("""
-            SELECT role FROM users WHERE user_id = %s
+            SELECT role, class FROM users WHERE user_id = %s
         """, (user_id,))
-        row  = cur.fetchone()
-        role = row[0] if row else "O'quvchi"
+        row   = cur.fetchone()
+        role  = row[0] if row else "O'quvchi"
+        grade = grade or (row[1] if row else "1")
+
+        # Keyingi mavzuni top
+        from progress import get_next_topic
+        next_topic = get_next_topic(user_id, grade)
 
         await message.edit_text("🏁 Dars yakunlandi! Rahmat.")
 
-        await message.answer(
-            "🏠 Asosiy menyu",
-            reply_markup=get_main_keyboard(role)
-        )
+        if next_topic:
+            await message.answer(
+                f"🎯 Keyingi mavzu tayyor:\n\n"
+                f"📚 {next_topic[3]}\n"
+                f"📝 {next_topic[2]}\n"
+                f"🔑 {next_topic[1]}\n\n"
+                f"Davom etasizmi?",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="▶️ Ha, davom etaman!",
+                                callback_data=f"next_lesson_{next_topic[0]}"
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="🏠 Yo'q, keyinroq",
+                                callback_data="go_home"
+                            )
+                        ]
+                    ]
+                )
+            )
+        else:
+            await message.answer(
+                "🎉 Barcha mavzularni o'zgandingiz!",
+                reply_markup=get_main_keyboard(role)
+            )
 
     finally:
 
