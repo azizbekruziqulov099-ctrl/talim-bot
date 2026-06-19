@@ -753,7 +753,7 @@ async def start(message: types.Message):
             return
 
         # O'quvchi uchun yoshga mos kutib olish
-        if role in ("🧒 O'quvchi", "O'quvchi"):
+        if "quvchi" in role.lower() or role.strip() in ("🧒 O'quvchi", "🧒O'quvchi", "O'quvchi"):
 
             from progress import build_welcome, get_pending_exams, create_auto_exams, update_streak
 
