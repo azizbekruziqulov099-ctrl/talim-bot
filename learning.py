@@ -37,6 +37,11 @@ from latex_utils import (
     latex_to_image,
     latex_to_voice
 )
+from progress import (
+    add_xp, update_streak, mark_learned,
+    get_next_topic, build_welcome,
+    check_badges, get_progress, get_group
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -1281,9 +1286,34 @@ async def send_test_question(user_id, message, questions, index):
 
         msg = "Zo'r natija! Davom eting! 🚀" if pct >= 80 else "Yaxshi urindi! Yana mashq qiling! 💡" if pct >= 60 else "Mavzuni qayta ko'rib chiqing! 📖"
 
+        # XP qo'shish
+        xp_reason = "test_100" if pct == 100 else "test_80" if pct >= 80 else "test_60" if pct >= 60 else "lesson"
+        xp_earned = add_xp(user_id, xp_reason)
+        streak    = update_streak(user_id)
+
+        # Mavzuni o'rganilgan deb belgilash
+        topic_code = user_state.get(user_id, {}).get("topic_code", "")
+        if topic_code:
+            mark_learned(user_id, topic_code, pct)
+
+        # Nishon tekshirish
+        prog = get_progress(user_id)
+
+        # O'quvchi sinfi
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        urow  = cur2.fetchone()
+        grade = urow[0] if urow else "5"
+        cur2.close(); conn2.close()
+
+        xp_text = f"\n⭐ +{xp_earned} XP" if xp_earned else ""
+        streak_text = f"\n🔥 Streak: {streak} kun!" if streak > 1 else ""
+
         await message.edit_text(
             f"{emoji} Test yakunlandi!\n\n"
-            f"✅ To'g'ri: {correct}/{total} ({pct}%)\n\n"
+            f"✅ To'g'ri: {correct}/{total} ({pct}%)\n"
+            f"{xp_text}{streak_text}\n\n"
             f"{msg}",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[
