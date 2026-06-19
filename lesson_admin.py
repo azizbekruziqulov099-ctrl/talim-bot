@@ -270,9 +270,13 @@ async def la_mavzu(call: CallbackQuery):
             callback_data="noop"
         )])
 
-    meta = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
-    buttons.append([InlineKeyboardButton(text="📥 Shablon yuklab ol", callback_data=f"la_tmpl|{meta}")])
-    buttons.append([InlineKeyboardButton(text="📤 Import qilish",     callback_data=f"la_imp|{meta}")])
+    from storage import user_state as us
+    if call.from_user.id not in us:
+        us[call.from_user.id] = {}
+    us[call.from_user.id]["la_meta"] = f"{grade}|{scode}|{quarter}|{bcode}|{blcode}|{mcode}"
+
+    buttons.append([InlineKeyboardButton(text="📥 Shablon yuklab ol", callback_data="la_tmpl")])
+    buttons.append([InlineKeyboardButton(text="📤 Import qilish",     callback_data="la_imp")])
     buttons.append(back_btn(f"la_bl|{grade}|{scode}|{quarter}|{bcode}|{blcode}"))
     buttons.append(home_btn())
 
@@ -286,12 +290,18 @@ async def la_mavzu(call: CallbackQuery):
     )
 
 # ─── SHABLON ───
-@dp.callback_query(F.data.startswith("la_tmpl|"))
+@dp.callback_query(F.data == "la_tmpl")
 async def la_template(call: CallbackQuery):
     if call.from_user.id not in ADMINS: return
     await call.answer("📥 Tayyor bo'lmoqda...")
 
-    _, grade, scode, quarter, bcode, blcode, mcode = call.data.split("|")
+    from storage import user_state as us
+    meta = us.get(call.from_user.id, {}).get("la_meta", "")
+    if not meta:
+        await call.message.answer("❌ Mavzu tanlanmagan, qaytadan tanlang")
+        return
+
+    _, grade, scode, quarter, bcode, blcode, mcode = ("x|" + meta).split("|")
 
     conn = db(); cur = conn.cursor()
     cur.execute("""
@@ -329,19 +339,18 @@ async def la_template(call: CallbackQuery):
         ),
         reply_markup=kb([[InlineKeyboardButton(
             text="📤 Import qilish",
-            callback_data=f"la_imp|{meta}"
+            callback_data="la_imp"
         )]])
     )
     if os.path.exists(filepath):
         os.remove(filepath)
 
 # ─── IMPORT ───
-@dp.callback_query(F.data.startswith("la_imp|"))
+@dp.callback_query(F.data == "la_imp")
 async def la_import_prompt(call: CallbackQuery, state: FSMContext):
     if call.from_user.id not in ADMINS: return
     await call.answer()
     await state.set_state(LessonAdminState.waiting_excel)
-    await state.update_data(meta=call.data)
     await call.message.answer("📤 To'ldirilgan Excel faylini yuboring:")
 
 @dp.message(LessonAdminState.waiting_excel)
