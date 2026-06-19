@@ -1,261 +1,81 @@
+from keyboards import get_main_keyboard
+from aiogram import Router, F
+from aiogram.types import (
+    Message,
+    ReplyKeyboardMarkup,
+    KeyboardButton
+)
 import os
-import re
-import asyncio
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from openai import AsyncOpenAI
-import edge_tts
 from pydub import AudioSegment
+import psycopg2
+import edge_tts
+from aiogram.types import FSInputFile
+import tempfile
+from test_engine import speak_text
+from storage import user_state
+from teacher_engine import (
+    build_lesson_steps,
+    get_step_content
+)
+from teacher_engine import (
+    create_lesson_state,
+    current_text,
+    build_board_text
+)
+from teacher_engine import (
+    parse_content,
+    render_content,
+    build_ssml
+)
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+from latex_utils import (
+    parse_blocks,
+    send_blocks,
+    latex_to_image,
+    latex_to_voice
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-
-# ─────────────────────────────────────────
-# 1. LaTeX → Rasm (matplotlib)
-# ─────────────────────────────────────────
-
-def latex_to_image(latex_text: str, user_id: int) -> str:
+async def speak_mixed_text(
+    user_id,
+    message,
+    text
+):
     """
-    LaTeX matnini chiroyli rasm qilib saqlaydi.
-    Qaytaradi: fayl yo'li
-    """
-
-    # Tozalash — [latex]...[/latex] tegini olib tashlash
-    formula = latex_text.strip()
-    formula = re.sub(r'\[/?latex\]', '', formula).strip()
-
-    # $ belgisi qo'shish agar yo'q bo'lsa
-    if not formula.startswith("$"):
-        formula = f"${formula}$"
-
-    fig, ax = plt.subplots(figsize=(6, 1.5))
-    fig.patch.set_facecolor("#F0F4F8")
-    ax.set_facecolor("#F0F4F8")
-
-    ax.text(
-        0.5, 0.5,
-        formula,
-        fontsize=22,
-        ha="center",
-        va="center",
-        color="#1F2937",
-        usetex=False  # matplotlib built-in renderer
-    )
-
-    ax.axis("off")
-
-    # Chiroyli chegara
-    rect = patches.FancyBboxPatch(
-        (0.02, 0.1), 0.96, 0.8,
-        boxstyle="round,pad=0.05",
-        linewidth=2,
-        edgecolor="#3B82F6",
-        facecolor="#EFF6FF",
-        transform=ax.transAxes,
-        zorder=0
-    )
-    ax.add_patch(rect)
-
-    filename = f"latex_{user_id}.png"
-    plt.savefig(
-        filename,
-        dpi=150,
-        bbox_inches="tight",
-        facecolor=fig.get_facecolor()
-    )
-    plt.close(fig)
-
-    return filename
-
-
-# ─────────────────────────────────────────
-# 2. LaTeX → O'zbek matni (OpenAI)
-# ─────────────────────────────────────────
-
-async def latex_to_uzbek(latex_text: str) -> str:
-    """
-    LaTeX formulasini o'zbek tilida tushunarli matnga aylantiradi.
-    Misol: \frac{1}{2} → "bir ikkinchi"
+    Matn ichidagi barcha bloklarni qayta ishlaydi:
+    - [latex]...[/latex] → rasm + ovoz
+    - [img]...[/img]     → photo
+    - [en]...[/en]       → ingliz ovoz
+    - [ru]...[/ru]       → rus ovoz
+    - oddiy matn         → o'zbek ovoz
     """
 
-    formula = re.sub(r'\[/?latex\]', '', latex_text).strip()
+    blocks = parse_blocks(text)
 
-    prompt = f"""Siz matematik formula o'qituvchisisiz.
-Quyidagi LaTeX formulasini o'zbek tilida oddiy, tushunarli so'zlar bilan o'qing.
-Faqat o'zbek tilida yozing, hech qanday izoh qo'shmang, faqat o'qiladigan matn.
+    voices = {
+        "text": "uz-UZ-SardorNeural",
+        "en":   "en-US-GuyNeural",
+        "ru":   "ru-RU-DmitryNeural"
+    }
 
-Misollar:
-\\frac{{1}}{{2}} → "bir ikkinchi"
-x^2 → "x kvadrat"
-\\sqrt{{x}} → "x ning kvadrat ildizi"
-a + b = c → "a qo'shib b teng c"
-\\frac{{a+b}}{{c}} → "a qo'shib b ning, c ga bo'linmasi"
-2 \\times 3 → "ikki marta uch"
-\\pi → "pi soni"
-\\int_{{0}}^{{1}} → "noldan birgacha integral"
+    audio_files = []
 
-Formula: {formula}
+    for i, block in enumerate(blocks):
 
-Faqat o'qiladigan matnni yozing:"""
+        btype   = block["type"]
+        content = str(block["content"]).strip()
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
+        if not content:
+            continue
 
-    except Exception:
-        # OpenAI ishlamasa — oddiy qoidalar bilan o'qiymiz
-        return latex_simple_read(formula)
+        # LaTeX blok — rasm + ovoz alohida
+        if btype == "latex":
 
-
-def latex_simple_read(formula: str) -> str:
-    """
-    OpenAI ishlamasa — qoidalar asosida LaTeX o'qish
-    """
-    text = formula
-
-    replacements = [
-        (r'\\frac\{([^}]+)\}\{([^}]+)\}', r'\1 ning \2 ga bo\'linmasi'),
-        (r'\\sqrt\{([^}]+)\}', r'\1 ning kvadrat ildizi'),
-        (r'\\sqrt', 'kvadrat ildiz'),
-        (r'\^2', ' kvadrat'),
-        (r'\^3', ' kub'),
-        (r'\^\{([^}]+)\}', r'\1 darajasi'),
-        (r'\\times', ' marta '),
-        (r'\\cdot', ' ko\'paytirish '),
-        (r'\\div', ' bo\'lish '),
-        (r'\\pi', 'pi soni'),
-        (r'\\infty', 'cheksizlik'),
-        (r'\\alpha', 'alfa'),
-        (r'\\beta', 'beta'),
-        (r'\\gamma', 'gamma'),
-        (r'\\delta', 'delta'),
-        (r'\\sum', 'yig\'indisi'),
-        (r'\\int', 'integrali'),
-        (r'\\leq', 'kichik yoki teng'),
-        (r'\\geq', 'katta yoki teng'),
-        (r'\\neq', 'teng emas'),
-        (r'\\approx', 'taxminan'),
-        (r'\\pm', 'musbat yoki manfiy'),
-        (r'[{}$\\]', ' '),
-        (r'\s+', ' '),
-    ]
-
-    for pattern, replacement in replacements:
-        text = re.sub(pattern, replacement, text)
-
-    return text.strip()
-
-
-# ─────────────────────────────────────────
-# 3. LaTeX → Ovoz (OpenAI + TTS)
-# ─────────────────────────────────────────
-
-async def latex_to_voice(latex_text: str, user_id: int) -> str:
-    """
-    LaTeX formulasini o'qib, mp3 fayl qaytaradi.
-    """
-
-    uzbek_text = await latex_to_uzbek(latex_text)
-
-    filename = f"latex_voice_{user_id}.mp3"
-
-    communicate = edge_tts.Communicate(
-        text=uzbek_text,
-        voice="uz-UZ-SardorNeural"
-    )
-
-    await communicate.save(filename)
-
-    return filename, uzbek_text
-
-
-# ─────────────────────────────────────────
-# 4. Matn ichidagi LaTeX/IMG teglarni ajratish
-# ─────────────────────────────────────────
-
-def parse_blocks(text: str) -> list:
-    """
-    Matn ichidagi barcha blokni ajratadi:
-    - {'type': 'text', 'content': '...'}
-    - {'type': 'latex', 'content': '...'}
-    - {'type': 'img', 'content': 'https://...'}
-    - {'type': 'en', 'content': '...'}
-    - {'type': 'ru', 'content': '...'}
-    """
-
-    pattern = re.compile(
-        r'\[latex\](.*?)\[/latex\]'
-        r'|\[img\](.*?)\[/img\]'
-        r'|\[en\](.*?)\[/en\]'
-        r'|\[ru\](.*?)\[/ru\]',
-        re.DOTALL
-    )
-
-    blocks = []
-    last_end = 0
-
-    for m in pattern.finditer(text):
-        # Oldidagi oddiy matn
-        if m.start() > last_end:
-            chunk = text[last_end:m.start()].strip()
-            if chunk:
-                blocks.append({'type': 'text', 'content': chunk})
-
-        if m.group(1) is not None:
-            blocks.append({'type': 'latex', 'content': m.group(1).strip()})
-        elif m.group(2) is not None:
-            blocks.append({'type': 'img', 'content': m.group(2).strip()})
-        elif m.group(3) is not None:
-            blocks.append({'type': 'en', 'content': m.group(3).strip()})
-        elif m.group(4) is not None:
-            blocks.append({'type': 'ru', 'content': m.group(4).strip()})
-
-        last_end = m.end()
-
-    # Oxiridagi qoldiq matn
-    if last_end < len(text):
-        chunk = text[last_end:].strip()
-        if chunk:
-            blocks.append({'type': 'text', 'content': chunk})
-
-    return blocks
-
-
-# ─────────────────────────────────────────
-# 5. Blokni Telegramga yuborish
-# ─────────────────────────────────────────
-
-async def send_blocks(message, blocks: list, user_id: int):
-    """
-    Har bir blokni tegishli tarzda yuboradi:
-    - text → oddiy xabar
-    - latex → rasm + ovoz
-    - img → photo
-    - en/ru → ovozda o'qiydi
-    """
-    from aiogram.types import FSInputFile
-
-    for block in blocks:
-
-        btype = block['type']
-        content = block['content']
-
-        if btype == 'text':
-            if content:
-                await message.answer(content)
-
-        elif btype == 'latex':
-
-            # Rasm yuborish
+            # Rasm
             try:
                 img_path = latex_to_image(content, user_id)
                 await message.answer_photo(
@@ -265,44 +85,1413 @@ async def send_blocks(message, blocks: list, user_id: int):
                 )
                 if os.path.exists(img_path):
                     os.remove(img_path)
-            except Exception as e:
-                await message.answer(f"📐 Formula: `{content}`", parse_mode="Markdown")
+            except Exception:
+                await message.answer(
+                    f"📐 `{content}`",
+                    parse_mode="Markdown"
+                )
 
-            # Ovoz yuborish
+            # Ovoz
             try:
                 voice_path, uzbek = await latex_to_voice(content, user_id)
-                await message.answer(f"🔊 _{uzbek}_", parse_mode="Markdown")
-                from aiogram.types import FSInputFile as FI
-                await message.answer_voice(FI(voice_path))
-                if os.path.exists(voice_path):
-                    os.remove(voice_path)
+                if (
+                    os.path.exists(voice_path)
+                    and os.path.getsize(voice_path) > 0
+                ):
+                    audio_files.append(voice_path)
             except Exception:
                 pass
 
-        elif btype == 'img':
+            continue
 
+        # Rasm blok
+        if btype == "img":
             try:
                 await message.answer_photo(content)
             except Exception:
-                await message.answer(f"🖼 [Rasm]({content})", parse_mode="Markdown")
+                pass
+            continue
 
-        elif btype in ('en', 'ru'):
+        # Matn / en / ru — ovoz faylga
+        voice = voices.get(btype, voices["text"])
+        filename = f"part_{user_id}_{i}.mp3"
 
-            voices = {
-                'en': 'en-US-GuyNeural',
-                'ru': 'ru-RU-DmitryNeural'
-            }
-            voice = voices.get(btype, 'uz-UZ-SardorNeural')
+        if not any(ch.isalnum() for ch in content):
+            continue
 
-            await message.answer(f"`{content}`", parse_mode="Markdown")
+        communicate = edge_tts.Communicate(
+            text=content,
+            voice=voice
+        )
 
+        try:
+            await communicate.save(filename)
+            if (
+                os.path.exists(filename)
+                and os.path.getsize(filename) > 0
+            ):
+                audio_files.append(filename)
+        except Exception:
+            continue
+
+    if not audio_files:
+        await message.answer("🔇 Audio yaratib bo'lmadi")
+        return
+
+    try:
+        combined = AudioSegment.empty()
+        for file in audio_files:
+            segment = AudioSegment.from_file(file, format="mp3")
+            combined += segment
+
+        final_file = f"mixed_{user_id}.mp3"
+        combined.export(final_file, format="mp3")
+
+        if (
+            user_id in user_state
+            and "voice_message_id" in user_state[user_id]
+        ):
             try:
-                fname = f"lang_{user_id}.mp3"
-                comm = edge_tts.Communicate(text=content, voice=voice)
-                await comm.save(fname)
-                if os.path.exists(fname) and os.path.getsize(fname) > 0:
-                    from aiogram.types import FSInputFile as FI
-                    await message.answer_voice(FI(fname))
-                    os.remove(fname)
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=user_state[user_id]["voice_message_id"]
+                )
             except Exception:
                 pass
+
+        voice_msg = await message.answer_voice(
+            FSInputFile(final_file)
+        )
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["voice_message_id"] = voice_msg.message_id
+
+    except Exception as e:
+        await message.answer(f"❌ Audio xatolik: {e}")
+
+    finally:
+        for file in audio_files:
+            try:
+                os.remove(file)
+            except Exception:
+                pass
+        try:
+            os.remove(final_file)
+        except Exception:
+            pass
+
+async def read_current_page(user_id, message, user_state):
+
+    text = user_state.get(user_id, {}).get("speak_text")
+
+    if not text:
+        await message.answer(
+            "❌ O'qiladigan matn topilmadi."
+        )
+        return
+
+    await speak_text(
+        user_id,
+        message,
+        text
+    )
+
+async def continue_learning(message: Message):
+
+    user_id = message.from_user.id
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        # foydalanuvchi sinfi
+        cur.execute("""
+            SELECT class
+            FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+
+        user = cur.fetchone()
+
+        if not user:
+            await message.answer(
+                "❌ Avval registratsiyadan o'ting."
+            )
+            return
+
+        grade = user[0]
+
+        # shu sinfdagi birinchi mavzu
+        cur.execute("""
+            SELECT
+                topic_code,
+                subject_name,
+                bob_name,
+                bolim_name,
+                mavzu_name,
+                kichik_name
+            FROM dts_tree
+            WHERE grade = %s
+            ORDER BY topic_code
+            LIMIT 1
+        """, (grade,))
+
+        topic = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM dts_tree
+            WHERE grade = %s
+        """, (grade,))
+
+        total_topics = cur.fetchone()[0]
+
+        completed_topics = 0
+
+        if not topic:
+            await message.answer(
+                f"❌ {grade}-sinf uchun mavzu topilmadi."
+            )
+            return
+
+        topic_code = topic[0]
+        subject_name = topic[1]
+        bob_name = topic[2]
+        bolim_name = topic[3]
+        mavzu_name = topic[4]
+        kichik_name = topic[5]
+
+        text = f"""
+        ☀️ Xush kelibsiz!
+
+        🎓 {grade}-sinf
+
+        ━━━━━━━━━━━━━━
+
+        📚 {subject_name}
+
+        📍 Sizning navbatdagi mavzuingiz:
+
+        📝 {mavzu_name}
+
+        🗣 Kichik mavzu:
+        {kichik_name}
+
+        ━━━━━━━━━━━━━━
+
+        📚 Jami mavzular: {total_topics} ta
+        📖 Qolgan mavzular: {total_topics - completed_topics} ta
+
+        ━━━━━━━━━━━━━━
+
+        🔥 Bugungi vazifa
+
+        Ushbu mavzuni o'rganing va
+        bilim xaritangizdagi navbatdagi
+        qadamni oching.
+
+        🏆 Har bir tugatilgan mavzu
+        sizni maqsadingizga yaqinlashtiradi.
+        """
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["speak_text"] = text
+
+        await message.answer(
+            text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [
+                        KeyboardButton(text="🔊 O'qib berish")
+                    ],
+                    [
+                        KeyboardButton(text="▶️ O'rganishni boshlash")
+                    ],
+                    [
+                        KeyboardButton(text="📚 Barcha fanlar")
+                    ],
+                    [
+                        KeyboardButton(text="⬅️ Ortga")
+                    ]
+                ],
+                resize_keyboard=True
+            )
+        )
+
+    except Exception as e:
+
+        await message.answer(
+            f"❌ Xatolik:\n{e}"
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def open_teacher_lesson(message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        topic_code = "TEST_001"
+        user_id = message.from_user.id
+
+        # O'quvchi ma'lumotlari
+        cur.execute("""
+            SELECT full_name, class, subject
+            FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+        user_info = cur.fetchone()
+
+        full_name = user_info[0] if user_info else "O'quvchi"
+        sinf      = user_info[1] if user_info else ""
+        fan       = user_info[2] if user_info else ""
+
+        # Dars matni
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            await message.answer("❌ Dars topilmadi")
+            return
+
+        # Mavzu nomi dts_tree dan
+        cur.execute("""
+            SELECT grade, subject_name, mavzu_name, kichik_name
+            FROM dts_tree
+            WHERE topic_code = %s
+            LIMIT 1
+        """, (topic_code,))
+        topic_row = cur.fetchone()
+        if topic_row:
+            sinf_db = topic_row[0] or sinf
+            fan_db  = topic_row[1] or fan
+            mavzu   = topic_row[2] or topic_code
+            sinf    = sinf_db
+            fan     = fan_db
+        else:
+            mavzu = topic_code
+
+        parts = [p for p in [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ] if p.strip()]
+
+        from datetime import date
+        bugun = date.today().strftime("%d.%m.%Y")
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["lesson"]       = lesson
+        user_state[user_id]["parts"]        = parts
+        user_state[user_id]["current_step"] = 0
+        user_state[user_id]["topic_code"]   = topic_code
+        user_state[user_id]["full_name"]    = full_name
+        user_state[user_id]["sinf"]         = sinf
+        user_state[user_id]["fan"]          = fan
+        user_state[user_id]["mavzu"]        = mavzu
+        user_state[user_id]["bugun"]        = bugun
+
+        cur.execute("""
+            DELETE FROM lesson_progress WHERE user_id = %s
+        """, (user_id,))
+
+        cur.execute("""
+            INSERT INTO lesson_progress
+            (user_id, topic_code, current_step, completed)
+            VALUES (%s, %s, %s, %s)
+        """, (user_id, topic_code, 0, False))
+
+        conn.commit()
+
+        # ── BOSHIDA TAKRORLASH ──
+        # Oxirgi o'rganilgan mavzudan savol bormi?
+        cur.execute("""
+            SELECT topic_code, mavzu
+            FROM lesson_history
+            WHERE user_id = %s
+            ORDER BY learned_at DESC
+            LIMIT 1
+        """, (user_id,))
+
+        last = cur.fetchone()
+
+        if last:
+            last_topic_code = last[0]
+            last_mavzu      = last[1]
+
+            cur.execute("""
+                SELECT question, option_a, option_b,
+                       option_c, option_d, correct_answer,
+                       explanation
+                FROM dts_tree
+                WHERE topic_code = %s
+                  AND question IS NOT NULL
+                  AND option_a IS NOT NULL
+                ORDER BY RANDOM()
+                LIMIT 3
+            """, (last_topic_code,))
+
+            review_qs = cur.fetchall()
+
+            if review_qs:
+                # Takrorlash testini boshlaylik
+                user_state[user_id]["review_questions"] = review_qs
+                user_state[user_id]["review_index"]     = 0
+                user_state[user_id]["review_correct"]   = 0
+                user_state[user_id]["after_review"]     = "start_lesson"
+
+                await message.answer(
+                    f"🔁 Avval kechagi mavzuni eslab olaylik!\n\n"
+                    f"📘 {last_mavzu}\n\n"
+                    f"3 ta savol — tez javob bering! 💨",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="▶️ Boshlash",
+                                callback_data="review_start"
+                            ),
+                            InlineKeyboardButton(
+                                text="⏭ O'tkazish",
+                                callback_data="review_skip"
+                            )
+                        ]]
+                    )
+                )
+                return
+
+        # Takrorlash yo'q — darsni boshlash
+        await start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun):
+    """Asosiy darsni ko'rsatadi"""
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                InlineKeyboardButton(text="➡️", callback_data="lesson_next")
+            ],
+            [
+                InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
+                InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
+            ]
+        ]
+    )
+
+    msg = await message.answer(
+        f"👤 {full_name} | {sinf}\n"
+        f"📘 {fan} • {mavzu} • {bugun}\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"{build_board_text(parts[0]) or render_content(parts[0])}\n\n"
+        f"📄 1/{len(parts)} qadam",
+        reply_markup=keyboard
+    )
+
+    user_state[user_id]["board_message_id"] = msg.message_id
+
+
+async def lesson_review_start(user_id, message):
+    """Takrorlash testini boshlaydi"""
+
+    questions = user_state.get(user_id, {}).get("review_questions", [])
+    await send_review_question(user_id, message, questions, 0)
+
+
+async def send_review_question(user_id, message, questions, index):
+    """Takrorlash savolini yuboradi"""
+
+    if index >= len(questions):
+        # Takrorlash tugadi — darsni boshlash
+        correct = user_state.get(user_id, {}).get("review_correct", 0)
+        total   = len(questions)
+
+        emoji = "🔥" if correct == total else "👍" if correct >= total // 2 else "💪"
+
+        parts     = user_state.get(user_id, {}).get("parts", [])
+        full_name = user_state.get(user_id, {}).get("full_name", "O'quvchi")
+        sinf      = user_state.get(user_id, {}).get("sinf", "")
+        fan       = user_state.get(user_id, {}).get("fan", "")
+        mavzu     = user_state.get(user_id, {}).get("mavzu", "")
+        bugun     = user_state.get(user_id, {}).get("bugun", "")
+
+        await message.answer(
+            f"{emoji} Takrorlash: {correct}/{total}\n\n"
+            f"Endi yangi darsni boshlaymiz! 📖"
+        )
+
+        await start_main_lesson(
+            message, user_id, parts,
+            full_name, sinf, fan, mavzu, bugun
+        )
+        return
+
+    q = questions[index]
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"A) {q[1]}", callback_data="review_answer_A")],
+            [InlineKeyboardButton(text=f"B) {q[2]}", callback_data="review_answer_B")],
+            [InlineKeyboardButton(text=f"C) {q[3]}", callback_data="review_answer_C")],
+            [InlineKeyboardButton(text=f"D) {q[4]}", callback_data="review_answer_D")]
+        ]
+    )
+
+    await message.answer(
+        f"🔁 Takrorlash | {index + 1}/{len(questions)}\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"❓ {q[0]}",
+        reply_markup=keyboard
+    )
+
+
+async def lesson_review_answer(user_id, message, answer):
+    """Takrorlash javobini tekshiradi"""
+
+    questions = user_state.get(user_id, {}).get("review_questions", [])
+    index     = user_state.get(user_id, {}).get("review_index", 0)
+
+    if not questions or index >= len(questions):
+        return
+
+    q          = questions[index]
+    correct    = q[5]
+    explanation = q[6] or ""
+
+    is_correct = answer.upper() == correct.upper()
+
+    if is_correct:
+        user_state[user_id]["review_correct"] = (
+            user_state[user_id].get("review_correct", 0) + 1
+        )
+        result = "✅ To'g'ri!"
+    else:
+        result = f"❌ Noto'g'ri! To'g'ri: {correct}"
+
+    if explanation:
+        result += f"\n💡 {explanation}"
+
+    next_index = index + 1
+    user_state[user_id]["review_index"] = next_index
+
+    await message.answer(
+        result,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="➡️ Keyingi",
+                    callback_data="review_next"
+                )
+            ]]
+        )
+    )
+
+
+async def lesson_next(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["help_mode"] = True
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [p for p in [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ] if p.strip()]
+
+        next_step = current_step + 1
+
+        if next_step >= len(parts):
+
+            # Dars tugadi — mustahkamlash testiga o'tish
+            await message.edit_text(
+                f"🎉 Dars tugadi!\n\n"
+                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"Bilimingizni mustahkamlash uchun\n"
+                f"5 ta savol javob bering! 🧠",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="▶️ Testni boshlash",
+                            callback_data="lesson_consolidation_test"
+                        ),
+                        InlineKeyboardButton(
+                            text="⏭ O'tkazib yuborish",
+                            callback_data="lesson_finish"
+                        )
+                    ]]
+                )
+            )
+            return
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            next_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+        u = user_state.get(user_id, {})
+        fn   = u.get('full_name', "O'quvchi")
+        sinf = u.get('sinf', '')
+        fan  = u.get('fan', '')
+        mav  = u.get('mavzu', topic_code)
+        bgun = u.get('bugun', '')
+
+        await message.edit_text(
+            f"👤 {fn} | {sinf}\n"
+            f"📘 {fan} • {mav} • {bgun}\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[next_step]) or render_content(parts[next_step])}\n\n"
+            f"📄 {next_step + 1}/{len(parts)} qadam",
+            reply_markup=keyboard
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_tts(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        # 🔊 bosilsa — asosiy matnni o'qiydi
+        text = parts[current_step]
+
+        await speak_mixed_text(
+            user_id,
+            message,
+            text
+        )
+
+    except Exception as e:
+
+        import traceback
+        await message.answer(traceback.format_exc())
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_prev(user_id, message):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        if user_id in user_state:
+            user_state[user_id]["help_mode"] = False
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        prev_step = current_step - 1
+
+        if prev_step < 0:
+            prev_step = 0
+
+        cur.execute("""
+            UPDATE lesson_progress
+            SET current_step = %s
+            WHERE user_id = %s
+        """, (
+            prev_step,
+            user_id
+        ))
+
+        conn.commit()
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+
+        u = user_state.get(user_id, {})
+        fn   = u.get('full_name', "O'quvchi")
+        sinf = u.get('sinf', '')
+        fan  = u.get('fan', '')
+        mav  = u.get('mavzu', topic_code)
+        bgun = u.get('bugun', '')
+
+        await message.edit_text(
+            f"👤 {fn} | {sinf}\n"
+            f"📘 {fan} • {mav} • {bgun}\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}\n\n"
+            f"📄 {prev_step + 1}/{len(parts)} qadam",
+            reply_markup=keyboard
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_help(
+    user_id,
+    message
+):
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        # izoh matni (simple_1..4)
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(current_step, "")
+        main_text = parts[current_step]
+
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        # izoh doskada ko'rinadi + 🔊 bosilsa ovoz chiqadi
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 Izohni o'qi",
+                        callback_data="lesson_tts_help"
+                    ),
+                    InlineKeyboardButton(
+                        text="🔙 Darsga qayt",
+                        callback_data="lesson_back_main"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"💡 Izoh:\n\n"
+            f"{render_content(simple_text)}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"📖 Asosiy matn:\n\n"
+            f"{build_board_text(main_text) or render_content(main_text)}",
+            reply_markup=keyboard
+        )
+
+    except Exception as e:
+
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def lesson_tts_help(user_id, message):
+    """🔊 Izohni o'qi bosilganda — izoh matnini ovozda o'qiydi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(current_step, "")
+
+        if not simple_text:
+            simple_text = "Bu bosqich uchun izoh yo'q"
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def lesson_back_main(user_id, message):
+    """🔙 Darsga qayt — asosiy dars matni qaytadi"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+        if not lesson:
+            return
+
+        parts = [
+            lesson[2] or "",
+            lesson[3] or "",
+            lesson[4] or "",
+            lesson[5] or "",
+            lesson[6] or "",
+            lesson[13] or ""
+        ]
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️",
+                        callback_data="lesson_prev"
+                    ),
+                    InlineKeyboardButton(
+                        text="➡️",
+                        callback_data="lesson_next"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔊 O'qib ber",
+                        callback_data="lesson_tts"
+                    ),
+                    InlineKeyboardButton(
+                        text="😕 Tushunmadim",
+                        callback_data="lesson_help"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Darsni tugatish",
+                        callback_data="lesson_finish"
+                    )
+                ]
+            ]
+        )
+
+        await message.edit_text(
+            f"👨‍🏫 USTOZ DOSKASI\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"{build_board_text(parts[current_step]) or render_content(parts[current_step])}",
+            reply_markup=keyboard
+        )
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            SELECT topic_code, current_step
+            FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        progress = cur.fetchone()
+
+        if not progress:
+            return
+
+        topic_code = progress[0]
+        current_step = progress[1]
+
+        cur.execute("""
+            SELECT *
+            FROM teacher_lessons
+            WHERE topic_code = %s
+        """, (topic_code,))
+
+        lesson = cur.fetchone()
+
+        if not lesson:
+            return
+
+        simple_map = {
+            1: lesson[7] or "",
+            2: lesson[8] or "",
+            3: lesson[9] or "",
+            4: lesson[10] or ""
+        }
+
+        simple_text = simple_map.get(
+            current_step,
+            ""
+        )
+
+        if not simple_text:
+            await message.answer("💡 Bu bosqich uchun izoh yo'q")
+            return
+
+        await speak_mixed_text(user_id, message, simple_text)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def lesson_consolidation_test(user_id, message):
+    """Dars tugagach mustahkamlash testi — 5 savol"""
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    try:
+
+        topic_code = user_state.get(user_id, {}).get("topic_code", "TEST_001")
+
+        # dts_tree dan o'sha mavzu topic_code lari
+        cur.execute("""
+            SELECT topic_code
+            FROM dts_tree
+            WHERE topic_code LIKE %s
+            LIMIT 20
+        """, (topic_code[:10] + "%",))
+
+        topic_codes = [r[0] for r in cur.fetchall()]
+
+        if not topic_codes:
+            topic_codes = [topic_code]
+
+        # Savollar
+        cur.execute("""
+            SELECT question, option_a, option_b, 
+                   option_c, option_d, correct_answer,
+                   explanation, question_type
+            FROM dts_tree
+            WHERE topic_code = ANY(%s)
+              AND question IS NOT NULL
+              AND option_a IS NOT NULL
+            ORDER BY RANDOM()
+            LIMIT 5
+        """, (topic_codes,))
+
+        questions = cur.fetchall()
+
+        if not questions:
+            # lesson_history ga saqlash
+            try:
+                cur.execute("""
+                    INSERT INTO lesson_history
+                    (user_id, topic_code, mavzu, fan, score, total)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    topic_code,
+                    user_state.get(user_id, {}).get("mavzu", ""),
+                    user_state.get(user_id, {}).get("fan", ""),
+                    0, 0
+                ))
+                conn.commit()
+            except Exception:
+                pass
+
+            await message.edit_text(
+                f"✅ Dars muvaffaqiyatli tugallandi!\n\n"
+                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"⚠️ Bu mavzu bo'yicha testlar hali qo'shilmagan.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="🏠 Bosh menyu",
+                            callback_data="lesson_finish"
+                        )
+                    ]]
+                )
+            )
+            return
+
+        # Testni user_state ga saqlaymiz
+        if user_id not in user_state:
+            user_state[user_id] = {}
+
+        user_state[user_id]["test_questions"] = questions
+        user_state[user_id]["test_index"]     = 0
+        user_state[user_id]["test_correct"]   = 0
+        user_state[user_id]["test_mode"]      = "consolidation"
+
+        await send_test_question(user_id, message, questions, 0)
+
+    except Exception as e:
+        await message.answer(f"❌ Xatolik:\n{e}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+async def send_test_question(user_id, message, questions, index):
+    """Bitta test savolini yuboradi"""
+
+    if index >= len(questions):
+        correct = user_state.get(user_id, {}).get("test_correct", 0)
+        total   = len(questions)
+        pct     = int(correct / total * 100)
+
+        emoji = "🏆" if pct >= 80 else "👍" if pct >= 60 else "💪"
+
+        # lesson_history ga saqlash
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur  = conn.cursor()
+            topic_code = user_state.get(user_id, {}).get("topic_code", "")
+            cur.execute("""
+                INSERT INTO lesson_history
+                (user_id, topic_code, mavzu, fan, score, total)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                user_id,
+                topic_code,
+                user_state.get(user_id, {}).get("mavzu", ""),
+                user_state.get(user_id, {}).get("fan", ""),
+                correct,
+                total
+            ))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+        msg = "Zo'r natija! Davom eting! 🚀" if pct >= 80 else "Yaxshi urindi! Yana mashq qiling! 💡" if pct >= 60 else "Mavzuni qayta ko'rib chiqing! 📖"
+
+        await message.edit_text(
+            f"{emoji} Test yakunlandi!\n\n"
+            f"✅ To'g'ri: {correct}/{total} ({pct}%)\n\n"
+            f"{msg}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🏠 Bosh menyu",
+                        callback_data="lesson_finish"
+                    )
+                ]]
+            )
+        )
+        return
+
+    q = questions[index]
+    question   = q[0]
+    option_a   = q[1]
+    option_b   = q[2]
+    option_c   = q[3]
+    option_d   = q[4]
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"A) {option_a}",
+                callback_data=f"test_answer_A"
+            )],
+            [InlineKeyboardButton(
+                text=f"B) {option_b}",
+                callback_data=f"test_answer_B"
+            )],
+            [InlineKeyboardButton(
+                text=f"C) {option_c}",
+                callback_data=f"test_answer_C"
+            )],
+            [InlineKeyboardButton(
+                text=f"D) {option_d}",
+                callback_data=f"test_answer_D"
+            )]
+        ]
+    )
+
+    await message.edit_text(
+        f"🧠 Mustahkamlash testi\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"❓ {index + 1}/{len(questions)}\n\n"
+        f"{question}",
+        reply_markup=keyboard
+    )
+
+
+async def lesson_test_answer(user_id, message, answer):
+    """Test javobini tekshiradi"""
+
+    questions = user_state.get(user_id, {}).get("test_questions", [])
+    index     = user_state.get(user_id, {}).get("test_index", 0)
+
+    if not questions or index >= len(questions):
+        return
+
+    q             = questions[index]
+    correct       = q[5]
+    explanation   = q[6] or ""
+
+    is_correct = answer.upper() == correct.upper()
+
+    if is_correct:
+        user_state[user_id]["test_correct"] = (
+            user_state[user_id].get("test_correct", 0) + 1
+        )
+        result_text = "✅ To'g'ri!"
+    else:
+        result_text = f"❌ Noto'g'ri! To'g'ri javob: {correct}"
+
+    if explanation:
+        result_text += f"\n\n💡 {explanation}"
+
+    next_index = index + 1
+    user_state[user_id]["test_index"] = next_index
+
+    await message.edit_text(
+        f"🧠 Mustahkamlash testi\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"{result_text}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="➡️ Keyingi savol",
+                    callback_data="test_next_question"
+                )
+            ]]
+        )
+    )
+
+
+async def lesson_finish(
+    user_id,
+    message
+):
+
+    if user_id in user_state:
+
+        user_state.pop(user_id)
+
+    conn = psycopg2.connect(
+        DATABASE_URL
+    )
+
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("""
+            DELETE FROM lesson_progress
+            WHERE user_id = %s
+        """, (user_id,))
+
+        conn.commit()
+
+        await message.edit_text(
+            """
+🏁 Dars yakunlandi
+
+Rahmat.
+"""
+        )
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+async def student_progress(message):
+    await message.answer("📈 Rivojlanishim")
+
+async def student_community(message):
+    await message.answer("🌍 Hamjamiyat")
+
+async def student_profile(message):
+    await message.answer("👤 Kabinet")
