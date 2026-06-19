@@ -975,8 +975,8 @@ async def lesson_help(
         simple_map = {
             1: lesson[7] or "",
             2: lesson[8] or "",
-            3: lesson[9] or "",
-            4: lesson[10] or ""
+            3: lesson[14] if len(lesson) > 14 else (lesson[9] or ""),
+            4: lesson[15] if len(lesson) > 15 else (lesson[10] or "")
         }
 
         simple_text = simple_map.get(current_step, "")
@@ -1061,8 +1061,8 @@ async def lesson_tts_help(user_id, message):
         simple_map = {
             1: lesson[7] or "",
             2: lesson[8] or "",
-            3: lesson[9] or "",
-            4: lesson[10] or ""
+            3: lesson[14] if len(lesson) > 14 else (lesson[9] or ""),
+            4: lesson[15] if len(lesson) > 15 else (lesson[10] or "")
         }
 
         simple_text = simple_map.get(current_step, "")
