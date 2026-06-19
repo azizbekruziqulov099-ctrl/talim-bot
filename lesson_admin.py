@@ -512,6 +512,8 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
         c.border = border
     ws2.row_dimensions[3].height = 100
 
-    filepath = f"lesson_{grade}_{mavzu_name[:15]}.xlsx"
+    import re
+    safe_name = re.sub(r'[^\w\s-]', '', mavzu_name)[:15].strip()
+    filepath = f"lesson_{grade}_{safe_name}.xlsx"
     wb.save(filepath)
     return filepath
