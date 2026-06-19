@@ -180,26 +180,20 @@ async def la_subject(call: CallbackQuery):
         SELECT DISTINCT mavzu_code, mavzu_name
         FROM dts_tree
         WHERE grade=%s AND subject_code=%s AND is_deleted=FALSE
-        ORDER BY mavzu_code
+        ORDER BY mavzu_name
     """, (grade, subject_code))
     mavzular = cur.fetchall()
 
-    # Har mavzu uchun: teacher_lessons da bor/yo'q
+    # Har mavzu uchun dars bor/yo'q — topic_code orqali
     cur.execute("""
         SELECT DISTINCT t.mavzu_code,
-               COUNT(DISTINCT t.mavzu_code) as total,
                COUNT(DISTINCT tl.topic_code) as filled
         FROM dts_tree t
         LEFT JOIN teacher_lessons tl ON tl.topic_code = t.topic_code
         WHERE t.grade=%s AND t.subject_code=%s AND t.is_deleted=FALSE
         GROUP BY t.mavzu_code
     """, (grade, subject_code))
-    raw_stats = cur.fetchall()
-
-    # Soddaroq: mavzu_code → filled > 0 bo'lsa bor
-    stats = {}
-    for mavzu_code, _, filled in raw_stats:
-        stats[mavzu_code] = filled
+    stats = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute("""
         SELECT DISTINCT subject_name FROM dts_tree
@@ -220,6 +214,8 @@ async def la_subject(call: CallbackQuery):
     for code, name in chunk:
         filled = stats.get(code, 0)
         icon   = "✅" if filled > 0 else "❌"
+        import urllib.parse
+        safe_name = urllib.parse.quote(name, safe='')
         buttons.append([InlineKeyboardButton(
             text=f"{icon} {name}",
             callback_data=f"la_mav|{grade}|{subject_code}|{code}"
@@ -276,7 +272,7 @@ async def la_mavzu(call: CallbackQuery):
     cur  = conn.cursor()
 
     cur.execute("""
-        SELECT kichik_code, kichik_name, topic_code,
+        SELECT DISTINCT kichik_code, kichik_name, topic_code,
                subject_name, mavzu_name,
                quarter, bob_name, bolim_name
         FROM dts_tree
@@ -285,6 +281,19 @@ async def la_mavzu(call: CallbackQuery):
         ORDER BY kichik_code
     """, (grade, subject_code, mavzu_code))
     rows = cur.fetchall()
+
+    if not rows:
+        # mavzu_code bilan topilmasa mavzu_name bilan qidirish
+        cur.execute("""
+            SELECT DISTINCT kichik_code, kichik_name, topic_code,
+                   subject_name, mavzu_name,
+                   quarter, bob_name, bolim_name
+            FROM dts_tree
+            WHERE grade=%s AND subject_code=%s AND mavzu_name=%s
+              AND is_deleted=FALSE
+            ORDER BY kichik_code
+        """, (grade, subject_code, mavzu_code))
+        rows = cur.fetchall()
 
     if not rows:
         await call.message.edit_text("❌ Kichik mavzular topilmadi")
