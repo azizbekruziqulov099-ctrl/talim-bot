@@ -1004,14 +1004,11 @@ async def lesson_help(
             ]
         )
 
-        # Doska matni o'zgarmaydi — faqat reply_markup yangilanadi
+        # Faqat tugmalarni o'zgartiradi — ovoz yuklamaydi
         try:
             await message.edit_reply_markup(reply_markup=keyboard)
         except Exception:
             pass
-
-        # Izohni ovozda o'qib beradi
-        await speak_mixed_text(user_id, message, simple_text)
 
     except Exception as e:
 
