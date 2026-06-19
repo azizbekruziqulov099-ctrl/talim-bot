@@ -49,7 +49,9 @@ def get_main_keyboard(role=None):
 
             [KeyboardButton(text="👥 Foydalanuvchilar statistikasi"),
             KeyboardButton(text="📚 DTS boshqaruvi"),
-            KeyboardButton(text="🤖 Test generator")]
+            KeyboardButton(text="🤖 Test generator")],
+
+            [KeyboardButton(text="📝 Dars boshqaruvi")]
         ]
 
     return ReplyKeyboardMarkup(
