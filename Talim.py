@@ -634,7 +634,25 @@ def get_topic_statistics(topic_code):
     conn.close()
 
     return row
-
+@dp.message(F.text == "📊 DTS hisob")
+async def dts_count(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT grade, COUNT(DISTINCT mavzu_code), COUNT(DISTINCT topic_code)
+        FROM dts_tree
+        WHERE is_deleted=FALSE
+        GROUP BY grade
+        ORDER BY grade
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    text = "📊 Sinf | Mavzu | Kichik mavzu\n\n"
+    for grade, mavzu, kichik in rows:
+        text += f"{grade}-sinf: {mavzu} mavzu, {kichik} kichik\n"
+    await message.answer(f"<pre>{text}</pre>", parse_mode="HTML")
 async def show_topics_page(
     message,
     user_id
