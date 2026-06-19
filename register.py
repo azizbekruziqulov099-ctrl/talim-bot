@@ -720,9 +720,21 @@ async def register_handler(message):
             )
         )
 
+        # O'quvchi uchun avtomatik imtihonlar yaratish
+        if temp_user[user_id].get("role") in ("🧒 O'quvchi", "O'quvchi"):
+            try:
+                from progress import create_auto_exams
+                from datetime import date
+                create_auto_exams(
+                    user_id,
+                    temp_user[user_id].get("class", "5"),
+                    date.today()
+                )
+            except Exception:
+                pass
+
         registration_message.pop(user_id, None)
 
         user_state[user_id] = None
 
         return
-
