@@ -36,7 +36,9 @@ from learning import (
     lesson_review_start,
     lesson_review_answer,
     send_review_question,
-    start_main_lesson
+    start_main_lesson,
+    open_teacher_lesson,
+    continue_learning
 )
 import lesson_admin
 import json
@@ -2131,7 +2133,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
 
     if call.data == "lesson_continue":
-        from learning import open_teacher_lesson
         await open_teacher_lesson(call.message)
         await call.answer()
         return
