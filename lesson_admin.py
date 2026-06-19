@@ -190,17 +190,22 @@ async def la_subject(call: CallbackQuery):
     """, (grade, subject_code))
     mavzular = cur.fetchall()
 
-    # Har mavzu uchun dars bor/yo'q
+    # Har mavzu uchun: teacher_lessons da bor/yo'q
     cur.execute("""
         SELECT DISTINCT t.mavzu_code,
-               COUNT(DISTINCT t.topic_code) as total,
+               COUNT(DISTINCT t.mavzu_code) as total,
                COUNT(DISTINCT tl.topic_code) as filled
         FROM dts_tree t
         LEFT JOIN teacher_lessons tl ON tl.topic_code = t.topic_code
         WHERE t.grade=%s AND t.subject_code=%s AND t.is_deleted=FALSE
         GROUP BY t.mavzu_code
     """, (grade, subject_code))
-    stats = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    raw_stats = cur.fetchall()
+
+    # Soddaroq: mavzu_code → filled > 0 bo'lsa bor
+    stats = {}
+    for mavzu_code, _, filled in raw_stats:
+        stats[mavzu_code] = filled
 
     cur.execute("""
         SELECT DISTINCT subject_name FROM dts_tree
@@ -219,18 +224,11 @@ async def la_subject(call: CallbackQuery):
 
     buttons = []
     for code, name in chunk:
-        total  = stats.get(code, (0, 0))[0]
-        filled = stats.get(code, (0, 0))[1]
-
-        if filled == 0:
-            icon = "❌"
-        elif filled < total:
-            icon = "⚠️"
-        else:
-            icon = "✅"
+        filled = stats.get(code, 0)
+        icon   = "✅" if filled > 0 else "❌"
 
         buttons.append([InlineKeyboardButton(
-            text=f"{icon} {name} ({filled}/{total})",
+            text=f"{icon} {name}",
             callback_data=f"la_mavzu_{grade}_{subject_code}_{code}"
         )])
 
@@ -255,13 +253,13 @@ async def la_subject(call: CallbackQuery):
     buttons.append(back_btn(f"la_grade_{grade}"))
     buttons.append(admin_menu_btn())
 
-    total_all  = sum(v[0] for v in stats.values())
-    filled_all = sum(v[1] for v in stats.values())
+    total_all  = len(mavzular)
+    filled_all = sum(1 for v in stats.values() if v > 0)
 
     await call.message.edit_text(
         f"📝 {grade}-sinf | {subject_name}\n"
-        f"Jami: {filled_all}/{total_all} kichik mavzu to'liq\n\n"
-        f"✅ To'liq  ⚠️ Qisman  ❌ Bo'sh",
+        f"Mavzular: {filled_all}/{total_all} ta dars bor\n\n"
+        f"✅ Dars bor  ❌ Bo'sh",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
@@ -276,10 +274,13 @@ async def la_mavzu(call: CallbackQuery):
         return
     await call.answer()
 
-    parts        = call.data.replace("la_mavzu_", "").split("_")
+    # format: la_mavzu_{grade}_{subject_code}_{mavzu_code}
+    # grade — bitta token, mavzu_code — oxirgi token
+    raw          = call.data.replace("la_mavzu_", "")
+    parts        = raw.split("_")
     grade        = parts[0]
-    subject_code = parts[1]
-    mavzu_code   = parts[2]
+    mavzu_code   = parts[-1]
+    subject_code = "_".join(parts[1:-1])
 
     conn = db()
     cur  = conn.cursor()
@@ -360,10 +361,11 @@ async def la_template(call: CallbackQuery):
         return
     await call.answer("📥 Shablon tayyorlanmoqda...")
 
-    parts        = call.data.replace("la_template_", "").split("_")
+    raw          = call.data.replace("la_template_", "")
+    parts        = raw.split("_")
     grade        = parts[0]
-    subject_code = parts[1]
-    mavzu_code   = parts[2]
+    mavzu_code   = parts[-1]
+    subject_code = "_".join(parts[1:-1])
 
     conn = db()
     cur  = conn.cursor()
@@ -596,8 +598,14 @@ async def la_import_prompt(call: CallbackQuery, state: FSMContext):
         return
     await call.answer()
 
-    await state.set_state(LessonAdminState.waiting_excel)
+    raw          = call.data.replace("la_import_", "")
+    parts        = raw.split("_")
+    grade        = parts[0]
+    mavzu_code   = parts[-1]
+    subject_code = "_".join(parts[1:-1])
+
     await state.update_data(import_meta=call.data)
+    await state.set_state(LessonAdminState.waiting_excel)
 
     await call.message.answer(
         "📤 To'ldirilgan Excel faylini yuboring:\n\n"
