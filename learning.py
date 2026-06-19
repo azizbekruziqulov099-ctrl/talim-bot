@@ -493,6 +493,11 @@ async def open_teacher_lesson(message):
 async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun):
     """Asosiy darsni ko'rsatadi"""
 
+    from aiogram.types import ReplyKeyboardRemove
+
+    # Klaviaturani yashir
+    await message.answer("📖 Dars boshlanmoqda...", reply_markup=ReplyKeyboardRemove())
+
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1378,14 +1383,10 @@ async def lesson_finish(
 ):
 
     if user_id in user_state:
-
         user_state.pop(user_id)
 
-    conn = psycopg2.connect(
-        DATABASE_URL
-    )
-
-    cur = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur  = conn.cursor()
 
     try:
 
@@ -1396,12 +1397,18 @@ async def lesson_finish(
 
         conn.commit()
 
-        await message.edit_text(
-            """
-🏁 Dars yakunlandi
+        # Rolni aniqla
+        cur.execute("""
+            SELECT role FROM users WHERE user_id = %s
+        """, (user_id,))
+        row  = cur.fetchone()
+        role = row[0] if row else "O'quvchi"
 
-Rahmat.
-"""
+        await message.edit_text("🏁 Dars yakunlandi! Rahmat.")
+
+        await message.answer(
+            "🏠 Asosiy menyu",
+            reply_markup=get_main_keyboard(role)
         )
 
     finally:
