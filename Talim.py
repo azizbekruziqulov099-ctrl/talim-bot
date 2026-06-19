@@ -930,6 +930,14 @@ async def handle_all(
     
     user_id = message.from_user.id
 
+    # Dars paytida yozilgan xabarni avtomatik o'chirish
+    if isinstance(user_state.get(user_id), dict):
+        if user_state[user_id].get("board_message_id"):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
     if message.text == "🎯 Bugungi reja":
         await continue_learning(message)
         return
@@ -2132,6 +2140,26 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     user_id = call.from_user.id
 
+    if call.data.startswith("next_lesson_"):
+        topic_code = call.data.replace("next_lesson_", "")
+        await open_teacher_lesson(call.message, topic_code)
+        await call.answer()
+        return
+
+    if call.data == "go_home":
+        await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        row = cur2.fetchone()
+        cur2.close(); conn2.close()
+        role = row[0] if row else "🧒 O'quvchi"
+        await call.message.answer(
+            "🏠 Asosiy menyu",
+            reply_markup=get_main_keyboard(role)
+        )
+        return
+
     if call.data == "lesson_continue":
         await open_teacher_lesson(call.message)
         await call.answer()
@@ -2428,13 +2456,44 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data == "lesson_finish":
 
+        await call.message.edit_reply_markup(
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Ha, tugataman",
+                            callback_data="lesson_finish_yes"
+                        ),
+                        InlineKeyboardButton(
+                            text="❌ Yo'q, davom etaman",
+                            callback_data="lesson_finish_no"
+                        )
+                    ]
+                ]
+            )
+        )
+        await call.answer("Darsni tugatmoqchimisiz?", show_alert=False)
+        return
+
+    if call.data == "lesson_finish_yes":
+
         await lesson_finish(
             call.from_user.id,
             call.message
         )
 
         await call.answer()
+        return
 
+    if call.data == "lesson_finish_no":
+
+        # Tugmalarni qaytarish
+        await lesson_back_main(
+            call.from_user.id,
+            call.message
+        )
+
+        await call.answer()
         return
 
     elif call.data == "dts_navigator":
