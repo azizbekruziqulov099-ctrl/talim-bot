@@ -977,17 +977,7 @@ async def lesson_help(
         simple_text = simple_map.get(current_step, "")
         main_text   = parts[current_step]
 
-        if not simple_text:
-            simple_text = "Bu bosqich uchun izoh yo'q"
-
-        u    = user_state.get(user_id, {})
-        fn   = u.get("full_name", "O'quvchi")
-        sinf = u.get("sinf", "")
-        fan  = u.get("fan", "")
-        mav  = u.get("mavzu", topic_code)
-        bgun = u.get("bugun", "")
-
-        # Doska o'zgarmaydi — faqat tugmalar o'zgaradi
+        # Tugmalarni o'zgartir
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -1004,11 +994,16 @@ async def lesson_help(
             ]
         )
 
-        # Faqat tugmalarni o'zgartiradi — ovoz yuklamaydi
         try:
             await message.edit_reply_markup(reply_markup=keyboard)
         except Exception:
             pass
+
+        # Izohni alohida xabar sifatida yubor
+        if simple_text:
+            await message.answer(f"💡 Izoh:\n\n{simple_text}")
+        else:
+            await message.answer("💡 Bu bosqich uchun izoh yo'q")
 
     except Exception as e:
 
@@ -1060,7 +1055,8 @@ async def lesson_tts_help(user_id, message):
         simple_text = simple_map.get(current_step, "")
 
         if not simple_text:
-            simple_text = "Bu bosqich uchun izoh yo'q"
+            await speak_mixed_text(user_id, message, "Bu bosqich uchun izoh yo'q")
+            return
 
         await speak_mixed_text(user_id, message, simple_text)
 
@@ -1144,60 +1140,7 @@ async def lesson_back_main(user_id, message):
 
 
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
 
-    try:
-
-        cur.execute("""
-            SELECT topic_code, current_step
-            FROM lesson_progress
-            WHERE user_id = %s
-        """, (user_id,))
-
-        progress = cur.fetchone()
-
-        if not progress:
-            return
-
-        topic_code = progress[0]
-        current_step = progress[1]
-
-        cur.execute("""
-            SELECT *
-            FROM teacher_lessons
-            WHERE topic_code = %s
-        """, (topic_code,))
-
-        lesson = cur.fetchone()
-
-        if not lesson:
-            return
-
-        simple_map = {
-            1: lesson[7] or "",
-            2: lesson[8] or "",
-            3: lesson[9] or "",
-            4: lesson[10] or ""
-        }
-
-        simple_text = simple_map.get(
-            current_step,
-            ""
-        )
-
-        if not simple_text:
-            await message.answer("💡 Bu bosqich uchun izoh yo'q")
-            return
-
-        await speak_mixed_text(user_id, message, simple_text)
-
-    except Exception as e:
-        await message.answer(f"❌ Xatolik:\n{e}")
-
-    finally:
-        cur.close()
-        conn.close()
 
 
 async def lesson_consolidation_test(user_id, message):
