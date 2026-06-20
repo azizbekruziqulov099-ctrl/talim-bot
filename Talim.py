@@ -2190,7 +2190,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await call.message.answer(text, reply_markup=kb)
         except Exception:
             pass
-        await call.message.answer("👇", reply_markup=get_main_keyboard(role))
+        await call.message.answer("Bosh menyu:", reply_markup=get_main_keyboard(role))
         return
 
     if call.data == "go_home":
@@ -2291,12 +2291,27 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         return
 
     if call.data == "test_stop":
-
-        await stop_test(
-            call.from_user.id,
-            call.message
+        await call.answer()
+        await call.message.answer(
+            "🛑 Testni to'xtatmoqchimisiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Ha, to'xtat", callback_data="test_stop_yes"),
+                InlineKeyboardButton(text="❌ Yo'q, davom", callback_data="test_stop_no"),
+            ]])
         )
+        return
 
+    if call.data == "test_stop_yes":
+        await call.answer()
+        await stop_test(call.from_user.id, call.message)
+        return
+
+    if call.data == "test_stop_no":
+        await call.answer("Davom etilmoqda!")
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
         return
 
     if call.data == "speak_question":
