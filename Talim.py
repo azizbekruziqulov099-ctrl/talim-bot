@@ -2186,6 +2186,21 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
 
+    if call.data == "go_sleep":
+        await call.answer()
+        await call.message.edit_text(
+            "😴 Yaxshi uxlang!\n🌙 Ertaga yanada kuchli bo'lasiz! 💪"
+        )
+        return
+
+    if call.data == "go_rest":
+        await call.answer()
+        await call.message.edit_text(
+            "🎮 Yaxshi dam oling!\n"
+            "Ruhiy kuch to'plash ham o'rganish! 💚"
+        )
+        return
+
     if call.data == "go_home_dashboard":
         await call.answer()
         conn2 = psycopg2.connect(DATABASE_URL)
@@ -2200,7 +2215,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await call.message.answer(text, reply_markup=kb)
         except Exception:
             pass
-        await call.message.answer("Bosh menyu:", reply_markup=get_main_keyboard(role))
+        await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard(role))
         return
 
     if call.data == "go_home":
