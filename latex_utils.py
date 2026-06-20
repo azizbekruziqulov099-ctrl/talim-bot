@@ -190,13 +190,15 @@ def parse_blocks(text: str) -> list:
     - {'type': 'img', 'content': 'https://...'}
     - {'type': 'en', 'content': '...'}
     - {'type': 'ru', 'content': '...'}
+    - {'type': 'skip', 'content': '...'} ← ovozda o'qilmaydi
     """
 
     pattern = re.compile(
         r'\[latex\](.*?)\[/latex\]'
         r'|\[img\](.*?)\[/img\]'
         r'|\[en\](.*?)\[/en\]'
-        r'|\[ru\](.*?)\[/ru\]',
+        r'|\[ru\](.*?)\[/ru\]'
+        r'|\[skip\](.*?)\[/skip\]',
         re.DOTALL
     )
 
@@ -204,7 +206,6 @@ def parse_blocks(text: str) -> list:
     last_end = 0
 
     for m in pattern.finditer(text):
-        # Oldidagi oddiy matn
         if m.start() > last_end:
             chunk = text[last_end:m.start()].strip()
             if chunk:
@@ -218,6 +219,8 @@ def parse_blocks(text: str) -> list:
             blocks.append({'type': 'en', 'content': m.group(3).strip()})
         elif m.group(4) is not None:
             blocks.append({'type': 'ru', 'content': m.group(4).strip()})
+        elif m.group(5) is not None:
+            blocks.append({'type': 'skip', 'content': m.group(5).strip()})
 
         last_end = m.end()
 
