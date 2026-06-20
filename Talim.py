@@ -2145,17 +2145,19 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data == "go_home_dashboard":
         await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        row = cur2.fetchone()
+        cur2.close(); conn2.close()
+        role = row[0] if row else "🧒 O'quvchi"
         try:
             from student_dashboard import build_dashboard
             text, kb = await build_dashboard(call.from_user.id)
             await call.message.answer(text, reply_markup=kb)
-        except Exception as e:
-            conn2 = psycopg2.connect(DATABASE_URL)
-            cur2  = conn2.cursor()
-            cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
-            row = cur2.fetchone()
-            cur2.close(); conn2.close()
-            await call.message.answer("🏠", reply_markup=get_main_keyboard(row[0] if row else "🧒 O'quvchi"))
+        except Exception:
+            pass
+        await call.message.answer("👇", reply_markup=get_main_keyboard(role))
         return
 
     if call.data == "go_home":
@@ -2388,6 +2390,15 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         await call.answer()
 
+        return
+
+    if call.data == "test_result_tts":
+        u = user_state.get(call.from_user.id, {})
+        text = u.get("last_result_text", "") if isinstance(u, dict) else ""
+        if text:
+            from learning import speak_mixed_text
+            await speak_mixed_text(call.from_user.id, call.message, text)
+        await call.answer()
         return
 
     if call.data.startswith("test_speak_"):
