@@ -300,14 +300,14 @@ async def continue_learning(message: Message):
 
 
 
-async def open_teacher_lesson(message, topic_code=None):
+async def open_teacher_lesson(message, topic_code=None, _user_id=None):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur  = conn.cursor()
 
     try:
 
-        user_id = message.from_user.id
+        user_id = _user_id or message.from_user.id
 
         # O'quvchi ma'lumotlari
         cur.execute("""
