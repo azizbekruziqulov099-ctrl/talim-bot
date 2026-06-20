@@ -285,6 +285,7 @@ async def continue_learning(message: Message):
             callback_data="lesson_repeat"
         )])
 
+        from aiogram.types import ReplyKeyboardRemove
         await message.answer(
             text,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
