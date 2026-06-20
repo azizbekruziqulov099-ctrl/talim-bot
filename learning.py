@@ -41,26 +41,24 @@ from latex_utils import (
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def clean_for_tts(text: str) -> str:
-    """Matnni TTS uchun tozalaydi"""
+    """Matnni TTS uchun tozalaydi — faqat ovoz uchun"""
     import re
-    import unicodedata
 
     # Teglarni olib tashlash
     text = re.sub(r'\[/?en\]|\[/?ru\]|\[/?latex\]|\[/?img\]|\[/?skip\]', '', text)
 
-    # Barcha emoji va unicode simbollarni tozalash
-    cleaned = ""
-    for char in text:
-        cat = unicodedata.category(char)
-        # Harflar, raqamlar, tinish belgilari va bo'sh joy
-        if cat.startswith(('L', 'N', 'P', 'Z')) or char in ' .,!?:;\n-':
-            cleaned += char
+    # Emoji olib tashlash (ovozda o'qilmasin)
+    text = re.sub(
+        r'[\U0001F000-\U0001FFFF'
+        r'\U00002600-\U000027BF'
+        r'\U0001F900-\U0001F9FF'
+        r'\U00002300-\U000023FF]+',
+        ' ', text, flags=re.UNICODE
+    )
 
-    text = cleaned
-
-    # Maxsus belgilarni tozalash
+    # Maxsus belgilar
     text = re.sub(r'[•\*\#\|\_\~\`]', ' ', text)
-    text = re.sub(r'━+|-{3,}', '. ', text)
+    text = re.sub(r'━+|-{3,}=+', '. ', text)
     text = re.sub(r'\s+', ' ', text)
     text = text.replace('—', ',').strip()
 
@@ -1342,17 +1340,21 @@ async def send_test_question(user_id, message, questions, index):
     option_b   = q[2]
     option_c   = q[3]
     option_d   = q[4]
-    # correct  = q[5]
-    # explanation = q[6]
-    # question_type = q[7]
     image_url  = q[8] if len(q) > 8 else None
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"A) {option_a}", callback_data="test_answer_A")],
-            [InlineKeyboardButton(text=f"B) {option_b}", callback_data="test_answer_B")],
-            [InlineKeyboardButton(text=f"C) {option_c}", callback_data="test_answer_C")],
-            [InlineKeyboardButton(text=f"D) {option_d}", callback_data="test_answer_D")]
+            [
+                InlineKeyboardButton(text=f"🔊 Savol", callback_data="test_speak_q"),
+            ],
+            [InlineKeyboardButton(text=f"A) {option_a}", callback_data="test_answer_A"),
+             InlineKeyboardButton(text=f"🔊", callback_data="test_speak_A")],
+            [InlineKeyboardButton(text=f"B) {option_b}", callback_data="test_answer_B"),
+             InlineKeyboardButton(text=f"🔊", callback_data="test_speak_B")],
+            [InlineKeyboardButton(text=f"C) {option_c}", callback_data="test_answer_C"),
+             InlineKeyboardButton(text=f"🔊", callback_data="test_speak_C")],
+            [InlineKeyboardButton(text=f"D) {option_d}", callback_data="test_answer_D"),
+             InlineKeyboardButton(text=f"🔊", callback_data="test_speak_D")],
         ]
     )
 
