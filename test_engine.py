@@ -262,7 +262,7 @@ async def show_question(user_id, message):
                     pass
 
                 await asyncio.sleep(2)
-                await next_question(user_id, message)
+                await next_question(user_id, None)
 
             task = asyncio.create_task(write_countdown())
             session["timer_task"] = task
@@ -351,7 +351,7 @@ async def show_question(user_id, message):
             pass
 
         await asyncio.sleep(2)
-        await next_question(user_id, message)
+        await next_question(user_id, None)
 
     task = asyncio.create_task(countdown())
     session["timer_task"] = task
@@ -396,9 +396,10 @@ async def _show_result(user_id, message, result_text):
     done    = correct + wrong
     total   = len(session["questions"])
 
+    is_correct = "🎉" in result_text or "Ajoyib" in result_text
+
     # Progress bar
     bar = "🟩" * correct + "🟥" * wrong + "⬜" * (total - done)
-
     full_text = f"{result_text}\n\n{bar}\n✅ {correct}  ❌ {wrong}  📊 {done}/{total}"
 
     try:
@@ -409,11 +410,50 @@ async def _show_result(user_id, message, result_text):
                 message_id=board_msg_id
             )
         else:
-            await message.answer(full_text)
+            await bot.send_message(board_chat_id, full_text)
     except Exception:
-        await message.answer(full_text)
+        pass
 
-    await asyncio.sleep(2)
+    # Animatsiya
+    if is_correct:
+        # Konfetti — Telegram dice animatsiyasi
+        try:
+            dice_msg = await bot.send_dice(board_chat_id, emoji="🎊")
+            await asyncio.sleep(1.5)
+            try:
+                await bot.delete_message(board_chat_id, dice_msg.message_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
+    else:
+        # Xato — ekran "qimirlatish" — 3 marta tez o'zgartirib
+        try:
+            shakes = ["❌ Xato!", "  ❌ Xato!  ", "❌ Xato!"]
+            for shake in shakes:
+                await asyncio.sleep(0.3)
+                try:
+                    await bot.edit_message_text(
+                        shake + "\n\n" + full_text[full_text.find("\n"):],
+                        chat_id=board_chat_id,
+                        message_id=board_msg_id
+                    )
+                except Exception:
+                    pass
+            # Asl matnga qaytarish
+            await asyncio.sleep(0.3)
+            try:
+                await bot.edit_message_text(
+                    full_text,
+                    chat_id=board_chat_id,
+                    message_id=board_msg_id
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    await asyncio.sleep(1.5)
 
 
 async def check_button_answer(user_id, answer, message):
@@ -502,7 +542,7 @@ async def check_text_answer(user_id, user_answer, message):
 # KEYINGI / YAKUNLASH
 # ─────────────────────────────────────────
 
-async def next_question(user_id, message):
+async def next_question(user_id, message=None):
     session = test_sessions.get(user_id)
     if not session:
         return
@@ -513,10 +553,28 @@ async def next_question(user_id, message):
         await finish_test(user_id, message)
         return
 
+    # message yo'q bo'lsa — bot orqali fake message yaratamiz
+    if message is None:
+        chat_id = session.get("board_chat_id")
+        if not chat_id:
+            return
+        # bot.send_message orqali yangi xabar yuborib, uni message sifatida ishlatamiz
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat = type('obj', (object,), {'id': chat_id})()
+                self.bot  = bot
+            async def answer(self, text, **kwargs):
+                return await bot.send_message(chat_id, text, **kwargs)
+            async def answer_voice(self, voice, **kwargs):
+                return await bot.send_voice(chat_id, voice, **kwargs)
+            async def delete(self):
+                pass
+        message = FakeMessage(chat_id)
+
     await show_question(user_id, message)
 
 
-async def finish_test(user_id, message):
+async def finish_test(user_id, message=None):
     session = test_sessions.get(user_id)
     if not session:
         return
@@ -539,7 +597,7 @@ async def finish_test(user_id, message):
 
     emoji = "🏆" if pct >= 80 else "👍" if pct >= 60 else "💪"
 
-    board_chat_id = session.get("board_chat_id") or message.chat.id
+    board_chat_id = session.get("board_chat_id")
     board_msg_id  = session.get("board_msg_id")
 
     result_text = (
@@ -549,23 +607,29 @@ async def finish_test(user_id, message):
         f"📊 Natija: {pct}%"
     )
 
-    # Bosh menyuga qaytish tugmasi
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home_dashboard")
     ]])
 
     try:
-        if board_msg_id:
+        if board_msg_id and board_chat_id:
             await bot.edit_message_text(
                 result_text, chat_id=board_chat_id,
                 message_id=board_msg_id, reply_markup=kb
             )
-        else:
+        elif message:
             await message.answer(result_text, reply_markup=kb)
+        elif board_chat_id:
+            await bot.send_message(board_chat_id, result_text, reply_markup=kb)
     except Exception:
-        await message.answer(result_text, reply_markup=kb)
+        if board_chat_id:
+            try:
+                await bot.send_message(board_chat_id, result_text, reply_markup=kb)
+            except Exception:
+                pass
 
-    del test_sessions[user_id]
+    if user_id in test_sessions:
+        del test_sessions[user_id]
 
 
 async def stop_test(user_id, message):
