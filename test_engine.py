@@ -125,13 +125,12 @@ async def show_question(user_id, message):
     board_chat_id = session.get("board_chat_id") or message.chat.id
     board_msg_id  = session.get("board_msg_id")
 
-    # 1. RASM YOKI LATEX — tepada alohida
+    # 1. RASM YOKI LATEX — tepada alohida (savol xabaridan OLDIN)
     if is_latex and question:
         try:
             from latex_utils import latex_to_image
             img_path = latex_to_image(question, user_id)
             if img_path and os.path.exists(img_path):
-                # Eski rasm xabarini o'chirish
                 old_img_id = session.get("img_msg_id")
                 if old_img_id:
                     try:
@@ -163,7 +162,7 @@ async def show_question(user_id, message):
         except Exception:
             pass
 
-    # 2. YOZMA TEST — vaqtsiz, matn kiriting
+    # 2. YOZMA TEST
     if question_type == "write_answer":
         user_state[user_id] = "text_answer"
 
