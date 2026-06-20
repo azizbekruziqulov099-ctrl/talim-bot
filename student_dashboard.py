@@ -510,8 +510,17 @@ async def dashboard_refresh(call: CallbackQuery):
             await call.message.edit_text(text, reply_markup=keyboard)
         except Exception:
             await call.message.answer(text, reply_markup=keyboard)
+        # Reply keyboard qaytarish
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        row = cur2.fetchone()
+        cur2.close(); conn2.close()
+        if row:
+            from keyboards import get_main_keyboard
+            await call.message.answer("🏠", reply_markup=get_main_keyboard(row[0]))
     except Exception as e:
-        await call.answer(f"❌ Xatolik: {e}", show_alert=True)
+        await call.answer(f"❌ {e}", show_alert=True)
 
 
 @dp.callback_query(F.data == "dashboard_stats")
