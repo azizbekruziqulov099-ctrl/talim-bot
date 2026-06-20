@@ -1546,26 +1546,28 @@ async def lesson_finish(
                 f"Davom etasizmi?",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="▶️ Ha, davom etaman!",
-                                callback_data=f"next_lesson_{next_topic[0]}"
-                            )
-                        ],
-                        [
-                            InlineKeyboardButton(
-                                text="🏠 Yo'q, keyinroq",
-                                callback_data="go_home"
-                            )
-                        ]
+                        [InlineKeyboardButton(
+                            text="▶️ Ha, davom etaman!",
+                            callback_data=f"next_lesson_{next_topic[0]}"
+                        )],
+                        [InlineKeyboardButton(
+                            text="🏠 Yo'q, keyinroq",
+                            callback_data="go_home_dashboard"
+                        )]
                     ]
                 )
             )
         else:
-            await message.answer(
-                "🎉 Barcha mavzularni o'zgandingiz!",
-                reply_markup=get_main_keyboard(role)
-            )
+            # Dashboard ko'rsatish
+            try:
+                from student_dashboard import build_dashboard
+                text, kb = await build_dashboard(user_id)
+                await message.answer(text, reply_markup=kb)
+            except Exception:
+                await message.answer(
+                    "🎉 Barcha mavzularni o'zgandingiz!",
+                    reply_markup=get_main_keyboard(role)
+                )
 
     finally:
 
