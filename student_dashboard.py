@@ -35,13 +35,16 @@ def get_time_greeting(hour: int, group: str, gender: str, name: str) -> str:
         # 1-4 sinf
         if 6 <= hour < 12:
             emoji = "☀️"
-            msg = f"Xayrli tong, {'qizaloq' if is_girl else 'botir'} {name}! 🌸" if is_girl else f"Xayrli tong, {name}! 💪"
-        elif 12 <= hour < 17:
+            msg = f"Xayrli tong, {'qizaloq' if is_girl else 'botir'} {name}! Bugun ham o'rganamizmi? 🌸" if is_girl else f"Xayrli tong, {name}! Bugun ham o'rganamizmi? 💪"
+        elif 12 <= hour < 14:
             emoji = "🌤"
-            msg = f"Salom, {name}! Tushlikdan keyin o'ynaymizmi? 🎮"
+            msg = f"Salom, {name}! Tushlikdan keyin biroz o'rganamizmi? 📚"
+        elif 14 <= hour < 17:
+            emoji = "🌤"
+            msg = f"Salom, {name}! Kunduzi bir dars o'tib olamizmi? 🎯"
         elif 17 <= hour < 21:
             emoji = "🌙"
-            msg = f"Kechki o'yin vaqti, {name}! ⭐"
+            msg = f"Kechki dars vaqti, {name}! Bir mavzu o'rganamizmi? ⭐"
         else:
             emoji = "😴"
             msg = f"Uxlash vaqti, {name}! Ertaga davom etamiz 🌙"
