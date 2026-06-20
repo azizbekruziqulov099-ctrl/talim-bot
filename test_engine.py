@@ -15,6 +15,7 @@ import re
 
 from storage import user_state
 from keyboards import get_main_keyboard
+from loader import bot
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -123,7 +124,7 @@ async def show_question(user_id, message):
     old_img = session.get("img_msg_id")
     if old_img:
         try:
-            await message.bot.delete_message(board_chat_id, old_img)
+            await bot.delete_message(board_chat_id, old_img)
         except Exception:
             pass
         session["img_msg_id"] = None
@@ -136,7 +137,7 @@ async def show_question(user_id, message):
             from latex_utils import latex_to_image
             img_path = latex_to_image(question, user_id)
             if img_path and os.path.exists(img_path):
-                img_msg = await message.bot.send_photo(board_chat_id, FSInputFile(img_path))
+                img_msg = await bot.send_photo(board_chat_id, FSInputFile(img_path))
                 session["img_msg_id"] = img_msg.message_id
                 os.remove(img_path)
                 has_image = True
@@ -152,7 +153,7 @@ async def show_question(user_id, message):
             row  = cur.fetchone()
             cur.close(); conn.close()
             if row:
-                img_msg = await message.bot.send_photo(board_chat_id, row[0])
+                img_msg = await bot.send_photo(board_chat_id, row[0])
                 session["img_msg_id"] = img_msg.message_id
                 has_image = True
         except Exception:
@@ -162,7 +163,7 @@ async def show_question(user_id, message):
     # eski board_msg_id ni o'chirib, yangi xabar yuboramiz
     if has_image and board_msg_id:
         try:
-            await message.bot.delete_message(board_chat_id, board_msg_id)
+            await bot.delete_message(board_chat_id, board_msg_id)
         except Exception:
             pass
         session["board_msg_id"] = None
@@ -195,7 +196,7 @@ async def show_question(user_id, message):
 
         try:
             if board_msg_id:
-                await message.bot.edit_message_text(
+                await bot.edit_message_text(
                     text, chat_id=board_chat_id,
                     message_id=board_msg_id, reply_markup=kb
                 )
@@ -231,7 +232,7 @@ async def show_question(user_id, message):
                         InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
                     ]])
                     try:
-                        await message.bot.edit_message_reply_markup(
+                        await bot.edit_message_reply_markup(
                             chat_id=s.get("board_chat_id"),
                             message_id=s.get("board_msg_id"),
                             reply_markup=new_kb
@@ -252,7 +253,7 @@ async def show_question(user_id, message):
                 s["wrong"] += 1
 
                 try:
-                    await message.bot.edit_message_text(
+                    await bot.edit_message_text(
                         f"⏰ Vaqt tugadi!\n\n✅ To'g'ri javob: {render_text(str(correct))}",
                         chat_id=s.get("board_chat_id"),
                         message_id=s.get("board_msg_id")
@@ -292,7 +293,7 @@ async def show_question(user_id, message):
 
     try:
         if board_msg_id:
-            await message.bot.edit_message_text(
+            await bot.edit_message_text(
                 text, chat_id=board_chat_id,
                 message_id=board_msg_id, reply_markup=kb
             )
@@ -323,7 +324,7 @@ async def show_question(user_id, message):
             new_kb = _build_kb(a_show, b_show, c_show, d_show, left)
 
             try:
-                await message.bot.edit_message_reply_markup(
+                await bot.edit_message_reply_markup(
                     chat_id=s.get("board_chat_id"),
                     message_id=s.get("board_msg_id"),
                     reply_markup=new_kb
@@ -341,7 +342,7 @@ async def show_question(user_id, message):
 
         s["wrong"] += 1
         try:
-            await message.bot.edit_message_text(
+            await bot.edit_message_text(
                 f"⏰ Vaqt tugadi!\n\n✅ To'g'ri javob: {render_text(str(correct))}",
                 chat_id=s.get("board_chat_id"),
                 message_id=s.get("board_msg_id")
@@ -392,7 +393,7 @@ async def _show_result(user_id, message, result_text):
 
     try:
         if board_msg_id:
-            await message.bot.edit_message_text(
+            await bot.edit_message_text(
                 result_text,
                 chat_id=board_chat_id,
                 message_id=board_msg_id
@@ -545,7 +546,7 @@ async def finish_test(user_id, message):
 
     try:
         if board_msg_id:
-            await message.bot.edit_message_text(
+            await bot.edit_message_text(
                 result_text, chat_id=board_chat_id,
                 message_id=board_msg_id, reply_markup=kb
             )
