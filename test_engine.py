@@ -422,7 +422,6 @@ async def _update_progress_bar(user_id):
 
 
 async def _show_result(user_id, message, result_text):
-    """Natijani doskada ko'rsatadi — foydalanuvchi Keyingi bosadi"""
     session = test_sessions.get(user_id)
     if not session:
         return
@@ -436,34 +435,22 @@ async def _show_result(user_id, message, result_text):
     total   = len(session["questions"])
 
     bar = "🟩" * correct + "🟥" * wrong + "⬜" * (total - done)
-
-    full_text = (
-        f"{result_text}\n\n"
-        f"{bar}\n"
-        f"✅ {correct}  ❌ {wrong}  📊 {done}/{total}"
-    )
-
-    # Keyingi tugmasi
-    is_last = (done >= total)
-    next_btn = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="🏁 Yakunla" if is_last else "➡️ Keyingi savol",
-            callback_data="test_next_from_result"
-        )
-    ]])
+    full_text = f"{result_text}\n\n{bar}\n✅ {correct}  ❌ {wrong}  📊 {done}/{total}"
 
     try:
         if board_msg_id:
             await bot.edit_message_text(
                 full_text,
                 chat_id=board_chat_id,
-                message_id=board_msg_id,
-                reply_markup=next_btn
+                message_id=board_msg_id
             )
         else:
-            await bot.send_message(board_chat_id, full_text, reply_markup=next_btn)
+            await bot.send_message(board_chat_id, full_text)
     except Exception:
         pass
+
+    await asyncio.sleep(2)
+    await next_question(user_id, None)
 
 
 async def check_button_answer(user_id, answer, message):
@@ -508,7 +495,6 @@ async def check_button_answer(user_id, answer, message):
         result += f"\n\n💡 {explanation}"
 
     await _show_result(user_id, message, result)
-    # Foydalanuvchi o'zi "Keyingi" ni bosadi
 
 
 async def check_text_answer(user_id, user_answer, message):
@@ -545,7 +531,6 @@ async def check_text_answer(user_id, user_answer, message):
     user_state[user_id] = None
 
     await _show_result(user_id, message, result)
-    # Foydalanuvchi o'zi "Keyingi" ni bosadi
 
 
 # ─────────────────────────────────────────
