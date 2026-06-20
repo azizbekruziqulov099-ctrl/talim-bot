@@ -713,6 +713,10 @@ async def lesson_next(user_id, message):
             reply_markup=keyboard
         )
 
+    except Exception as e:
+        import traceback
+        await message.answer(f"❌ lesson_next xato:\n{traceback.format_exc()}")
+
     finally:
 
         cur.close()
@@ -784,9 +788,6 @@ async def lesson_prev(user_id, message):
     cur = conn.cursor()
 
     try:
-
-        if user_id in user_state:
-            user_state[user_id]["help_mode"] = False
 
         cur.execute("""
             SELECT topic_code, current_step
@@ -869,6 +870,10 @@ async def lesson_prev(user_id, message):
             f"📄 {prev_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
+
+    except Exception as e:
+        import traceback
+        await message.answer(f"❌ lesson_prev xato:\n{traceback.format_exc()}")
 
     finally:
 
