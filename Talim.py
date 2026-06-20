@@ -2299,6 +2299,8 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data == "lesson_prev":
 
+        print(f"DEBUG: lesson_prev called by {call.from_user.id}")
+
         await lesson_prev(
             call.from_user.id,
             call.message
