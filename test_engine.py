@@ -63,11 +63,7 @@ async def start_test(
 ):
 
     if not tests:
-
-        await message.answer(
-            "❌ Test topilmadi"
-        )
-
+        await message.answer("❌ Test topilmadi")
         return
 
     test_sessions[user_id] = {
@@ -75,16 +71,191 @@ async def start_test(
         "current": 0,
         "correct": 0,
         "wrong": 0,
-        "timer_task": None
+        "timer_task": None,
+        "board_msg_id": None,
+        "time_left": None,
     }
 
-    await show_question(
-        user_id,
-        message
+    # Bitta doskada ko'rsatish uchun — avval xabar yuboramiz
+    msg = await message.answer("⏳ Test yuklanmoqda...")
+    test_sessions[user_id]["board_msg_id"] = msg.message_id
+    test_sessions[user_id]["board_chat_id"] = message.chat.id
+
+    await show_question(user_id, message)
+
+async def show_question(user_id, message):
+
+    session = test_sessions.get(user_id)
+    if not session:
+        return
+
+    current  = session["current"]
+    total    = len(session["questions"])
+    test     = session["questions"][current]
+
+    (
+        question, a, b, c, d,
+        correct, explanation,
+        question_type, is_latex,
+        image_url, audio_text,
+        language, time_limit
+    ) = test
+
+    question_show = render_text(question)
+    a_show = render_text(str(a))
+    b_show = render_text(str(b))
+    c_show = render_text(str(c))
+    d_show = render_text(str(d))
+
+    # Vaqt
+    try:
+        tl = int(time_limit) if time_limit else 60
+    except Exception:
+        tl = 60
+
+    # Timer o'chirish
+    if session.get("timer_task"):
+        try:
+            session["timer_task"].cancel()
+        except Exception:
+            pass
+
+    session["time_left"] = tl
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                InlineKeyboardButton(text=f"⏱ {tl}s", callback_data="noop_timer"),
+                InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+            ],
+            [
+                InlineKeyboardButton(text=a_show, callback_data="ans_A"),
+                InlineKeyboardButton(text="🔊", callback_data="speak_a"),
+            ],
+            [
+                InlineKeyboardButton(text=b_show, callback_data="ans_B"),
+                InlineKeyboardButton(text="🔊", callback_data="speak_b"),
+            ],
+            [
+                InlineKeyboardButton(text=c_show, callback_data="ans_C"),
+                InlineKeyboardButton(text="🔊", callback_data="speak_c"),
+            ],
+            [
+                InlineKeyboardButton(text=d_show, callback_data="ans_D"),
+                InlineKeyboardButton(text="🔊", callback_data="speak_d"),
+            ],
+        ]
     )
 
-async def show_question(
+    text = (
+        f"🧪 Savol {current+1}/{total}\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"{question_show}"
+    )
+
+    board_msg_id  = session.get("board_msg_id")
+    board_chat_id = session.get("board_chat_id") or message.chat.id
+
+    try:
+        if board_msg_id:
+            await message.bot.edit_message_text(
+                text,
+                chat_id=board_chat_id,
+                message_id=board_msg_id,
+                reply_markup=kb
+            )
+        else:
+            msg = await message.answer(text, reply_markup=kb)
+            session["board_msg_id"]  = msg.message_id
+            session["board_chat_id"] = msg.chat.id
+    except Exception:
+        msg = await message.answer(text, reply_markup=kb)
+        session["board_msg_id"]  = msg.message_id
+        session["board_chat_id"] = msg.chat.id
+
+    # Rasm bor bo'lsa — alohida
+    if image_url and str(image_url).strip() not in ("", "None", "nan"):
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur  = conn.cursor()
+            cur.execute("SELECT file_id FROM images WHERE name=%s", (image_url.strip(),))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            if row:
+                await message.answer_photo(row[0])
+        except Exception:
+            pass
+
+    # Countdown timer
+    async def countdown():
+        import asyncio
+        left = tl
+        while left > 0:
+            await asyncio.sleep(5)
+            left -= 5
+            if left <= 0:
+                break
+            s = test_sessions.get(user_id)
+            if not s or s.get("current") != current:
+                return
+            s["time_left"] = left
+            new_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                        InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
+                        InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+                    ],
+                    [
+                        InlineKeyboardButton(text=a_show, callback_data="ans_A"),
+                        InlineKeyboardButton(text="🔊", callback_data="speak_a"),
+                    ],
+                    [
+                        InlineKeyboardButton(text=b_show, callback_data="ans_B"),
+                        InlineKeyboardButton(text="🔊", callback_data="speak_b"),
+                    ],
+                    [
+                        InlineKeyboardButton(text=c_show, callback_data="ans_C"),
+                        InlineKeyboardButton(text="🔊", callback_data="speak_c"),
+                    ],
+                    [
+                        InlineKeyboardButton(text=d_show, callback_data="ans_D"),
+                        InlineKeyboardButton(text="🔊", callback_data="speak_d"),
+                    ],
+                ]
+            )
+            try:
+                await message.bot.edit_message_reply_markup(
+                    chat_id=board_chat_id,
+                    message_id=s.get("board_msg_id"),
+                    reply_markup=new_kb
+                )
+            except Exception:
+                pass
+
+        # Vaqt tugadi — keyingi savolga
+        s = test_sessions.get(user_id)
+        if s and s.get("current") == current:
+            s["wrong"] += 1
+            try:
+                await message.bot.edit_message_text(
+                    f"⏰ Vaqt tugadi!\n\n✅ To'g'ri javob: {render_text(str(correct))}",
+                    chat_id=board_chat_id,
+                    message_id=s.get("board_msg_id")
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+            await next_question(user_id, message)
+
+    import asyncio
+    task = asyncio.create_task(countdown())
+    session["timer_task"] = task
+
+async def check_button_answer(
     user_id,
+    answer,
     message
 ):
 
@@ -93,230 +264,12 @@ async def show_question(
     if not session:
         return
 
-    current = session["current"]
-
-    test = session["questions"][current]
-
-    (
-        question,
-        a,
-        b,
-        c,
-        d,
-        correct,
-        explanation,
-        question_type,
-        is_latex,
-        image_url,
-        audio_text,
-        language,
-        time_limit
-    ) = test
-
-    # Teglarni olib tashlash — ekranda tozalangan ko'rinsin
-    question_show = render_text(question)
-    a_show = render_text(str(a))
-    b_show = render_text(str(b))
-    c_show = render_text(str(c))
-    d_show = render_text(str(d))
-
-
-    if question_type == "write_answer":
-
-        user_state[user_id] = "text_answer"
-
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🔊 Eshitish",
-                        callback_data="speak_question"
-                    ),
-                    InlineKeyboardButton(
-                        text="🛑 Tugatish",
-                        callback_data="test_stop"
-                    )
-                ]
-            ]
-        )
-
-        if image_url and str(image_url).strip():
-
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-
-            cur.execute(
-                "SELECT file_id FROM images WHERE name=%s",
-                (image_url.strip(),)
-            )
-
-            row = cur.fetchone()
-
-            conn.close()
-
-            if row:
-
-                await message.answer_photo(
-                    photo=row[0],
-                    caption=
-                    f"⏱️ {time_limit} soniya\n\n"
-                    f"{question_show}\n\n"
-                    f"✍️ Javobni yozing:",
-                    reply_markup=kb
-                )
-
-            else:
-
-                await message.answer(
-                    f"⏱️ {time_limit} soniya\n\n"
-                    f"{question_show}\n\n"
-                    f"✍️ Javobni yozing:",
-                    reply_markup=kb
-                )
-
-        else:
-
-            await message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question_show}\n\n"
-                f"✍️ Javobni yozing:",
-                reply_markup=kb
-            )
-
-        return
-
-    # ODDIY TESTLAR
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_question"
-                ),
-                InlineKeyboardButton(
-                    text="🛑 Tugatish",
-                    callback_data="test_stop"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_a"
-                ),
-                InlineKeyboardButton(
-                    text=a_show,
-                    callback_data="ans_A"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_b"
-                ),
-                InlineKeyboardButton(
-                    text=b_show,
-                    callback_data="ans_B"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_c"
-                ),
-                InlineKeyboardButton(
-                    text=c_show,
-                    callback_data="ans_C"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔊 Eshitish",
-                    callback_data="speak_d"
-                ),
-                InlineKeyboardButton(
-                    text=d_show,
-                    callback_data="ans_D"
-                )
-            ]
-        ]
-    )
-
-    if is_latex:
-
-        image_file = f"latex_{user_id}.png"
-
-        latex_to_image(
-            question,
-            image_file
-        )
-
-        await message.answer_photo(
-            photo=FSInputFile(image_file)
-        )
-
-        await message.answer(
-            "Savolni rasmda ko‘ring",
-            reply_markup=kb
-        )
-
-        return
-
-    if (
-        image_url
-        and str(image_url).lower() != "nan"
-        and str(image_url).strip() != ""
-    ):
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT file_id FROM images WHERE name=%s",
-            (image_url.strip(),)
-        )
-
-        row = cur.fetchone()
-
-        conn.close()
-
-        if row:
-
-            await message.answer_photo(
-                photo=row[0],
-                caption=
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}",
-                reply_markup=kb
-            )
-
-        else:
-
-            await message.answer(
-                f"⏱️ {time_limit} soniya\n\n"
-                f"{question}",
-                reply_markup=kb
-            )
-
-    else:
-
-        await message.answer(
-            f"⏱️ {time_limit} soniya\n\n"
-            f"{question}",
-            reply_markup=kb
-        )
-
-async def check_button_answer(
-    user_id,
-    answer,
-    message
-):
-
-    session = test_sessions.get(
-        user_id
-    )
-
-    if not session:
-        return
+    # Timer to'xtatish
+    if session.get("timer_task"):
+        try:
+            session["timer_task"].cancel()
+        except Exception:
+            pass
 
     current = session["current"]
 
