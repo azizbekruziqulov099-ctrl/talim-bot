@@ -43,34 +43,28 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 async def clean_for_tts(text: str) -> str:
     """Matnni TTS uchun tozalaydi"""
     import re
+    import unicodedata
 
     # Teglarni olib tashlash
-    text = re.sub(r'\[/?en\]|\[/?ru\]|\[/?latex\]|\[/?img\]', '', text)
+    text = re.sub(r'\[/?en\]|\[/?ru\]|\[/?latex\]|\[/?img\]|\[/?skip\]', '', text)
 
-    # Emoji tozalash
-    emoji_pattern = re.compile(
-        "["
-        "\U0001F600-\U0001F64F"
-        "\U0001F300-\U0001F5FF"
-        "\U0001F680-\U0001F6FF"
-        "\U0001F1E0-\U0001F1FF"
-        "\U00002702-\U000027B0"
-        "\U000024C2-\U0001F251"
-        "\U0001F900-\U0001F9FF"
-        "\U00002500-\U00002BEF"
-        "]+", flags=re.UNICODE
-    )
-    text = emoji_pattern.sub(' ', text)
+    # Barcha emoji va unicode simbollarni tozalash
+    cleaned = ""
+    for char in text:
+        cat = unicodedata.category(char)
+        # Harflar, raqamlar, tinish belgilari va bo'sh joy
+        if cat.startswith(('L', 'N', 'P', 'Z')) or char in ' .,!?:;\n-':
+            cleaned += char
+
+    text = cleaned
 
     # Maxsus belgilarni tozalash
     text = re.sub(r'[•\*\#\|\_\~\`]', ' ', text)
-    text = re.sub(r'━+', '. ', text)
+    text = re.sub(r'━+|-{3,}', '. ', text)
     text = re.sub(r'\s+', ' ', text)
+    text = text.replace('—', ',').strip()
 
-    # Qisqa jumlalarga ajratish — tabiiy pauza
-    text = text.replace('•', '.').replace('—', ',')
-
-    return text.strip()
+    return text
 
 
 async def speak_mixed_text(user_id, message, text):
@@ -803,17 +797,20 @@ async def lesson_tts(user_id, message):
         if not lesson:
             return
 
-        parts = [
+        parts = [p for p in [
             lesson[2] or "",
             lesson[3] or "",
             lesson[4] or "",
             lesson[5] or "",
             lesson[6] or "",
             lesson[13] or ""
-        ]
+        ] if p.strip()]
 
-        # 🔊 bosilsa — asosiy matnni o'qiydi
-        text = parts[current_step]
+        # 🔊 bosilsa — faqat shu qadamdagi asosiy matnni o'qiydi
+        if current_step < len(parts):
+            text = parts[current_step]
+        else:
+            text = parts[-1] if parts else ""
 
         await speak_mixed_text(
             user_id,
