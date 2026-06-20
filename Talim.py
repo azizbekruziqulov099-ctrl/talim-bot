@@ -3069,11 +3069,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             us[user_id] = {}
         us[user_id]["test_settings"] = {
             "count": 20, "diff": "all",
-            "timed": True, "images": True
+            "timed": True, "images": True,
+            "write": False
         }
         await call.message.answer(
             "⚙️ Test sozlamalari:\n\n"
-            "Savollar soni, qiyinlik, vaqt va rasm turini tanlang:",
+            "Savollar soni, qiyinlik, vaqt va turini tanlang:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -3095,6 +3096,10 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                         InlineKeyboardButton(text="🖼 Rasmli", callback_data="tset_img_on"),
                         InlineKeyboardButton(text="📝 Rasmsiz", callback_data="tset_img_off"),
                     ],
+                    [
+                        InlineKeyboardButton(text="✍️ Yozuvli", callback_data="tset_write_on"),
+                        InlineKeyboardButton(text="🔘 Yozuvsiz", callback_data="tset_write_off"),
+                    ],
                     [InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")]
                 ]
             )
@@ -3106,7 +3111,10 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         if not isinstance(us.get(user_id), dict):
             us[user_id] = {}
         if "test_settings" not in us[user_id]:
-            us[user_id]["test_settings"] = {"count": 20, "diff": "all", "timed": True, "images": True}
+            us[user_id]["test_settings"] = {
+                "count": 20, "diff": "all",
+                "timed": True, "images": True, "write": False
+            }
 
         s = us[user_id]["test_settings"]
 
@@ -3129,6 +3137,52 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         elif call.data == "tset_img_off":
             s["images"] = False
             await call.answer("✅ Rasmsiz")
+        elif call.data == "tset_write_on":
+            s["write"] = True
+            await call.answer("✅ Yozuvli savollar ham")
+        elif call.data == "tset_write_off":
+            s["write"] = False
+            await call.answer("✅ Faqat tugmali savollar")
+
+        # Klaviaturani yangilash
+        if not call.data == "tset_start":
+            def c(cond): return "✅ " if cond else ""
+            count = s["count"]
+            diff  = s["diff"]
+            timed = s["timed"]
+            imgs  = s["images"]
+            write = s.get("write", False)
+            new_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=f"{c(count==20)}20 ta", callback_data="tset_count_20"),
+                    InlineKeyboardButton(text=f"{c(count==40)}40 ta", callback_data="tset_count_40"),
+                    InlineKeyboardButton(text=f"{c(count==60)}60 ta", callback_data="tset_count_60"),
+                ],
+                [
+                    InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",   callback_data="tset_diff_oson"),
+                    InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta",  callback_data="tset_diff_orta"),
+                    InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="tset_diff_qiyin"),
+                    InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash", callback_data="tset_diff_all"),
+                ],
+                [
+                    InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",    callback_data="tset_time_on"),
+                    InlineKeyboardButton(text=f"{c(not timed)}∞ Vaqtsiz", callback_data="tset_time_off"),
+                ],
+                [
+                    InlineKeyboardButton(text=f"{c(imgs)}🖼 Rasmli",     callback_data="tset_img_on"),
+                    InlineKeyboardButton(text=f"{c(not imgs)}📝 Rasmsiz", callback_data="tset_img_off"),
+                ],
+                [
+                    InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli",     callback_data="tset_write_on"),
+                    InlineKeyboardButton(text=f"{c(not write)}🔘 Yozuvsiz", callback_data="tset_write_off"),
+                ],
+                [InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")]
+            ])
+            try:
+                await call.message.edit_reply_markup(reply_markup=new_kb)
+            except Exception:
+                pass
+            return
         elif call.data == "tset_start":
             # Test boshlash
             conn2 = psycopg2.connect(DATABASE_URL)
@@ -3139,6 +3193,12 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
             diff_filter = "" if s["diff"] == "all" else f"AND difficulty='{s['diff']}'"
 
+            # Yozuvli yoki yozuvsiz
+            if s.get("write"):
+                type_filter = ""  # Barcha turlar
+            else:
+                type_filter = "AND question_type != 'write_answer'"
+
             cur2.execute(f"""
                 SELECT question, option_a, option_b, option_c, option_d,
                        correct_answer, explanation, question_type, is_latex,
@@ -3147,8 +3207,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                 WHERE topic_code IN (
                     SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
                 )
-                AND question IS NOT NULL AND option_a IS NOT NULL
+                AND question IS NOT NULL
                 {diff_filter}
+                {type_filter}
                 ORDER BY RANDOM()
                 LIMIT %s
             """, (grade, s["count"]))
