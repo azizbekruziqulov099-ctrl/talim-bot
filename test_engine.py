@@ -10,8 +10,46 @@ import psycopg2
 from pydub import AudioSegment
 import uuid
 import os
+import re
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def render_text(text: str) -> str:
+    """
+    Teglarni olib tashlab matnni tozalaydi — ekranda ko'rsatish uchun.
+    [en]Hello[/en] → Hello
+    [ru]Привет[/ru] → Привет
+    [skip]...[/skip] → ... (ko'rinadi)
+    """
+    if not text:
+        return ""
+    text = str(text)
+    # Teglarni olib tashlash, matnni qoldirish
+    text = re.sub(r'\[en\](.*?)\[/en\]', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\[skip\](.*?)\[/skip\]', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\[latex\](.*?)\[/latex\]', r'[\1]', text, flags=re.DOTALL)
+    text = re.sub(r'\[img\](.*?)\[/img\]', '', text, flags=re.DOTALL)
+    return text.strip()
+
+
+def tts_text(text: str) -> str:
+    """
+    TTS uchun matnni tozalaydi — ovozda o'qish uchun.
+    Teglarni, emojilarni olib tashlaydi.
+    """
+    if not text:
+        return ""
+    text = render_text(text)
+    # Emoji olib tashlash
+    text = re.sub(
+        r'[\U0001F000-\U0001FFFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+',
+        ' ', text, flags=re.UNICODE
+    )
+    text = re.sub(r'[•\*\#\|\_\~\`━\-]{2,}', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
 
 test_sessions = {}
@@ -75,7 +113,14 @@ async def show_question(
         time_limit
     ) = test
 
-    # WRITE ANSWER
+    # Teglarni olib tashlash — ekranda tozalangan ko'rinsin
+    question_show = render_text(question)
+    a_show = render_text(str(a))
+    b_show = render_text(str(b))
+    c_show = render_text(str(c))
+    d_show = render_text(str(d))
+
+
     if question_type == "write_answer":
 
         user_state[user_id] = "text_answer"
@@ -115,7 +160,7 @@ async def show_question(
                     photo=row[0],
                     caption=
                     f"⏱️ {time_limit} soniya\n\n"
-                    f"{question}\n\n"
+                    f"{question_show}\n\n"
                     f"✍️ Javobni yozing:",
                     reply_markup=kb
                 )
@@ -124,7 +169,7 @@ async def show_question(
 
                 await message.answer(
                     f"⏱️ {time_limit} soniya\n\n"
-                    f"{question}\n\n"
+                    f"{question_show}\n\n"
                     f"✍️ Javobni yozing:",
                     reply_markup=kb
                 )
@@ -133,7 +178,7 @@ async def show_question(
 
             await message.answer(
                 f"⏱️ {time_limit} soniya\n\n"
-                f"{question}\n\n"
+                f"{question_show}\n\n"
                 f"✍️ Javobni yozing:",
                 reply_markup=kb
             )
@@ -159,7 +204,7 @@ async def show_question(
                     callback_data="speak_a"
                 ),
                 InlineKeyboardButton(
-                    text=str(a),
+                    text=a_show,
                     callback_data="ans_A"
                 )
             ],
@@ -169,7 +214,7 @@ async def show_question(
                     callback_data="speak_b"
                 ),
                 InlineKeyboardButton(
-                    text=str(b),
+                    text=b_show,
                     callback_data="ans_B"
                 )
             ],
@@ -179,7 +224,7 @@ async def show_question(
                     callback_data="speak_c"
                 ),
                 InlineKeyboardButton(
-                    text=str(c),
+                    text=c_show,
                     callback_data="ans_C"
                 )
             ],
@@ -189,7 +234,7 @@ async def show_question(
                     callback_data="speak_d"
                 ),
                 InlineKeyboardButton(
-                    text=str(d),
+                    text=d_show,
                     callback_data="ans_D"
                 )
             ]
@@ -633,95 +678,45 @@ async def speak_text(
         voice_msg.message_id
     )
 
-async def speak_question(
-    user_id,
-    message
-):
+async def speak_question(user_id, message):
     session = test_sessions.get(user_id)
-
     if not session:
         return
-
     current = session["current"]
     test = session["questions"][current]
+    await speak_text(user_id, message, tts_text(test[0]))
 
-    await speak_text(
-        user_id,
-        message,
-        test[0]
-    )
-
-async def speak_a(
-    user_id,
-    message
-):
+async def speak_a(user_id, message):
     session = test_sessions.get(user_id)
-
     if not session:
         return
-
     current = session["current"]
     test = session["questions"][current]
+    await speak_text(user_id, message, tts_text(test[1]))
 
-    await speak_text(
-        user_id,
-        message,
-        test[1]
-    )
-
-async def speak_b(
-    user_id,
-    message
-):
+async def speak_b(user_id, message):
     session = test_sessions.get(user_id)
-
     if not session:
         return
-
     current = session["current"]
     test = session["questions"][current]
+    await speak_text(user_id, message, tts_text(test[2]))
 
-    await speak_text(
-        user_id,
-        message,
-        test[2]
-    )
-
-async def speak_c(
-    user_id,
-    message
-):
+async def speak_c(user_id, message):
     session = test_sessions.get(user_id)
-
     if not session:
         return
-
     current = session["current"]
     test = session["questions"][current]
+    await speak_text(user_id, message, tts_text(test[3]))
 
-    await speak_text(
-        user_id,
-        message,
-        test[3]
-    )
-
-async def speak_d(
-    user_id,
-    message
-):
+async def speak_d(user_id, message):
     session = test_sessions.get(user_id)
-
     if not session:
         return
-
     current = session["current"]
     test = session["questions"][current]
-
-    await speak_text(
-        user_id,
-        message,
-        test[4]
-    )
+    await speak_text(user_id, message, tts_text(test[4]))
 
 def latex_to_image(latex_text, filename):
 
