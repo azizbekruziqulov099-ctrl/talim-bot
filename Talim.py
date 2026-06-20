@@ -935,6 +935,33 @@ async def handle_all(
             except Exception:
                 pass
 
+    if message.text == "🧪 Testlar":
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        row = cur2.fetchone()
+        grade = row[0] if row else "5"
+        cur2.close(); conn2.close()
+
+        await message.answer(
+            f"🧪 Testlar\n\n"
+            f"🎓 {grade}-sinf testlari\n\n"
+            f"Sozlamalarni tanlang yoki darhol boshlang:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="⚙️ Sozlamalar bilan boshlash",
+                        callback_data="test_settings"
+                    )],
+                    [InlineKeyboardButton(
+                        text="▶️ Darhol boshlash (20 ta, aralash)",
+                        callback_data="tset_start_quick"
+                    )]
+                ]
+            )
+        )
+        return
+
     if message.text == "🎯 Bugungi reja":
         await continue_learning(message)
         return
@@ -3004,6 +3031,32 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         await dts_export(call)
 
+        return
+
+    if call.data == "tset_start_quick":
+        await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        row = cur2.fetchone()
+        grade = row[0] if row else "5"
+        cur2.execute("""
+            SELECT question, option_a, option_b, option_c, option_d,
+                   correct_answer, explanation, question_type, is_latex,
+                   image_url, audio_text, language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
+            )
+            AND question IS NOT NULL AND option_a IS NOT NULL
+            ORDER BY RANDOM() LIMIT 20
+        """, (grade,))
+        tests = cur2.fetchall()
+        cur2.close(); conn2.close()
+        if not tests:
+            await call.answer("❌ Testlar topilmadi!", show_alert=True)
+            return
+        await start_test(user_id, tests, call.message)
         return
 
     if call.data == "noop_timer":
