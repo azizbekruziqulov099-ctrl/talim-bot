@@ -3098,6 +3098,16 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         await start_test(user_id, tests, call.message)
         return
 
+    if call.data == "test_next_from_result":
+        await call.answer()
+        from test_engine import test_sessions, next_question
+        session = test_sessions.get(call.from_user.id)
+        if not session:
+            await call.answer("❌ Test tugagan", show_alert=True)
+            return
+        await next_question(call.from_user.id, call.message)
+        return
+
     if call.data == "noop_timer":
         await call.answer("⏱ Vaqt ketmoqda...")
         return
