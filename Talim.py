@@ -931,6 +931,16 @@ async def handle_all(
     
     user_id = message.from_user.id
 
+    # Test paytida yozilgan xabarni o'chirish
+    from test_engine import test_sessions
+    if user_id in test_sessions:
+        if user_state.get(user_id) != "text_answer":
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
     # Dars paytida yozilgan xabarni avtomatik o'chirish
     if isinstance(user_state.get(user_id), dict):
         if user_state[user_id].get("board_message_id"):
