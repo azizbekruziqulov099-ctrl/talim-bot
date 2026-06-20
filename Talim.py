@@ -2456,7 +2456,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data == "lesson_finish":
 
-        await call.message.edit_reply_markup(
+        await call.message.edit_text(
+            "⚠️ Darsni tugatmoqchimisiz?\n\n"
+            "Tugatmasangiz progress saqlanmaydi.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -2465,14 +2467,14 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
                             callback_data="lesson_finish_yes"
                         ),
                         InlineKeyboardButton(
-                            text="❌ Yo'q, davom etaman",
+                            text="↩️ Yo'q, davom",
                             callback_data="lesson_finish_no"
                         )
                     ]
                 ]
             )
         )
-        await call.answer("Darsni tugatmoqchimisiz?", show_alert=False)
+        await call.answer()
         return
 
     if call.data == "lesson_finish_yes":
