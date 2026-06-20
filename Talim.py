@@ -2161,8 +2161,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         return
 
     if call.data == "lesson_continue":
-        await open_teacher_lesson(call.message)
         await call.answer()
+        await call.message.delete()
+        await open_teacher_lesson(call.message)
         return
 
     if call.data == "lesson_repeat":
