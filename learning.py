@@ -1476,25 +1476,23 @@ async def lesson_test_answer(user_id, message, answer):
     if not isinstance(user_state.get(user_id), dict):
         user_state[user_id] = {}
     user_state[user_id]["test_index"] = next_index
-
-    # Kalonka — to'g'ri/xato ovozda ham aytsin
-    try:
-        voice_text = "To'g'ri!" if is_correct else f"Noto'g'ri. To'g'ri javob {correct}"
-        await speak_mixed_text(user_id, message, voice_text)
-    except Exception:
-        pass
+    user_state[user_id]["last_result_text"] = result_text
 
     await message.answer(
         f"🧠 Mustahkamlash testi\n"
         f"━━━━━━━━━━━━━━\n\n"
         f"{result_text}",
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="🔊 O'qib ber",
+                    callback_data="test_result_tts"
+                )],
+                [InlineKeyboardButton(
                     text="➡️ Keyingi savol",
                     callback_data="test_next_question"
-                )
-            ]]
+                )]
+            ]
         )
     )
 
@@ -1536,6 +1534,9 @@ async def lesson_finish(
         next_topic = get_next_topic(user_id, grade)
 
         await message.edit_text("🏁 Dars yakunlandi! Rahmat.")
+
+        # Klaviaturani qaytarish
+        await message.answer("👇", reply_markup=get_main_keyboard(role))
 
         if next_topic:
             await message.answer(
