@@ -1047,7 +1047,7 @@ async def handle_all(
 
         return
 
-    elif user_state.get(message.from_user.id) == "text_answer":
+    if user_state.get(message.from_user.id) == "text_answer":
 
         await check_text_answer(
             message.from_user.id,
