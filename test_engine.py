@@ -568,17 +568,26 @@ async def next_question(user_id, message=None):
         chat_id = session.get("board_chat_id")
         if not chat_id:
             return
-        # bot.send_message orqali yangi xabar yuborib, uni message sifatida ishlatamiz
+
         class FakeMessage:
-            def __init__(self, chat_id):
-                self.chat = type('obj', (object,), {'id': chat_id})()
-                self.bot  = bot
+            def __init__(self, cid):
+                self.chat = type('C', (), {'id': cid})()
+                self.from_user = type('U', (), {'id': user_id})()
+                self.bot = bot
+                self.message_id = None
+
             async def answer(self, text, **kwargs):
                 return await bot.send_message(chat_id, text, **kwargs)
+
             async def answer_voice(self, voice, **kwargs):
                 return await bot.send_voice(chat_id, voice, **kwargs)
+
+            async def edit_text(self, text, **kwargs):
+                pass
+
             async def delete(self):
                 pass
+
         message = FakeMessage(chat_id)
 
     await show_question(user_id, message)
