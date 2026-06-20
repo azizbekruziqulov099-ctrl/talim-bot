@@ -41,6 +41,7 @@ from learning import (
     continue_learning
 )
 import lesson_admin
+import student_dashboard
 import json
 import random
 import time
@@ -757,26 +758,22 @@ async def start(message: types.Message):
         # O'quvchi uchun yoshga mos kutib olish
         if "quvchi" in role.lower() or role.strip() in ("🧒 O'quvchi", "🧒O'quvchi", "O'quvchi"):
 
-            from progress import build_welcome, get_pending_exams, create_auto_exams, update_streak
+            from progress import update_streak
+            from student_dashboard import build_dashboard
 
-            # Streak yangilash
             update_streak(message.from_user.id)
 
-            # Kutib olish matni
-            welcome_text = build_welcome(
-                message.from_user.id,
-                full_name or "O'quvchi",
-                grade or "5"
-            )
+            text, keyboard = await build_dashboard(message.from_user.id)
 
             # Majburiy imtihon bormi?
-            pending = get_pending_exams(message.from_user.id)
+            from progress import get_pending_exams
+            pending   = get_pending_exams(message.from_user.id)
             mandatory = [e for e in pending if e[3]]
 
             if mandatory:
                 exam = mandatory[0]
                 await message.answer(
-                    f"{welcome_text}\n\n"
+                    f"{text}\n\n"
                     f"🚨 MAJBURIY IMTIHON:\n"
                     f"📘 {exam[1]}\n"
                     f"📅 Sana: {exam[2]}",
@@ -795,7 +792,11 @@ async def start(message: types.Message):
                 )
             else:
                 await message.answer(
-                    welcome_text,
+                    text,
+                    reply_markup=keyboard
+                )
+                await message.answer(
+                    "👇 Menyu:",
                     reply_markup=get_main_keyboard(role)
                 )
         else:
