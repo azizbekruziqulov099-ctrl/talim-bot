@@ -45,9 +45,12 @@ def get_time_greeting(hour: int, group: str, gender: str, name: str) -> str:
         elif 17 <= hour < 21:
             emoji = "🌙"
             msg = f"Kechki dars vaqti, {name}! Bir mavzu o'rganamizmi? ⭐"
+        elif 21 <= hour < 23:
+            emoji = "🌙"
+            msg = f"Kech bo'ldi, {name}! Tez bir mavzu o'rganib yotamizmi? 😴"
         else:
-            emoji = "😴"
-            msg = f"Uxlash vaqti, {name}! Ertaga davom etamiz 🌙"
+            emoji = "🌙"
+            msg = f"Salom, {name}! Kech bo'lsa ham o'rganish yaxshi! 📖"
 
     elif group == "middle":
         # 5-8 sinf
@@ -363,12 +366,68 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         # 7. Joylashuv
         if region:
-            lines.append(f"━━━━━━━━━━━━━━")
+            lines.append("━━━━━━━━━━━━━━")
             lines.append(f"📍 {region}, {district}")
 
         text = "\n".join(lines)
 
-        # Tugmalar
+        # ── KECHKI REJIM (22-6) ──
+        is_night = hour >= 22 or hour < 6
+        is_weekend = weekday >= 5  # Shanba, Yakshanba
+
+        if is_night:
+            night_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="📖 Baribir o'rganaman!",
+                    callback_data="lesson_continue"
+                )],
+                [InlineKeyboardButton(
+                    text="😴 Yaxshi, uxlayman",
+                    callback_data="go_sleep"
+                )]
+            ])
+            night_text = (
+                f"🌙 Kech bo'ldi, {name}!\n\n"
+                f"Uxlash vaqti — sog'liq muhim!\n"
+                f"Ertaga yanada samaraliroq o'rgansiz 💪\n\n"
+                f"Baribir o'rganmoqchimisiz?"
+            )
+            return night_text + "\n\n" + "\n".join(lines[1:4]), night_kb
+
+        if is_weekend:
+            # Dam olish kuni — dars yoki test bormi tekshir
+            from progress import get_next_topic, get_repeat_topics
+            next_t  = get_next_topic(user_id, grade)
+            repeats = get_repeat_topics(user_id)
+
+            weekend_lines = [greeting, "━━━━━━━━━━━━━━"]
+
+            if repeats:
+                weekend_lines.append(f"🔁 {len(repeats)} ta mavzu takrorlash kutmoqda!")
+
+            weekend_lines.append(
+                "🏖 Bugun dam olish kuni!\n"
+                "Ruhiy kuch to'plang, o'ynang, dam oling 😊"
+            )
+
+            if next_t or repeats:
+                weekend_lines.append("\nBaribir bir mavzu o'rganasizmi?")
+                weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="✅ Ha, o'rganaman!", callback_data="lesson_continue"),
+                        InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest")
+                    ],
+                    [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")]
+                ])
+            else:
+                weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Yangilash", callback_data="dashboard_refresh")],
+                    [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")]
+                ])
+
+            return "\n".join(weekend_lines) + "\n\n" + "\n".join(lines[3:]), weekend_kb
+
+        # Tugmalar — oddiy
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -394,11 +453,13 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
 @dp.callback_query(F.data == "dashboard_refresh")
 async def dashboard_refresh(call: CallbackQuery):
-    """Dashboardni yangilash"""
     await call.answer("🔄 Yangilanmoqda...")
     try:
         text, keyboard = await build_dashboard(call.from_user.id)
-        await call.message.edit_text(text, reply_markup=keyboard)
+        try:
+            await call.message.edit_text(text, reply_markup=keyboard)
+        except Exception:
+            await call.message.answer(text, reply_markup=keyboard)
     except Exception as e:
         await call.answer(f"❌ Xatolik: {e}", show_alert=True)
 
