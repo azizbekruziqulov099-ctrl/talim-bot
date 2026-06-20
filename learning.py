@@ -612,8 +612,6 @@ async def lesson_next(user_id, message):
         if user_id not in user_state:
             user_state[user_id] = {}
 
-        user_state[user_id]["help_mode"] = True
-
         cur.execute("""
             SELECT topic_code, current_step
             FROM lesson_progress
@@ -687,39 +685,24 @@ async def lesson_next(user_id, message):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="⬅️",
-                        callback_data="lesson_prev"
-                    ),
-                    InlineKeyboardButton(
-                        text="➡️",
-                        callback_data="lesson_next"
-                    )
+                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="🔊 O'qib ber",
-                        callback_data="lesson_tts"
-                    )
+                    InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
+                    InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="😕 Tushunmadim",
-                        callback_data="lesson_help"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Darsni tugatish",
-                        callback_data="lesson_finish"
-                    )
+                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
                 ]
             ]
         )
         u = user_state.get(user_id, {})
-        fn   = u.get('full_name', "O'quvchi")
-        sinf = u.get('sinf', '')
-        fan  = u.get('fan', '')
-        mav  = u.get('mavzu', topic_code)
-        bgun = u.get('bugun', '')
+        fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
+        sinf = u.get('sinf', '') if isinstance(u, dict) else ''
+        fan  = u.get('fan', '') if isinstance(u, dict) else ''
+        mav  = u.get('mavzu', topic_code) if isinstance(u, dict) else topic_code
+        bgun = u.get('bugun', '') if isinstance(u, dict) else ''
 
         await message.edit_text(
             f"👤 {fn} | {sinf}\n"
@@ -858,40 +841,25 @@ async def lesson_prev(user_id, message):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="⬅️",
-                        callback_data="lesson_prev"
-                    ),
-                    InlineKeyboardButton(
-                        text="➡️",
-                        callback_data="lesson_next"
-                    )
+                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
+                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="🔊 O'qib ber",
-                        callback_data="lesson_tts"
-                    )
+                    InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
+                    InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
                 ],
                 [
-                    InlineKeyboardButton(
-                        text="😕 Tushunmadim",
-                        callback_data="lesson_help"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Darsni tugatish",
-                        callback_data="lesson_finish"
-                    )
+                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
                 ]
             ]
         )
 
         u = user_state.get(user_id, {})
-        fn   = u.get('full_name', "O'quvchi")
-        sinf = u.get('sinf', '')
-        fan  = u.get('fan', '')
-        mav  = u.get('mavzu', topic_code)
-        bgun = u.get('bugun', '')
+        fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
+        sinf = u.get('sinf', '') if isinstance(u, dict) else ''
+        fan  = u.get('fan', '') if isinstance(u, dict) else ''
+        mav  = u.get('mavzu', topic_code) if isinstance(u, dict) else topic_code
+        bgun = u.get('bugun', '') if isinstance(u, dict) else ''
 
         await message.edit_text(
             f"👤 {fn} | {sinf}\n"
@@ -963,6 +931,8 @@ async def lesson_help(
         if simple_text in ("None", "none"):
             simple_text = ""
         main_text = str(parts[current_step])
+
+        u    = user_state.get(user_id, {}) if isinstance(user_state.get(user_id), dict) else {}
         fn   = u.get("full_name", "O'quvchi")
         sinf = u.get("sinf", "")
         fan  = u.get("fan", "")
