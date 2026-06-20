@@ -53,7 +53,7 @@ def tts_text(text: str) -> str:
 
 
 test_sessions = {}
-user_state = {}
+from storage import user_state
 
 
 async def start_test(
@@ -165,8 +165,7 @@ async def show_question(user_id, message):
 
     # 2. YOZMA TEST — vaqtsiz, matn kiriting
     if question_type == "write_answer":
-        from storage import user_state as us
-        us[user_id] = "text_answer"
+        user_state[user_id] = "text_answer"
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[
@@ -509,8 +508,8 @@ async def finish_test(
 """
     )
 
-    if user_id in user_state:
-        del user_state[user_id]
+    if user_id in user_state and user_state[user_id] == "text_answer":
+        user_state[user_id] = None
 
     del test_sessions[user_id]
 
