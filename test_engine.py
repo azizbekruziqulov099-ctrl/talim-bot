@@ -57,20 +57,22 @@ async def start_test(user_id, tests, message):
         return
 
     # Eski session tozalash
-    old = test_sessions.get(user_id, {})
-    if old.get("timer_task"):
+    old_s = test_sessions.get(user_id, {})
+    if old_s.get("timer_task"):
         try:
-            old["timer_task"].cancel()
+            old_s["timer_task"].cancel()
         except Exception:
             pass
 
-    total = len(tests)
-
-    # Progress bar xabari — tepada doim ko'rinib turadi
-    bar_msg = await message.answer(
-        f"📊 Progress: {'⬜' * min(total, 20)}\n"
-        f"✅ 0  ❌ 0  📊 0/{total}"
-    )
+    # Yuqoridagi xabarlarni o'chirish
+    try:
+        for i in range(message.message_id, message.message_id - 25, -1):
+            try:
+                await bot.delete_message(message.chat.id, i)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # Savol xabari
     msg = await message.answer("⏳ Test yuklanmoqda...")
