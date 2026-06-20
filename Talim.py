@@ -3167,9 +3167,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await start_test(user_id, tests, call.message)
         return
 
-    elif user_id not in user_test:
+    elif True:  # test_sessions tekshiruvi test_engine da
         await call.answer(
-            "♻️ Bot yangilangan.  qayta boshlang.",
+            "♻️ Bot yangilangan. Qayta boshlang.",
             show_alert=True
         )
         return
