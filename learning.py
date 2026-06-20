@@ -716,7 +716,11 @@ async def lesson_next(user_id, message):
 
     except Exception as e:
         import traceback
-        await message.answer(f"❌ lesson_next xato:\n{traceback.format_exc()}")
+        print(f"lesson_next ERROR: {traceback.format_exc()}")
+        try:
+            await message.answer(f"❌ Xatolik: {e}")
+        except Exception:
+            pass
 
     finally:
 
@@ -874,7 +878,18 @@ async def lesson_prev(user_id, message):
 
     except Exception as e:
         import traceback
-        await message.answer(f"❌ lesson_prev xato:\n{traceback.format_exc()}")
+        print(f"lesson_prev ERROR: {traceback.format_exc()}")
+        try:
+            await message.answer(
+                f"👤 {fn} | {sinf}\n"
+                f"📘 {fan} • {mav} • {bgun}\n"
+                f"━━━━━━━━━━━━━━\n\n"
+                f"{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}\n\n"
+                f"📄 {prev_step + 1}/{len(parts)} qadam",
+                reply_markup=keyboard
+            )
+        except Exception as e2:
+            print(f"lesson_prev answer ERROR: {e2}")
 
     finally:
 
