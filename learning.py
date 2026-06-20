@@ -14,17 +14,9 @@ import tempfile
 from test_engine import speak_text
 from storage import user_state
 from teacher_engine import (
-    build_lesson_steps,
-    get_step_content
-)
-from teacher_engine import (
-    create_lesson_state,
-    current_text,
-    build_board_text
-)
-from teacher_engine import (
-    parse_content,
+    build_board_text,
     render_content,
+    parse_content,
     build_ssml
 )
 from aiogram.types import (
