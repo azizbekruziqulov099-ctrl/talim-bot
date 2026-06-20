@@ -795,10 +795,6 @@ async def start(message: types.Message):
                     text,
                     reply_markup=keyboard
                 )
-                await message.answer(
-                    "👇 Menyu:",
-                    reply_markup=get_main_keyboard(role)
-                )
         else:
             await message.answer(
                 f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
