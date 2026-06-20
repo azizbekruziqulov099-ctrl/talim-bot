@@ -935,7 +935,7 @@ async def handle_all(
             except Exception:
                 pass
 
-    if message.text == "🧪 Testlar":
+    if message.text == "🧪 Bilimni sinash":
         conn2 = psycopg2.connect(DATABASE_URL)
         cur2  = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
