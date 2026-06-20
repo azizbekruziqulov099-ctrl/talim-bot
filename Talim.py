@@ -2143,6 +2143,21 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
 
+    if call.data == "go_home_dashboard":
+        await call.answer()
+        try:
+            from student_dashboard import build_dashboard
+            text, kb = await build_dashboard(call.from_user.id)
+            await call.message.answer(text, reply_markup=kb)
+        except Exception as e:
+            conn2 = psycopg2.connect(DATABASE_URL)
+            cur2  = conn2.cursor()
+            cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+            row = cur2.fetchone()
+            cur2.close(); conn2.close()
+            await call.message.answer("🏠", reply_markup=get_main_keyboard(row[0] if row else "🧒 O'quvchi"))
+        return
+
     if call.data == "go_home":
         await call.answer()
         conn2 = psycopg2.connect(DATABASE_URL)
@@ -2373,6 +2388,22 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         await call.answer()
 
+        return
+
+    if call.data.startswith("test_speak_"):
+        what  = call.data.replace("test_speak_", "")
+        u     = user_state.get(call.from_user.id, {})
+        questions = u.get("test_questions", []) if isinstance(u, dict) else []
+        index     = u.get("test_index", 0) if isinstance(u, dict) else 0
+
+        if questions and index < len(questions):
+            q = questions[index]
+            opt_map = {"q": q[0], "A": q[1], "B": q[2], "C": q[3], "D": q[4]}
+            text = opt_map.get(what, "")
+            if text:
+                from learning import speak_mixed_text
+                await speak_mixed_text(call.from_user.id, call.message, str(text))
+        await call.answer()
         return
 
     if call.data.startswith("test_answer_"):
