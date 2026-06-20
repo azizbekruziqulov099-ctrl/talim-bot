@@ -13,12 +13,15 @@ from aiogram.types import FSInputFile
 import tempfile
 from test_engine import speak_text
 from storage import user_state
-from teacher_engine import (
-    build_board_text,
-    render_content,
-    parse_content,
-    build_ssml
-)
+
+# teacher_engine dan kerakli funksiyalarni import qilish
+try:
+    from teacher_engine import build_board_text, render_content, parse_content, build_ssml
+except ImportError:
+    def build_board_text(text): return str(text) if text else ""
+    def render_content(text): return str(text) if text else ""
+    def parse_content(text): return [{"type": "text", "content": str(text)}]
+    def build_ssml(text): return str(text) if text else ""
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
