@@ -85,8 +85,8 @@ async def start_test(user_id, tests, message):
         "timer_task":    None,
         "board_msg_id":  msg.message_id,
         "board_chat_id": msg.chat.id,
-        "bar_msg_id":    bar_msg.message_id,
         "img_msg_id":    None,
+        "voice_msgs":    [],
     }
 
     await show_question(user_id, message)
@@ -108,6 +108,16 @@ async def show_question(user_id, message):
             session["timer_task"] = None
         except Exception:
             pass
+
+    board_chat_id = session.get("board_chat_id")
+
+    # Ovoz xabarlarini o'chirish
+    for vid in session.get("voice_msgs", []):
+        try:
+            await bot.delete_message(board_chat_id, vid)
+        except Exception:
+            pass
+    session["voice_msgs"] = []
 
     current = session["current"]
     total   = len(session["questions"])
@@ -691,9 +701,15 @@ async def speak_text(user_id, message, text):
         communicate = edge_tts.Communicate(text=clean, voice=voice)
         await communicate.save(filename)
         if os.path.exists(filename) and os.path.getsize(filename) > 0:
-            await message.answer_voice(FSInputFile(filename))
+            voice_msg = await message.answer_voice(FSInputFile(filename))
+            # Ovoz xabarini ro'yxatga qo'shish
+            s = test_sessions.get(user_id)
+            if s is not None:
+                if "voice_msgs" not in s:
+                    s["voice_msgs"] = []
+                s["voice_msgs"].append(voice_msg.message_id)
     except Exception as e:
-        await message.answer(f"🔇 Ovoz xatolik: {e}")
+        pass
     finally:
         try:
             os.remove(filename)
