@@ -2142,7 +2142,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
     if call.data.startswith("next_lesson_"):
         topic_code = call.data.replace("next_lesson_", "")
-        await open_teacher_lesson(call.message, topic_code)
+        await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
         await call.answer()
         return
 
@@ -2163,20 +2163,16 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
     if call.data == "lesson_continue":
         await call.answer()
         await call.message.delete()
-        await open_teacher_lesson(call.message)
+        # call.message.from_user yo'q — shuning uchun alohida yuboring
+        await open_teacher_lesson(call.message, _user_id=call.from_user.id)
         return
 
     if call.data == "lesson_repeat":
         from progress import get_repeat_topics
-        conn2 = psycopg2.connect(DATABASE_URL)
-        cur2  = conn2.cursor()
-        cur2.execute("SELECT class FROM users WHERE user_id=%s", (call.from_user.id,))
-        row = cur2.fetchone()
-        cur2.close(); conn2.close()
         topics = get_repeat_topics(call.from_user.id)
         if topics:
             topic_code = topics[0][0]
-            await open_teacher_lesson(call.message, topic_code)
+            await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
         else:
             await call.answer("Takrorlanadigan mavzu yo'q!", show_alert=True)
         await call.answer()
@@ -2189,7 +2185,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         from progress import get_next_topic
         next_topic = get_next_topic(call.from_user.id, grade, None)
         if next_topic and next_topic[3] == subj:
-            await open_teacher_lesson(call.message, next_topic[0])
+            await open_teacher_lesson(call.message, next_topic[0], _user_id=call.from_user.id)
         else:
             conn2 = psycopg2.connect(DATABASE_URL)
             cur2  = conn2.cursor()
@@ -2204,7 +2200,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             row = cur2.fetchone()
             cur2.close(); conn2.close()
             if row:
-                await open_teacher_lesson(call.message, row[0])
+                await open_teacher_lesson(call.message, row[0], _user_id=call.from_user.id)
             else:
                 await call.answer(f"✅ {subj} tugallangan!", show_alert=True)
         await call.answer()
