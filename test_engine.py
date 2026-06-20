@@ -391,17 +391,27 @@ async def _show_result(user_id, message, result_text):
     board_chat_id = session.get("board_chat_id") or message.chat.id
     board_msg_id  = session.get("board_msg_id")
 
+    correct = session["correct"]
+    wrong   = session["wrong"]
+    done    = correct + wrong
+    total   = len(session["questions"])
+
+    # Progress bar
+    bar = "🟩" * correct + "🟥" * wrong + "⬜" * (total - done)
+
+    full_text = f"{result_text}\n\n{bar}\n✅ {correct}  ❌ {wrong}  📊 {done}/{total}"
+
     try:
         if board_msg_id:
             await bot.edit_message_text(
-                result_text,
+                full_text,
                 chat_id=board_chat_id,
                 message_id=board_msg_id
             )
         else:
-            await message.answer(result_text)
+            await message.answer(full_text)
     except Exception:
-        await message.answer(result_text)
+        await message.answer(full_text)
 
     await asyncio.sleep(2)
 
@@ -439,10 +449,10 @@ async def check_button_answer(user_id, answer, message):
 
     if is_ok:
         session["correct"] += 1
-        result = "✅ To'g'ri!"
+        result = "🎉 To'g'ri! Ajoyib! ✅"
     else:
         session["wrong"] += 1
-        result = f"❌ Noto'g'ri!\n✅ To'g'ri: {correct_show}"
+        result = f"❌ Xato!\n✅ To'g'ri javob: {correct_show}"
 
     if explanation:
         result += f"\n\n💡 {explanation}"
@@ -473,10 +483,10 @@ async def check_text_answer(user_id, user_answer, message):
 
     if user_answer == correct:
         session["correct"] += 1
-        result = "✅ To'g'ri!"
+        result = "🎉 To'g'ri! Ajoyib! ✅"
     else:
         session["wrong"] += 1
-        result = f"❌ Noto'g'ri!\n✅ To'g'ri: {render_text(str(test[5]))}"
+        result = f"❌ Xato!\n✅ To'g'ri javob: {render_text(str(test[5]))}"
 
     if explanation:
         result += f"\n\n💡 {explanation}"
