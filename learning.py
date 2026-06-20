@@ -1141,7 +1141,7 @@ async def lesson_consolidation_test(user_id, message):
         cur.execute("""
             SELECT question, option_a, option_b,
                    option_c, option_d, correct_answer,
-                   explanation, question_type
+                   explanation, question_type, image_url
             FROM generated_tests
             WHERE topic_code = ANY(%s)
               AND question IS NOT NULL
@@ -1286,35 +1286,44 @@ async def send_test_question(user_id, message, questions, index):
     option_b   = q[2]
     option_c   = q[3]
     option_d   = q[4]
+    # correct  = q[5]
+    # explanation = q[6]
+    # question_type = q[7]
+    image_url  = q[8] if len(q) > 8 else None
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(
-                text=f"A) {option_a}",
-                callback_data=f"test_answer_A"
-            )],
-            [InlineKeyboardButton(
-                text=f"B) {option_b}",
-                callback_data=f"test_answer_B"
-            )],
-            [InlineKeyboardButton(
-                text=f"C) {option_c}",
-                callback_data=f"test_answer_C"
-            )],
-            [InlineKeyboardButton(
-                text=f"D) {option_d}",
-                callback_data=f"test_answer_D"
-            )]
+            [InlineKeyboardButton(text=f"A) {option_a}", callback_data="test_answer_A")],
+            [InlineKeyboardButton(text=f"B) {option_b}", callback_data="test_answer_B")],
+            [InlineKeyboardButton(text=f"C) {option_c}", callback_data="test_answer_C")],
+            [InlineKeyboardButton(text=f"D) {option_d}", callback_data="test_answer_D")]
         ]
     )
 
-    await message.edit_text(
+    text = (
         f"🧠 Mustahkamlash testi\n"
         f"━━━━━━━━━━━━━━\n"
         f"❓ {index + 1}/{len(questions)}\n\n"
-        f"{question}",
-        reply_markup=keyboard
+        f"{question}"
     )
+
+    # Rasm bor bo'lsa — alohida yuborish
+    if image_url and str(image_url).strip() not in ("", "None", "nan"):
+        try:
+            # DB dan file_id olish
+            conn2 = psycopg2.connect(DATABASE_URL)
+            cur2  = conn2.cursor()
+            cur2.execute("SELECT file_id FROM images WHERE name=%s", (image_url,))
+            img_row = cur2.fetchone()
+            cur2.close(); conn2.close()
+
+            if img_row:
+                await message.answer_photo(img_row[0], caption=text, reply_markup=keyboard)
+                return
+        except Exception:
+            pass
+
+    await message.edit_text(text, reply_markup=keyboard)
 
 
 async def lesson_test_answer(user_id, message, answer):
@@ -1327,10 +1336,28 @@ async def lesson_test_answer(user_id, message, answer):
         return
 
     q             = questions[index]
-    correct       = q[5]
+    correct       = str(q[5] or "").strip()
     explanation   = q[6] or ""
 
-    is_correct = answer.upper() == correct.upper()
+    # correct_answer A/B/C/D yoki to'liq javob matni bo'lishi mumkin
+    user_ans = answer.upper().strip()
+    correct_upper = correct.upper().strip()
+
+    # A/B/C/D formatida tekshirish
+    opt_map = {
+        "A": str(q[1] or "").strip().upper(),
+        "B": str(q[2] or "").strip().upper(),
+        "C": str(q[3] or "").strip().upper(),
+        "D": str(q[4] or "").strip().upper(),
+    }
+
+    # To'g'ri javob A/B/C/D bo'lsa
+    if correct_upper in ("A", "B", "C", "D"):
+        is_correct = user_ans == correct_upper
+    else:
+        # To'g'ri javob matn bo'lsa — variant matni bilan solishtir
+        selected_text = opt_map.get(user_ans, "")
+        is_correct = selected_text == correct_upper
 
     if is_correct:
         user_state[user_id]["test_correct"] = (
