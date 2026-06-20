@@ -188,9 +188,9 @@ async def show_question(user_id, message):
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔊 Savol",    callback_data="speak_question"),
-            InlineKeyboardButton(text=timer_text,    callback_data="noop_timer"),
-            InlineKeyboardButton(text="🛑 Stop",     callback_data="test_stop"),
+            InlineKeyboardButton(text="🔊",        callback_data="speak_question"),
+            InlineKeyboardButton(text=timer_text,  callback_data="noop_timer"),
+            InlineKeyboardButton(text="🛑 Stop",   callback_data="test_stop"),
         ]])
 
         try:
@@ -226,9 +226,9 @@ async def show_question(user_id, message):
 
                     s["time_left"] = left
                     new_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                        InlineKeyboardButton(text="🔊",  callback_data="speak_question"),
                         InlineKeyboardButton(text=f"⏱ {left}s" if left > 0 else "⏰", callback_data="noop_timer"),
-                        InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+                        InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
                     ]])
                     try:
                         await message.bot.edit_message_reply_markup(
@@ -361,9 +361,9 @@ def _build_kb(a, b, c, d, time_left=0):
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                InlineKeyboardButton(text="🔊", callback_data="speak_question"),
                 InlineKeyboardButton(text=timer_text, callback_data="noop_timer"),
-                InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+                InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
             ],
             [InlineKeyboardButton(text=a, callback_data="ans_A"),
              InlineKeyboardButton(text="🔊", callback_data="speak_a")],
@@ -540,7 +540,7 @@ async def finish_test(user_id, message):
 
     # Bosh menyuga qaytish tugmasi
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🏠 Bosh menyuga", callback_data="go_home_dashboard")
+        InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home_dashboard")
     ]])
 
     try:
