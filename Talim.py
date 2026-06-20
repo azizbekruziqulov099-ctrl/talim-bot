@@ -1774,23 +1774,30 @@ async def handle_all(
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
-
-            cur.execute("""
-            SELECT role FROM users
-            WHERE user_id=%s
-            """, (message.from_user.id,))
-
+            cur.execute("SELECT role FROM users WHERE user_id=%s", (message.from_user.id,))
             user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
-
             user_state[message.from_user.id] = None
 
-            await message.answer(
-                "🏠 Bosh menyu",
-                reply_markup=get_main_keyboard(role)
-            )
+            # Oxirgi 10 xabarni o'chirish
+            try:
+                for i in range(message.message_id - 1, message.message_id - 15, -1):
+                    try:
+                        await message.bot.delete_message(message.chat.id, i)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            from student_dashboard import build_dashboard
+            try:
+                text, kb = await build_dashboard(message.from_user.id)
+                await message.answer(text, reply_markup=kb)
+            except Exception:
+                pass
+            await message.answer("👇 Menyu:", reply_markup=get_main_keyboard(role))
             return
 
         elif message.text == "⚙️ Akkaunt sozlamalari":
@@ -2997,6 +3004,115 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         await dts_export(call)
 
+        return
+
+    if call.data == "noop_timer":
+        await call.answer("⏱ Vaqt ketmoqda...")
+        return
+
+    if call.data == "test_settings":
+        await call.answer()
+        from storage import user_state as us
+        if not isinstance(us.get(user_id), dict):
+            us[user_id] = {}
+        us[user_id]["test_settings"] = {
+            "count": 20, "diff": "all",
+            "timed": True, "images": True
+        }
+        await call.message.answer(
+            "⚙️ Test sozlamalari:\n\n"
+            "Savollar soni, qiyinlik, vaqt va rasm turini tanlang:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="📝 20 ta", callback_data="tset_count_20"),
+                        InlineKeyboardButton(text="📝 40 ta", callback_data="tset_count_40"),
+                        InlineKeyboardButton(text="📝 60 ta", callback_data="tset_count_60"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="🟢 Oson", callback_data="tset_diff_oson"),
+                        InlineKeyboardButton(text="🟡 O'rta", callback_data="tset_diff_orta"),
+                        InlineKeyboardButton(text="🔴 Qiyin", callback_data="tset_diff_qiyin"),
+                        InlineKeyboardButton(text="🌈 Aralash", callback_data="tset_diff_all"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="⏱ Vaqtli", callback_data="tset_time_on"),
+                        InlineKeyboardButton(text="∞ Vaqtsiz", callback_data="tset_time_off"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="🖼 Rasmli", callback_data="tset_img_on"),
+                        InlineKeyboardButton(text="📝 Rasmsiz", callback_data="tset_img_off"),
+                    ],
+                    [InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")]
+                ]
+            )
+        )
+        return
+
+    if call.data.startswith("tset_"):
+        from storage import user_state as us
+        if not isinstance(us.get(user_id), dict):
+            us[user_id] = {}
+        if "test_settings" not in us[user_id]:
+            us[user_id]["test_settings"] = {"count": 20, "diff": "all", "timed": True, "images": True}
+
+        s = us[user_id]["test_settings"]
+
+        if call.data.startswith("tset_count_"):
+            s["count"] = int(call.data.replace("tset_count_", ""))
+            await call.answer(f"✅ {s['count']} ta savol")
+        elif call.data.startswith("tset_diff_"):
+            s["diff"] = call.data.replace("tset_diff_", "")
+            diff_names = {"oson": "Oson 🟢", "orta": "O'rta 🟡", "qiyin": "Qiyin 🔴", "all": "Aralash 🌈"}
+            await call.answer(f"✅ {diff_names.get(s['diff'], s['diff'])}")
+        elif call.data == "tset_time_on":
+            s["timed"] = True
+            await call.answer("✅ Vaqtli")
+        elif call.data == "tset_time_off":
+            s["timed"] = False
+            await call.answer("✅ Vaqtsiz")
+        elif call.data == "tset_img_on":
+            s["images"] = True
+            await call.answer("✅ Rasmli")
+        elif call.data == "tset_img_off":
+            s["images"] = False
+            await call.answer("✅ Rasmsiz")
+        elif call.data == "tset_start":
+            # Test boshlash
+            conn2 = psycopg2.connect(DATABASE_URL)
+            cur2  = conn2.cursor()
+            cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+            row = cur2.fetchone()
+            grade = row[0] if row else "5"
+
+            diff_filter = "" if s["diff"] == "all" else f"AND difficulty='{s['diff']}'"
+
+            cur2.execute(f"""
+                SELECT question, option_a, option_b, option_c, option_d,
+                       correct_answer, explanation, question_type, is_latex,
+                       image_url, audio_text, language, time_limit
+                FROM generated_tests
+                WHERE topic_code IN (
+                    SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
+                )
+                AND question IS NOT NULL AND option_a IS NOT NULL
+                {diff_filter}
+                ORDER BY RANDOM()
+                LIMIT %s
+            """, (grade, s["count"]))
+            tests = cur2.fetchall()
+            cur2.close(); conn2.close()
+
+            if not tests:
+                await call.answer("❌ Testlar topilmadi!", show_alert=True)
+                return
+
+            # Vaqtsiz bo'lsa time_limit = 0
+            if not s["timed"]:
+                tests = [(*t[:12], 0) for t in tests]
+
+            await call.answer()
+            await start_test(user_id, tests, call.message)
         return
 
     elif user_id not in user_test:
