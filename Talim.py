@@ -796,7 +796,7 @@ async def start(message: types.Message):
                     reply_markup=keyboard
                 )
                 await message.answer(
-                    "👇",
+                    "🏠 Menyu",
                     reply_markup=get_main_keyboard(role)
                 )
         else:
@@ -2243,9 +2243,39 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         return
 
     if call.data == "lesson_continue":
+        from datetime import datetime
+        now     = datetime.now()
+        hour    = now.hour
+        weekday = now.weekday()
+        is_night   = hour >= 22 or hour < 6
+        is_weekend = weekday >= 5
+
+        if is_night:
+            await call.answer("😴 Tun vaqti — uxlash vaqti!", show_alert=True)
+            return
+
+        if is_weekend:
+            await call.answer()
+            await call.message.answer(
+                "🏖 Bugun dam olish kuni!\n\nBaribir dars o'rganasizmi?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✅ Ha, o'rganaman", callback_data="lesson_continue_force"),
+                    InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest"),
+                ]])
+            )
+            return
+
         await call.answer()
         await call.message.delete()
-        # call.message.from_user yo'q — shuning uchun alohida yuboring
+        await open_teacher_lesson(call.message, _user_id=call.from_user.id)
+        return
+
+    if call.data == "lesson_continue_force":
+        await call.answer()
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
         await open_teacher_lesson(call.message, _user_id=call.from_user.id)
         return
 
@@ -3082,7 +3112,59 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
+    if call.data == "tset_start_force":
+        await call.answer()
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        row = cur2.fetchone()
+        grade = row[0] if row else "5"
+        cur2.execute("""
+            SELECT question, option_a, option_b, option_c, option_d,
+                   correct_answer, explanation, question_type, is_latex,
+                   image_url, audio_text, language, time_limit
+            FROM generated_tests
+            WHERE topic_code IN (
+                SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
+            )
+            AND question IS NOT NULL AND option_a IS NOT NULL
+            ORDER BY RANDOM() LIMIT 20
+        """, (grade,))
+        tests = cur2.fetchall()
+        cur2.close(); conn2.close()
+        if not tests:
+            await call.answer("❌ Testlar topilmadi!", show_alert=True)
+            return
+        await start_test(user_id, tests, call.message)
+        return
+
     if call.data == "tset_start_quick":
+        from datetime import datetime
+        now     = datetime.now()
+        hour    = now.hour
+        weekday = now.weekday()
+        is_night   = hour >= 22 or hour < 6
+        is_weekend = weekday >= 5
+
+        if is_night:
+            await call.answer("😴 Tun vaqti — uxlash vaqti!", show_alert=True)
+            return
+
+        if is_weekend:
+            await call.answer()
+            await call.message.answer(
+                "🏖 Bugun dam olish kuni!\n\nBaribir test ishlaysizmi?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✅ Ha, test", callback_data="tset_start_force"),
+                    InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest"),
+                ]])
+            )
+            return
+
         await call.answer()
         conn2 = psycopg2.connect(DATABASE_URL)
         cur2  = conn2.cursor()
