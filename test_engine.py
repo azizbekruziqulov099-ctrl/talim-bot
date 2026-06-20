@@ -1,3 +1,6 @@
+"""
+test_engine.py — Test tizimi (bitta doskada, rasm tepada, yozma/tugmali)
+"""
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -5,27 +8,24 @@ from aiogram.types import (
 )
 import edge_tts
 import asyncio
-import matplotlib.pyplot as plt
 import psycopg2
 from pydub import AudioSegment
-import uuid
 import os
 import re
 
+from storage import user_state
+from keyboards import get_main_keyboard
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+test_sessions = {}
 
 
 def render_text(text: str) -> str:
-    """
-    Teglarni olib tashlab matnni tozalaydi — ekranda ko'rsatish uchun.
-    [en]Hello[/en] → Hello
-    [ru]Привет[/ru] → Привет
-    [skip]...[/skip] → ... (ko'rinadi)
-    """
+    """Teglarni olib, matnni tozalaydi"""
     if not text:
         return ""
     text = str(text)
-    # Teglarni olib tashlash, matnni qoldirish
     text = re.sub(r'\[en\](.*?)\[/en\]', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\[skip\](.*?)\[/skip\]', r'\1', text, flags=re.DOTALL)
@@ -34,15 +34,9 @@ def render_text(text: str) -> str:
     return text.strip()
 
 
-def tts_text(text: str) -> str:
-    """
-    TTS uchun matnni tozalaydi — ovozda o'qish uchun.
-    Teglarni, emojilarni olib tashlaydi.
-    """
-    if not text:
-        return ""
+def tts_clean(text: str) -> str:
+    """TTS uchun emoji va teglarni olib tashlaydi"""
     text = render_text(text)
-    # Emoji olib tashlash
     text = re.sub(
         r'[\U0001F000-\U0001FFFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+',
         ' ', text, flags=re.UNICODE
@@ -52,42 +46,56 @@ def tts_text(text: str) -> str:
     return text.strip()
 
 
-test_sessions = {}
-from storage import user_state
+# ─────────────────────────────────────────
+# TEST BOSHLASH
+# ─────────────────────────────────────────
 
-
-async def start_test(
-    user_id,
-    tests,
-    message
-):
-
+async def start_test(user_id, tests, message):
     if not tests:
         await message.answer("❌ Test topilmadi")
         return
 
-    test_sessions[user_id] = {
-        "questions": tests,
-        "current": 0,
-        "correct": 0,
-        "wrong": 0,
-        "timer_task": None,
-        "board_msg_id": None,
-        "time_left": None,
-    }
+    # Eski session tozalash
+    old = test_sessions.get(user_id, {})
+    if old.get("timer_task"):
+        try:
+            old["timer_task"].cancel()
+        except Exception:
+            pass
 
-    # Bitta doskada ko'rsatish uchun — avval xabar yuboramiz
+    # Birinchi savol matnini ko'rsatish
     msg = await message.answer("⏳ Test yuklanmoqda...")
-    test_sessions[user_id]["board_msg_id"] = msg.message_id
-    test_sessions[user_id]["board_chat_id"] = message.chat.id
+
+    test_sessions[user_id] = {
+        "questions":    tests,
+        "current":      0,
+        "correct":      0,
+        "wrong":        0,
+        "timer_task":   None,
+        "board_msg_id": msg.message_id,
+        "board_chat_id": msg.chat.id,
+        "img_msg_id":   None,
+    }
 
     await show_question(user_id, message)
 
-async def show_question(user_id, message):
 
+# ─────────────────────────────────────────
+# SAVOL KO'RSATISH
+# ─────────────────────────────────────────
+
+async def show_question(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
+
+    # Timer to'xtatish
+    if session.get("timer_task"):
+        try:
+            session["timer_task"].cancel()
+            session["timer_task"] = None
+        except Exception:
+            pass
 
     current = session["current"]
     total   = len(session["questions"])
@@ -102,76 +110,53 @@ async def show_question(user_id, message):
     ) = test
 
     question_show = render_text(question)
-    a_show = render_text(str(a))
-    b_show = render_text(str(b))
-    c_show = render_text(str(c))
-    d_show = render_text(str(d))
-
-    # Timer o'chirish
-    if session.get("timer_task"):
-        try:
-            session["timer_task"].cancel()
-        except Exception:
-            pass
-
-    # Vaqt
-    try:
-        tl = int(time_limit) if time_limit and int(time_limit) > 0 else 0
-    except Exception:
-        tl = 0
-
-    session["time_left"] = tl
+    a_show = render_text(str(a or ""))
+    b_show = render_text(str(b or ""))
+    c_show = render_text(str(c or ""))
+    d_show = render_text(str(d or ""))
 
     board_chat_id = session.get("board_chat_id") or message.chat.id
     board_msg_id  = session.get("board_msg_id")
 
-    # 1. RASM YOKI LATEX — tepada alohida (savol xabaridan OLDIN)
-    if is_latex and question:
+    # ── RASM TEPADA ──
+    # Eski rasm xabarini o'chirish
+    old_img = session.get("img_msg_id")
+    if old_img:
+        try:
+            await message.bot.delete_message(board_chat_id, old_img)
+        except Exception:
+            pass
+        session["img_msg_id"] = None
+
+    # LaTeX rasmi
+    if is_latex and str(is_latex).lower() not in ("false", "0", "none", ""):
         try:
             from latex_utils import latex_to_image
             img_path = latex_to_image(question, user_id)
             if img_path and os.path.exists(img_path):
-                old_img_id = session.get("img_msg_id")
-                if old_img_id:
-                    try:
-                        await message.bot.delete_message(board_chat_id, old_img_id)
-                    except Exception:
-                        pass
-                img_msg = await message.answer_photo(FSInputFile(img_path))
+                img_msg = await message.bot.send_photo(board_chat_id, FSInputFile(img_path))
                 session["img_msg_id"] = img_msg.message_id
                 os.remove(img_path)
         except Exception:
             pass
 
+    # DB rasmi
     elif image_url and str(image_url).strip() not in ("", "None", "nan"):
         try:
             conn = psycopg2.connect(DATABASE_URL)
             cur  = conn.cursor()
             cur.execute("SELECT file_id FROM images WHERE name=%s", (image_url.strip(),))
-            row = cur.fetchone()
+            row  = cur.fetchone()
             cur.close(); conn.close()
             if row:
-                old_img_id = session.get("img_msg_id")
-                if old_img_id:
-                    try:
-                        await message.bot.delete_message(board_chat_id, old_img_id)
-                    except Exception:
-                        pass
-                img_msg = await message.answer_photo(row[0])
+                img_msg = await message.bot.send_photo(board_chat_id, row[0])
                 session["img_msg_id"] = img_msg.message_id
         except Exception:
             pass
 
-    # 2. YOZMA TEST
+    # ── YOZMA TEST ──
     if question_type == "write_answer":
         user_state[user_id] = "text_answer"
-
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
-                InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
-            ]]
-        )
 
         text = (
             f"✍️ Yozma savol {current+1}/{total}\n"
@@ -179,6 +164,11 @@ async def show_question(user_id, message):
             f"{question_show}\n\n"
             f"📝 Javobingizni yozing:"
         )
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+            InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+        ]])
 
         try:
             if board_msg_id:
@@ -196,29 +186,21 @@ async def show_question(user_id, message):
             session["board_chat_id"] = msg.chat.id
         return
 
-    # 3. ODDIY TEST — tugmali
-    timer_btn = InlineKeyboardButton(
-        text=f"⏱ {tl}s" if tl > 0 else "∞",
-        callback_data="noop_timer"
-    )
+    # ── TUGMALI TEST ──
+    # user_state ni tozalash (oldingi yozma testdan)
+    if user_state.get(user_id) == "text_answer":
+        user_state[user_id] = None
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
-                timer_btn,
-                InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
-            ],
-            [InlineKeyboardButton(text=a_show, callback_data="ans_A"),
-             InlineKeyboardButton(text="🔊", callback_data="speak_a")],
-            [InlineKeyboardButton(text=b_show, callback_data="ans_B"),
-             InlineKeyboardButton(text="🔊", callback_data="speak_b")],
-            [InlineKeyboardButton(text=c_show, callback_data="ans_C"),
-             InlineKeyboardButton(text="🔊", callback_data="speak_c")],
-            [InlineKeyboardButton(text=d_show, callback_data="ans_D"),
-             InlineKeyboardButton(text="🔊", callback_data="speak_d")],
-        ]
-    )
+    try:
+        tl = int(time_limit) if time_limit and int(time_limit) > 0 else 0
+    except Exception:
+        tl = 0
+
+    session["time_left"] = tl
+
+    timer_text = f"⏱ {tl}s" if tl > 0 else "∞"
+
+    kb = _build_kb(a_show, b_show, c_show, d_show, tl)
 
     text = (
         f"🧪 Savol {current+1}/{total}\n"
@@ -241,51 +223,33 @@ async def show_question(user_id, message):
         session["board_msg_id"]  = msg.message_id
         session["board_chat_id"] = msg.chat.id
 
-    # 4. COUNTDOWN TIMER
+    # ── COUNTDOWN ──
     if tl <= 0:
         return
 
     async def countdown():
-        import asyncio
         left = tl
         while left > 0:
             await asyncio.sleep(5)
-            left -= 5
-            if left < 0:
-                left = 0
+            left = max(0, left - 5)
+
             s = test_sessions.get(user_id)
             if not s or s.get("current") != current:
                 return
-            s["time_left"] = left
 
-            # Tugmadagi vaqtni yangilash
-            new_kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
-                        InlineKeyboardButton(text=f"⏱ {left}s" if left > 0 else "⏰", callback_data="noop_timer"),
-                        InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
-                    ],
-                    [InlineKeyboardButton(text=a_show, callback_data="ans_A"),
-                     InlineKeyboardButton(text="🔊", callback_data="speak_a")],
-                    [InlineKeyboardButton(text=b_show, callback_data="ans_B"),
-                     InlineKeyboardButton(text="🔊", callback_data="speak_b")],
-                    [InlineKeyboardButton(text=c_show, callback_data="ans_C"),
-                     InlineKeyboardButton(text="🔊", callback_data="speak_c")],
-                    [InlineKeyboardButton(text=d_show, callback_data="ans_D"),
-                     InlineKeyboardButton(text="🔊", callback_data="speak_d")],
-                ]
-            )
+            s["time_left"] = left
+            new_kb = _build_kb(a_show, b_show, c_show, d_show, left)
+
             try:
                 await message.bot.edit_message_reply_markup(
-                    chat_id=s.get("board_chat_id", board_chat_id),
+                    chat_id=s.get("board_chat_id"),
                     message_id=s.get("board_msg_id"),
                     reply_markup=new_kb
                 )
             except Exception:
                 pass
 
-            if left <= 0:
+            if left == 0:
                 break
 
         # Vaqt tugadi
@@ -297,103 +261,69 @@ async def show_question(user_id, message):
         try:
             await message.bot.edit_message_text(
                 f"⏰ Vaqt tugadi!\n\n✅ To'g'ri javob: {render_text(str(correct))}",
-                chat_id=s.get("board_chat_id", board_chat_id),
+                chat_id=s.get("board_chat_id"),
                 message_id=s.get("board_msg_id")
             )
         except Exception:
             pass
 
-        import asyncio
         await asyncio.sleep(2)
         await next_question(user_id, message)
 
-    import asyncio
     task = asyncio.create_task(countdown())
     session["timer_task"] = task
 
-async def check_button_answer(
-    user_id,
-    answer,
-    message
-):
 
+def _build_kb(a, b, c, d, time_left=0):
+    timer_text = f"⏱ {time_left}s" if time_left > 0 else "∞"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                InlineKeyboardButton(text=timer_text, callback_data="noop_timer"),
+                InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+            ],
+            [InlineKeyboardButton(text=a, callback_data="ans_A"),
+             InlineKeyboardButton(text="🔊", callback_data="speak_a")],
+            [InlineKeyboardButton(text=b, callback_data="ans_B"),
+             InlineKeyboardButton(text="🔊", callback_data="speak_b")],
+            [InlineKeyboardButton(text=c, callback_data="ans_C"),
+             InlineKeyboardButton(text="🔊", callback_data="speak_c")],
+            [InlineKeyboardButton(text=d, callback_data="ans_D"),
+             InlineKeyboardButton(text="🔊", callback_data="speak_d")],
+        ]
+    )
+
+
+# ─────────────────────────────────────────
+# JAVOB TEKSHIRISH
+# ─────────────────────────────────────────
+
+async def _show_result(user_id, message, result_text):
+    """Natijani doskada ko'rsatadi va 2 soniya kutadi"""
     session = test_sessions.get(user_id)
-
     if not session:
         return
 
-    # Timer to'xtatish
-    if session.get("timer_task"):
-        try:
-            session["timer_task"].cancel()
-        except Exception:
-            pass
-
-    current = session["current"]
-
-    test = session["questions"][current]
-
-    (
-        question,
-        a,
-        b,
-        c,
-        d,
-        correct,
-        explanation,
-        question_type,
-        is_latex,
-        image_url,
-        audio_text,
-        language,
-        time_limit
-    ) = test
-
-    if answer == "A":
-        selected = str(a)
-    elif answer == "B":
-        selected = str(b)
-    elif answer == "C":
-        selected = str(c)
-    else:
-        selected = str(d)
-
-    explanation = render_text(str(explanation or ""))
-
-    if selected.strip() == str(correct).strip():
-        session["correct"] += 1
-        result = f"✅ To'g'ri!"
-    else:
-        session["wrong"] += 1
-        result = f"❌ Noto'g'ri!\nTo'g'ri javob: {render_text(str(correct))}"
-
-    if explanation:
-        result += f"\n\n💡 {explanation}"
-
-    board_msg_id  = session.get("board_msg_id")
     board_chat_id = session.get("board_chat_id") or message.chat.id
+    board_msg_id  = session.get("board_msg_id")
 
     try:
         if board_msg_id:
             await message.bot.edit_message_text(
-                result,
+                result_text,
                 chat_id=board_chat_id,
                 message_id=board_msg_id
             )
         else:
-            await message.answer(result)
+            await message.answer(result_text)
     except Exception:
-        await message.answer(result)
+        await message.answer(result_text)
 
-    import asyncio
     await asyncio.sleep(2)
-    await next_question(user_id, message)
-    
-async def check_text_answer(
-    user_id,
-    user_answer,
-    message
-):
+
+
+async def check_button_answer(user_id, answer, message):
     session = test_sessions.get(user_id)
     if not session:
         return
@@ -402,356 +332,243 @@ async def check_text_answer(
     if session.get("timer_task"):
         try:
             session["timer_task"].cancel()
+            session["timer_task"] = None
         except Exception:
             pass
 
-    current     = session["current"]
-    test        = session["questions"][current]
-    correct     = render_text(str(test[5])).strip().lower()
+    current = session["current"]
+    test    = session["questions"][current]
+
+    a, b, c, d   = test[1], test[2], test[3], test[4]
+    correct      = str(test[5] or "").strip()
+    explanation  = render_text(str(test[6] or ""))
+
+    sel_map = {"A": str(a), "B": str(b), "C": str(c), "D": str(d)}
+    selected = sel_map.get(answer.upper(), "")
+
+    # To'g'ri javob A/B/C/D yoki matn
+    if correct.upper() in ("A","B","C","D"):
+        is_ok = answer.upper() == correct.upper()
+        correct_show = render_text(sel_map.get(correct.upper(), correct))
+    else:
+        is_ok = render_text(selected).strip().lower() == render_text(correct).strip().lower()
+        correct_show = render_text(correct)
+
+    if is_ok:
+        session["correct"] += 1
+        result = "✅ To'g'ri!"
+    else:
+        session["wrong"] += 1
+        result = f"❌ Noto'g'ri!\n✅ To'g'ri: {correct_show}"
+
+    if explanation:
+        result += f"\n\n💡 {explanation}"
+
+    await _show_result(user_id, message, result)
+    await next_question(user_id, message)
+
+
+async def check_text_answer(user_id, user_answer, message):
+    session = test_sessions.get(user_id)
+    if not session:
+        return
+
+    current = session["current"]
+    test    = session["questions"][current]
+
+    correct     = render_text(str(test[5] or "")).strip().lower()
     user_answer = str(user_answer).strip().lower()
     explanation = render_text(str(test[6] or ""))
 
     if user_answer == correct:
         session["correct"] += 1
-        result = f"✅ To'g'ri!"
+        result = "✅ To'g'ri!"
     else:
         session["wrong"] += 1
-        result = f"❌ Noto'g'ri!\nTo'g'ri javob: {render_text(str(test[5]))}"
+        result = f"❌ Noto'g'ri!\n✅ To'g'ri: {render_text(str(test[5]))}"
 
     if explanation:
         result += f"\n\n💡 {explanation}"
 
-    # Doskada ko'rsatish
-    board_msg_id  = session.get("board_msg_id")
-    board_chat_id = session.get("board_chat_id") or message.chat.id
+    # user_state tozalash
+    user_state[user_id] = None
 
-    try:
-        if board_msg_id:
-            await message.bot.edit_message_text(
-                result,
-                chat_id=board_chat_id,
-                message_id=board_msg_id
-            )
-        else:
-            await message.answer(result)
-    except Exception:
-        await message.answer(result)
-
-    import asyncio
-    await asyncio.sleep(2)
+    await _show_result(user_id, message, result)
     await next_question(user_id, message)
 
-async def next_question(
-    user_id,
-    message
-):
 
-    session = test_sessions.get(
-        user_id
-    )
+# ─────────────────────────────────────────
+# KEYINGI / YAKUNLASH
+# ─────────────────────────────────────────
 
+async def next_question(user_id, message):
+    session = test_sessions.get(user_id)
     if not session:
         return
 
     session["current"] += 1
 
-    if session["current"] >= len(
-        session["questions"]
-    ):
-
-        await finish_test(
-            user_id,
-            message
-        )
-
+    if session["current"] >= len(session["questions"]):
+        await finish_test(user_id, message)
         return
 
-    await show_question(
-        user_id,
-        message
-    )    
+    await show_question(user_id, message)
 
-async def finish_test(
-    user_id,
-    message
-):
 
-    session = test_sessions.get(
-        user_id
-    )
-
+async def finish_test(user_id, message):
+    session = test_sessions.get(user_id)
     if not session:
         return
 
-    total = (
-        session["correct"]
-        +
-        session["wrong"]
-    )
+    # Timer to'xtatish
+    if session.get("timer_task"):
+        try:
+            session["timer_task"].cancel()
+        except Exception:
+            pass
 
-    percent = round(
-        session["correct"]
-        * 100
-        / total,
-        1
-    ) if total else 0
-
-    await message.answer(
-        f"""
-🏁 Test tugadi
-
-✅ To'g'ri: {session['correct']}
-❌ Noto'g'ri: {session['wrong']}
-
-📊 Natija: {percent}%
-"""
-    )
-
-    if user_id in user_state and user_state[user_id] == "text_answer":
+    # user_state tozalash
+    if user_state.get(user_id) == "text_answer":
         user_state[user_id] = None
+
+    correct = session["correct"]
+    wrong   = session["wrong"]
+    total   = correct + wrong
+    pct     = round(correct * 100 / total, 1) if total else 0
+
+    emoji = "🏆" if pct >= 80 else "👍" if pct >= 60 else "💪"
+
+    board_chat_id = session.get("board_chat_id") or message.chat.id
+    board_msg_id  = session.get("board_msg_id")
+
+    result_text = (
+        f"{emoji} Test yakunlandi!\n\n"
+        f"✅ To'g'ri: {correct}\n"
+        f"❌ Noto'g'ri: {wrong}\n"
+        f"📊 Natija: {pct}%"
+    )
+
+    # Bosh menyuga qaytish tugmasi
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🏠 Bosh menyuga", callback_data="go_home_dashboard")
+    ]])
+
+    try:
+        if board_msg_id:
+            await message.bot.edit_message_text(
+                result_text, chat_id=board_chat_id,
+                message_id=board_msg_id, reply_markup=kb
+            )
+        else:
+            await message.answer(result_text, reply_markup=kb)
+    except Exception:
+        await message.answer(result_text, reply_markup=kb)
 
     del test_sessions[user_id]
 
-async def stop_test(
-    user_id,
-    message
-):
 
-    session = test_sessions.get(
-        user_id
-    )
+async def stop_test(user_id, message):
+    await finish_test(user_id, message)
 
-    if not session:
-        return
 
-    await finish_test(
-        user_id,
-        message
-    )
+# ─────────────────────────────────────────
+# OVOZ
+# ─────────────────────────────────────────
 
-async def speak_mixed_text(
-    user_id,
-    message,
-    text
-):
-
-    blocks = parse_content(text)
-
-    voice_map = {
-        "text": "uz-UZ-SardorNeural",
-        "en": "en-US-GuyNeural",
-        "ru": "ru-RU-DmitryNeural",
-        "de": "de-DE-ConradNeural"
-    }
-
-    for block in blocks:
-
-        block_type = block.get("type")
-
-        if block_type == "text":
-
-            voice = voice_map["text"]
-            content = block["content"]
-
-        else:
-
-            voice = voice_map.get(
-                block_type,
-                "uz-UZ-SardorNeural"
-            )
-
-            content = block["content"]
-
-        filename = (
-            f"voice_{user_id}.mp3"
-        )
-
-        communicate = edge_tts.Communicate(
-            text=content,
-            voice=voice
-        )
-
-        await communicate.save(
-            filename
-        )
-
-        await message.answer_voice(
-            FSInputFile(filename)
-        )
-
-async def speak_text(
-    user_id,
-    message,
-    text
-):
-
+async def speak_text(user_id, message, text):
     session = test_sessions.get(user_id)
-
+    language = "uz"
     if session:
-
-        current = session["current"]
-        test = session["questions"][current]
-
-        language = str(test[11]).lower()
-
-    else:
-
-        language = "uz"
-
-    voices = {
-        "uz": "uz-UZ-SardorNeural",
-        "ru": "ru-RU-DmitryNeural",
-        "en": "en-US-GuyNeural",
-
-        "kk": "kk-KZ-DauletNeural",      # Qozoq
-        "kz": "kk-KZ-DauletNeural",
-
-        "ky": "ky-KG-AzizNeural",        # Qirg'iz
-        "kg": "ky-KG-AzizNeural",
-
-        "tk": "tk-TM-MerdanNeural",      # Turkman
-
-        "tr": "tr-TR-AhmetNeural",       # Turk
-
-        "ko": "ko-KR-InJoonNeural",      # Koreys
-
-        "ja": "ja-JP-KeitaNeural",       # Yapon
-
-        "fr": "fr-FR-HenriNeural",       # Fransuz
-
-        "it": "it-IT-DiegoNeural",       # Italyan
-
-        "es": "es-ES-AlvaroNeural",      # Ispan
-
-        "pt": "pt-BR-AntonioNeural",     # Portugal/Brazil
-    
-        "ar": "ar-SA-HamedNeural",      # Arab
-    
-        "fa": "fa-IR-DilaraNeural",     # Fors (Eron)
-    
-        "tg": "tg-TJ-???",              # Tojik (agar Edge TTS qo‘llasa)
-    
-        "mn": "mn-MN-???",              # Mo‘g‘ul (agar Edge TTS qo‘llasa)
-    
-        "zh": "zh-CN-YunxiNeural",      # Xitoy
-    
-        "de": "de-DE-ConradNeural",     # Nemis
-    
-        "hi": "hi-IN-MadhurNeural",     # Hind
-    
-        "ur": "ur-PK-AsadNeural",       # Urdu
-    
-        "bn": "bn-BD-NabanitaNeural",   # Bengal
-    
-        "pl": "pl-PL-MarekNeural",      # Polyak
-    
-        "nl": "nl-NL-MaartenNeural",    # Golland
-    
-        "sv": "sv-SE-MattiasNeural",    # Shved
-    
-        "fi": "fi-FI-HarriNeural",      # Fin
-    
-        "cs": "cs-CZ-AntoninNeural",    # Chex
-
-    }
-
-    voice = voices.get(
-        language,
-        "uz-UZ-SardorNeural"
-    )
-
-    filename = f"voice_{user_id}.mp3"
-
-    communicate = edge_tts.Communicate(
-        text=str(text),
-        voice=voice
-    )
-
-    await communicate.save(filename)
-
-    if (
-        user_id in user_state
-        and
-        "voice_message_id" in user_state[user_id]
-    ):
-
         try:
-
-            await message.bot.delete_message(
-                chat_id=message.chat.id,
-                message_id=user_state[user_id]["voice_message_id"]
-            )
-
-        except:
+            language = str(session["questions"][session["current"]][11]).lower()
+        except Exception:
             pass
 
-    voice_msg = await message.answer_voice(
-        FSInputFile(filename)
-    )
+    # Jinsga qarab ovoz
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        cur.execute("SELECT gender FROM users WHERE user_id=%s", (user_id,))
+        row  = cur.fetchone()
+        cur.close(); conn.close()
+        gender = row[0] if row else ""
+    except Exception:
+        gender = ""
 
-    if user_id not in user_state:
-        user_state[user_id] = {}
+    voices = {
+        "uz": "uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural",
+        "en": "en-US-GuyNeural",
+        "ru": "ru-RU-DmitryNeural",
+    }
 
-    user_state[user_id]["voice_message_id"] = (
-        voice_msg.message_id
-    )
+    voice    = voices.get(language, voices["uz"])
+    clean    = tts_clean(text)
+
+    if not clean or not any(c.isalnum() for c in clean):
+        return
+
+    filename = f"tts_{user_id}.mp3"
+    try:
+        communicate = edge_tts.Communicate(text=clean, voice=voice)
+        await communicate.save(filename)
+        if os.path.exists(filename) and os.path.getsize(filename) > 0:
+            await message.answer_voice(FSInputFile(filename))
+    except Exception as e:
+        await message.answer(f"🔇 Ovoz xatolik: {e}")
+    finally:
+        try:
+            os.remove(filename)
+        except Exception:
+            pass
+
 
 async def speak_question(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
-    current = session["current"]
-    test = session["questions"][current]
-    await speak_text(user_id, message, tts_text(test[0]))
+    q = session["questions"][session["current"]]
+    await speak_text(user_id, message, q[0])
+
 
 async def speak_a(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
-    current = session["current"]
-    test = session["questions"][current]
-    await speak_text(user_id, message, tts_text(test[1]))
+    await speak_text(user_id, message, session["questions"][session["current"]][1])
+
 
 async def speak_b(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
-    current = session["current"]
-    test = session["questions"][current]
-    await speak_text(user_id, message, tts_text(test[2]))
+    await speak_text(user_id, message, session["questions"][session["current"]][2])
+
 
 async def speak_c(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
-    current = session["current"]
-    test = session["questions"][current]
-    await speak_text(user_id, message, tts_text(test[3]))
+    await speak_text(user_id, message, session["questions"][session["current"]][3])
+
 
 async def speak_d(user_id, message):
     session = test_sessions.get(user_id)
     if not session:
         return
-    current = session["current"]
-    test = session["questions"][current]
-    await speak_text(user_id, message, tts_text(test[4]))
+    await speak_text(user_id, message, session["questions"][session["current"]][4])
+
+
+# ─────────────────────────────────────────
+# LATEX (eski funksiya — boshqa joylardan chaqiriladi)
+# ─────────────────────────────────────────
 
 def latex_to_image(latex_text, filename):
-
-    fig = plt.figure()
-
-    plt.text(
-        0.05,
-        0.5,
-        f"${latex_text}$",
-        fontsize=24
-    )
-
-    plt.axis("off")
-
-    plt.savefig(
-        filename,
-        bbox_inches="tight"
-    )
-
-    plt.close()
+    try:
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(6, 2))
+        plt.text(0.05, 0.5, f"${latex_text}$", fontsize=24)
+        plt.axis("off")
+        plt.savefig(filename, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+    except Exception:
+        pass
