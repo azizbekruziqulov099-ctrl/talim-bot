@@ -1013,7 +1013,7 @@ async def handle_all(
         user_locks[user_id] = asyncio.Lock()
 
     # REGISTRATSIYA
-    if user_state.get(user_id):
+    if user_state.get(user_id) and user_state.get(user_id) not in ("text_answer",):
 
         await register_handler(message)
         return
@@ -2184,6 +2184,16 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         topic_code = call.data.replace("next_lesson_", "")
         await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
         await call.answer()
+        return
+
+    if call.data == "force_dashboard":
+        await call.answer()
+        try:
+            from student_dashboard import build_dashboard_full
+            text, kb = await build_dashboard_full(call.from_user.id)
+            await call.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            pass
         return
 
     if call.data == "go_sleep":
