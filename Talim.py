@@ -936,27 +936,22 @@ async def handle_all(
                 pass
 
     if message.text == "🧪 Bilimni sinash":
-        conn2 = psycopg2.connect(DATABASE_URL)
-        cur2  = conn2.cursor()
-        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-        row = cur2.fetchone()
-        grade = row[0] if row else "5"
-        cur2.close(); conn2.close()
-
         await message.answer(
-            f"🧪 Testlar\n\n"
-            f"🎓 {grade}-sinf testlari\n\n"
-            f"Sozlamalarni tanlang yoki darhol boshlang:",
+            "🧪 Bilimni sinash\n\nQanday test ishlaysiz?",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="⚡ Tezkor test (20 ta, aralash)",
+                        callback_data="tset_start_quick"
+                    )],
                     [InlineKeyboardButton(
                         text="⚙️ Sozlamalar bilan boshlash",
                         callback_data="test_settings"
                     )],
                     [InlineKeyboardButton(
-                        text="▶️ Darhol boshlash (20 ta, aralash)",
-                        callback_data="tset_start_quick"
-                    )]
+                        text="📚 Navigator (fan/mavzu tanlash)",
+                        callback_data="dts_navigator"
+                    )],
                 ]
             )
         )
