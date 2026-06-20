@@ -265,10 +265,16 @@ async def la_mavzu(call: CallbackQuery):
     buttons = []
     for kcode, kname, topic_code, *_ in rows:
         icon = "✅" if topic_code in existing else "❌"
-        buttons.append([InlineKeyboardButton(
-            text=f"{icon} {kname}",
-            callback_data="noop"
-        )])
+        if topic_code in existing:
+            buttons.append([InlineKeyboardButton(
+                text=f"✅ {kname}",
+                callback_data=f"la_lesson|{topic_code}"
+            )])
+        else:
+            buttons.append([InlineKeyboardButton(
+                text=f"❌ {kname}",
+                callback_data="noop"
+            )])
 
     from storage import user_state as us
     if not isinstance(us.get(call.from_user.id), dict):
@@ -413,7 +419,124 @@ async def la_import_excel(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ Import tugadi!\n➕ Yangi: {added}\n✏️ Yangilandi: {updated}\n⏭ O'tkazildi: {skipped}")
 
-# ─── ORTGA / HOME ───
+@dp.callback_query(F.data.startswith("la_lesson|"))
+async def la_lesson_detail(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+
+    topic_code = call.data.replace("la_lesson|", "")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT topic_code, intro, part_1, part_2, part_3, part_4, summary
+        FROM teacher_lessons WHERE topic_code=%s
+    """, (topic_code,))
+    lesson = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not lesson:
+        await call.message.answer("❌ Dars topilmadi")
+        return
+
+    intro_preview = str(lesson[1] or "")[:100] + "..." if lesson[1] and len(str(lesson[1])) > 100 else str(lesson[1] or "")
+
+    await call.message.answer(
+        f"📝 Dars: `{topic_code}`\n\n"
+        f"📖 Kirish:\n{intro_preview}\n\n"
+        f"Nima qilmoqchisiz?",
+        parse_mode="Markdown",
+        reply_markup=kb([
+            [InlineKeyboardButton(text="✏️ Tahrirlash (shablon)", callback_data=f"la_edit|{topic_code}")],
+            [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"la_delete|{topic_code}")],
+            [InlineKeyboardButton(text="⬅️ Ortga", callback_data="noop")]
+        ])
+    )
+
+
+@dp.callback_query(F.data.startswith("la_edit|"))
+async def la_edit_lesson(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer("📥 Shablon tayyorlanmoqda...")
+
+    topic_code = call.data.replace("la_edit|", "")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT kichik_code, kichik_name, topic_code, subject_name, mavzu_name
+        FROM dts_tree WHERE topic_code=%s LIMIT 1
+    """, (topic_code,))
+    tree_row = cur.fetchone()
+
+    cur.execute("""
+        SELECT topic_code, intro, part_1, part_2, part_3, part_4,
+               simple_1, simple_2, example_1, example_2,
+               exercise_1, exercise_2, summary
+        FROM teacher_lessons WHERE topic_code=%s
+    """, (topic_code,))
+    lesson = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not tree_row or not lesson:
+        await call.message.answer("❌ Ma'lumot topilmadi")
+        return
+
+    grade        = "—"
+    subject_name = tree_row[3] or ""
+    mavzu_name   = tree_row[4] or topic_code
+
+    rows    = [tree_row]
+    lessons = {topic_code: lesson}
+
+    buf = make_excel(rows, lessons, grade, subject_name, mavzu_name)
+
+    from aiogram.types import BufferedInputFile
+    await call.message.answer_document(
+        BufferedInputFile(buf.read(), filename=f"edit_{topic_code}.xlsx"),
+        caption=(
+            f"✏️ Tahrirlash shabloni\n\n"
+            f"🔑 {topic_code}\n\n"
+            f"To'ldirib import qiling 👇"
+        ),
+        reply_markup=kb([[InlineKeyboardButton(
+            text="📤 Import qilish",
+            callback_data="la_imp"
+        )]])
+    )
+
+
+@dp.callback_query(F.data.startswith("la_delete|"))
+async def la_delete_confirm(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+
+    topic_code = call.data.replace("la_delete|", "")
+
+    await call.message.answer(
+        f"⚠️ Haqiqatan ham o'chirasizmi?\n\n"
+        f"🔑 `{topic_code}`",
+        parse_mode="Markdown",
+        reply_markup=kb([
+            [
+                InlineKeyboardButton(text="🗑 Ha, o'chir", callback_data=f"la_delete_yes|{topic_code}"),
+                InlineKeyboardButton(text="❌ Bekor", callback_data="noop")
+            ]
+        ])
+    )
+
+
+@dp.callback_query(F.data.startswith("la_delete_yes|"))
+async def la_delete_yes(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+
+    topic_code = call.data.replace("la_delete_yes|", "")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("DELETE FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
+    conn.commit()
+    cur.close(); conn.close()
+
+    await call.message.edit_text(f"✅ O'chirildi: `{topic_code}`", parse_mode="Markdown")
 @dp.callback_query(F.data == "la_back_grades")
 async def la_back_grades(call: CallbackQuery):
     await call.answer()
