@@ -506,8 +506,18 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
     """Asosiy darsni ko'rsatadi"""
 
     from aiogram.types import ReplyKeyboardRemove
+    from loader import bot as _bot
 
-    # Klaviaturani yashir
+    # Yuqoridagi xabarlarni o'chirish
+    try:
+        for i in range(message.message_id, message.message_id - 25, -1):
+            try:
+                await _bot.delete_message(message.chat.id, i)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     await message.answer("📖 Dars boshlanmoqda...", reply_markup=ReplyKeyboardRemove())
 
     keyboard = InlineKeyboardMarkup(
