@@ -1388,10 +1388,52 @@ async def send_test_question(user_id, message, questions, index):
 async def lesson_test_answer(user_id, message, answer):
     """Test javobini tekshiradi"""
 
-    questions = user_state.get(user_id, {}).get("test_questions", [])
-    index     = user_state.get(user_id, {}).get("test_index", 0)
+    u = user_state.get(user_id, {})
+    if not isinstance(u, dict):
+        u = {}
+
+    questions = u.get("test_questions", [])
+    index     = u.get("test_index", 0)
+
+    # user_state bo'sh bo'lsa — lesson_progress dan qayta yuklaymiz
+    if not questions:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT topic_code FROM lesson_progress WHERE user_id=%s
+            """, (user_id,))
+            row = cur.fetchone()
+            if not row:
+                await message.answer("❌ Test topilmadi. Qaytadan boshlang.")
+                return
+
+            topic_code = row[0]
+            cur.execute("""
+                SELECT question, option_a, option_b, option_c, option_d,
+                       correct_answer, explanation, question_type, image_url
+                FROM generated_tests
+                WHERE topic_code=%s AND question IS NOT NULL
+                ORDER BY RANDOM() LIMIT 5
+            """, (topic_code,))
+            questions = cur.fetchall()
+
+            if not questions:
+                await message.answer("❌ Savollar topilmadi.")
+                return
+
+            if user_id not in user_state or not isinstance(user_state.get(user_id), dict):
+                user_state[user_id] = {}
+
+            user_state[user_id]["test_questions"] = questions
+            user_state[user_id]["test_index"]     = 0
+            user_state[user_id]["test_correct"]   = 0
+            index = 0
+        finally:
+            cur.close(); conn.close()
 
     if not questions or index >= len(questions):
+        await message.answer("❌ Test tugadi yoki topilmadi.")
         return
 
     q             = questions[index]
@@ -1419,6 +1461,8 @@ async def lesson_test_answer(user_id, message, answer):
         is_correct = selected_text == correct_upper
 
     if is_correct:
+        if not isinstance(user_state.get(user_id), dict):
+            user_state[user_id] = {}
         user_state[user_id]["test_correct"] = (
             user_state[user_id].get("test_correct", 0) + 1
         )
@@ -1430,9 +1474,18 @@ async def lesson_test_answer(user_id, message, answer):
         result_text += f"\n\n💡 {explanation}"
 
     next_index = index + 1
+    if not isinstance(user_state.get(user_id), dict):
+        user_state[user_id] = {}
     user_state[user_id]["test_index"] = next_index
 
-    await message.edit_text(
+    # Kalonka — to'g'ri/xato ovozda ham aytsin
+    try:
+        voice_text = "To'g'ri!" if is_correct else f"Noto'g'ri. To'g'ri javob {correct}"
+        await speak_mixed_text(user_id, message, voice_text)
+    except Exception:
+        pass
+
+    await message.answer(
         f"🧠 Mustahkamlash testi\n"
         f"━━━━━━━━━━━━━━\n\n"
         f"{result_text}",
