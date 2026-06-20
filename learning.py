@@ -40,24 +40,59 @@ from latex_utils import (
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-async def speak_mixed_text(
-    user_id,
-    message,
-    text
-):
-    """
-    Matn ichidagi barcha bloklarni qayta ishlaydi:
-    - [latex]...[/latex] → rasm + ovoz
-    - [img]...[/img]     → photo
-    - [en]...[/en]       → ingliz ovoz
-    - [ru]...[/ru]       → rus ovoz
-    - oddiy matn         → o'zbek ovoz
-    """
+async def clean_for_tts(text: str) -> str:
+    """Matnni TTS uchun tozalaydi"""
+    import re
+
+    # Teglarni olib tashlash
+    text = re.sub(r'\[/?en\]|\[/?ru\]|\[/?latex\]|\[/?img\]', '', text)
+
+    # Emoji tozalash
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"
+        "\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F1E0-\U0001F1FF"
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "\U0001F900-\U0001F9FF"
+        "\U00002500-\U00002BEF"
+        "]+", flags=re.UNICODE
+    )
+    text = emoji_pattern.sub(' ', text)
+
+    # Maxsus belgilarni tozalash
+    text = re.sub(r'[•\*\#\|\_\~\`]', ' ', text)
+    text = re.sub(r'━+', '. ', text)
+    text = re.sub(r'\s+', ' ', text)
+
+    # Qisqa jumlalarga ajratish — tabiiy pauza
+    text = text.replace('•', '.').replace('—', ',')
+
+    return text.strip()
+
+
+async def speak_mixed_text(user_id, message, text):
+    """Matn ichidagi barcha bloklarni qayta ishlaydi"""
+
+    # Foydalanuvchi jinsi bo'yicha ovoz tanlash
+    try:
+        conn_v = psycopg2.connect(DATABASE_URL)
+        cur_v  = conn_v.cursor()
+        cur_v.execute("SELECT gender FROM users WHERE user_id=%s", (user_id,))
+        g_row  = cur_v.fetchone()
+        cur_v.close(); conn_v.close()
+        gender = g_row[0] if g_row else ""
+    except Exception:
+        gender = ""
+
+    uz_voice = "uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural"
 
     blocks = parse_blocks(text)
 
     voices = {
-        "text": "uz-UZ-SardorNeural",
+        "text": uz_voice,
         "en":   "en-US-GuyNeural",
         "ru":   "ru-RU-DmitryNeural"
     }
@@ -104,6 +139,10 @@ async def speak_mixed_text(
 
             continue
 
+        # Skip blok — ovozda o'qilmaydi, faqat ekranda ko'rinadi
+        if btype == "skip":
+            continue
+
         # Rasm blok
         if btype == "img":
             try:
@@ -116,12 +155,17 @@ async def speak_mixed_text(
         voice = voices.get(btype, voices["text"])
         filename = f"part_{user_id}_{i}.mp3"
 
-        if not any(ch.isalnum() for ch in content):
+        # Matnni TTS uchun tozala
+        clean_content = await clean_for_tts(content)
+
+        if not clean_content or not any(ch.isalnum() for ch in clean_content):
             continue
 
         communicate = edge_tts.Communicate(
-            text=content,
-            voice=voice
+            text=clean_content,
+            voice=voice,
+            rate="+0%",
+            pitch="+0Hz"
         )
 
         try:
