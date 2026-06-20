@@ -119,7 +119,7 @@ async def show_question(user_id, message):
     board_msg_id  = session.get("board_msg_id")
 
     # ── RASM TEPADA ──
-    # Eski rasm xabarini o'chirish
+    # Eski rasm o'chirish
     old_img = session.get("img_msg_id")
     if old_img:
         try:
@@ -127,6 +127,8 @@ async def show_question(user_id, message):
         except Exception:
             pass
         session["img_msg_id"] = None
+
+    has_image = False
 
     # LaTeX rasmi
     if is_latex and str(is_latex).lower() not in ("false", "0", "none", ""):
@@ -137,6 +139,7 @@ async def show_question(user_id, message):
                 img_msg = await message.bot.send_photo(board_chat_id, FSInputFile(img_path))
                 session["img_msg_id"] = img_msg.message_id
                 os.remove(img_path)
+                has_image = True
         except Exception:
             pass
 
@@ -151,8 +154,19 @@ async def show_question(user_id, message):
             if row:
                 img_msg = await message.bot.send_photo(board_chat_id, row[0])
                 session["img_msg_id"] = img_msg.message_id
+                has_image = True
         except Exception:
             pass
+
+    # Rasm yuborilgandan keyin savol xabarini yangilash uchun
+    # eski board_msg_id ni o'chirib, yangi xabar yuboramiz
+    if has_image and board_msg_id:
+        try:
+            await message.bot.delete_message(board_chat_id, board_msg_id)
+        except Exception:
+            pass
+        session["board_msg_id"] = None
+        board_msg_id = None
 
     # ── YOZMA TEST ──
     if question_type == "write_answer":
