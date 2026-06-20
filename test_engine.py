@@ -172,6 +172,14 @@ async def show_question(user_id, message):
     if question_type == "write_answer":
         user_state[user_id] = "text_answer"
 
+        try:
+            tl = int(time_limit) if time_limit and int(time_limit) > 0 else 0
+        except Exception:
+            tl = 0
+
+        session["time_left"] = tl
+        timer_text = f"⏱ {tl}s" if tl > 0 else "∞"
+
         text = (
             f"✍️ Yozma savol {current+1}/{total}\n"
             f"━━━━━━━━━━━━━━\n\n"
@@ -180,8 +188,9 @@ async def show_question(user_id, message):
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
-            InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+            InlineKeyboardButton(text="🔊 Savol",    callback_data="speak_question"),
+            InlineKeyboardButton(text=timer_text,    callback_data="noop_timer"),
+            InlineKeyboardButton(text="🛑 Stop",     callback_data="test_stop"),
         ]])
 
         try:
@@ -194,10 +203,69 @@ async def show_question(user_id, message):
                 msg = await message.answer(text, reply_markup=kb)
                 session["board_msg_id"]  = msg.message_id
                 session["board_chat_id"] = msg.chat.id
+                board_msg_id  = msg.message_id
+                board_chat_id = msg.chat.id
         except Exception:
             msg = await message.answer(text, reply_markup=kb)
             session["board_msg_id"]  = msg.message_id
             session["board_chat_id"] = msg.chat.id
+            board_msg_id  = msg.message_id
+            board_chat_id = msg.chat.id
+
+        # Yozma testda ham countdown
+        if tl > 0:
+            async def write_countdown():
+                left = tl
+                while left > 0:
+                    await asyncio.sleep(5)
+                    left = max(0, left - 5)
+
+                    s = test_sessions.get(user_id)
+                    if not s or s.get("current") != current:
+                        return
+
+                    s["time_left"] = left
+                    new_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="🔊 Savol", callback_data="speak_question"),
+                        InlineKeyboardButton(text=f"⏱ {left}s" if left > 0 else "⏰", callback_data="noop_timer"),
+                        InlineKeyboardButton(text="🛑 Stop",  callback_data="test_stop"),
+                    ]])
+                    try:
+                        await message.bot.edit_message_reply_markup(
+                            chat_id=s.get("board_chat_id"),
+                            message_id=s.get("board_msg_id"),
+                            reply_markup=new_kb
+                        )
+                    except Exception:
+                        pass
+
+                    if left == 0:
+                        break
+
+                # Vaqt tugadi
+                s = test_sessions.get(user_id)
+                if not s or s.get("current") != current:
+                    return
+
+                # user_state tozalash
+                user_state[user_id] = None
+                s["wrong"] += 1
+
+                try:
+                    await message.bot.edit_message_text(
+                        f"⏰ Vaqt tugadi!\n\n✅ To'g'ri javob: {render_text(str(correct))}",
+                        chat_id=s.get("board_chat_id"),
+                        message_id=s.get("board_msg_id")
+                    )
+                except Exception:
+                    pass
+
+                await asyncio.sleep(2)
+                await next_question(user_id, message)
+
+            task = asyncio.create_task(write_countdown())
+            session["timer_task"] = task
+
         return
 
     # ── TUGMALI TEST ──
@@ -386,6 +454,14 @@ async def check_text_answer(user_id, user_answer, message):
     session = test_sessions.get(user_id)
     if not session:
         return
+
+    # Timer to'xtatish
+    if session.get("timer_task"):
+        try:
+            session["timer_task"].cancel()
+            session["timer_task"] = None
+        except Exception:
+            pass
 
     current = session["current"]
     test    = session["questions"][current]
