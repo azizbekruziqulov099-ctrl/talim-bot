@@ -1,471 +1,519 @@
 """
-student_dashboard.py — O'quvchi bosh ekrani
-
-Xususiyatlar:
-  • Vaqtga mos  (ertalab / kunduz / kech)
-  • Yoshga mos  (junior 1-4 / middle 5-8 / senior 9-11)
-  • Jinsga mos  salomlashuv
-  • Maktab vaqt rejimi  (dars vaqti ogohlantirishi)
-  • Tug'ilgan kun sovg'asi
-  • "Yangilash" tugmasi
+student_dashboard.py — Bosh ekran moduli
+Vaqtga, yoshga, jinsga mos dinamik bosh ekran
 """
-
-from __future__ import annotations
-
 import os
-import re
-import asyncio
-from datetime import date, datetime, time as dtime
-
 import psycopg2
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime, date, timedelta
+from aiogram import F
+from aiogram.types import (
+    Message, CallbackQuery,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton
+)
+from loader import dp, bot
+from storage import user_state
+from keyboards import get_main_keyboard
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
-# ═══════════════════════════════════════════════════════
-#  DB YORDAMCHI
-# ═══════════════════════════════════════════════════════
-
-def _db():
+def db():
     return psycopg2.connect(DATABASE_URL)
 
 
-def _fetch_user(user_id: int) -> dict | None:
-    conn = _db(); cur = conn.cursor()
-    cur.execute("""
-        SELECT full_name, class, role, gender, birth_date
-        FROM users
-        WHERE user_id = %s
-    """, (user_id,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    if not row:
-        return None
-    return {
-        "full_name":  row[0] or "O'quvchi",
-        "grade":      row[1] or "5",
-        "role":       row[2] or "O'quvchi",
-        "gender":     row[3] or "",
-        "birth_date": row[4],          # date | None
-    }
+# ─────────────────────────────────────────
+# VAQT ANIQLASH
+# ─────────────────────────────────────────
+
+def get_time_greeting(hour: int, group: str, gender: str, name: str) -> str:
+    """Vaqt va yoshga mos salomlashish"""
+
+    is_girl = "Ayol" in str(gender)
+
+    if group == "junior":
+        # 1-4 sinf
+        if 6 <= hour < 12:
+            emoji = "☀️"
+            msg = f"Xayrli tong, {'qizaloq' if is_girl else 'botir'} {name}! 🌸" if is_girl else f"Xayrli tong, {name}! 💪"
+        elif 12 <= hour < 17:
+            emoji = "🌤"
+            msg = f"Salom, {name}! Tushlikdan keyin o'ynaymizmi? 🎮"
+        elif 17 <= hour < 21:
+            emoji = "🌙"
+            msg = f"Kechki o'yin vaqti, {name}! ⭐"
+        else:
+            emoji = "😴"
+            msg = f"Uxlash vaqti, {name}! Ertaga davom etamiz 🌙"
+
+    elif group == "middle":
+        # 5-8 sinf
+        if 6 <= hour < 12:
+            emoji = "⚔️"
+            msg = f"Xayrli tong, {'Malika' if is_girl else 'Qahramon'} {name}! Bugun ham g'alaba qozonamiz!"
+        elif 12 <= hour < 17:
+            emoji = "🎯"
+            msg = f"Salom, {name}! Missiya davom etmoqda!"
+        elif 17 <= hour < 21:
+            emoji = "🔥"
+            msg = f"Kechki mashg'ulot, {name}! Streak uzilmasin!"
+        else:
+            emoji = "💤"
+            msg = f"Dam olish vaqti, {name}! Ertaga yangi rekord! 🏆"
+
+    else:
+        # 9-11 sinf
+        if 6 <= hour < 12:
+            emoji = "📊"
+            msg = f"Xayrli tong, {name}! Imtihonga tayyorlanish davom etmoqda."
+        elif 12 <= hour < 17:
+            emoji = "📚"
+            msg = f"Salom, {name}! Bilim — kelajak kaliti."
+        elif 17 <= hour < 21:
+            emoji = "🧠"
+            msg = f"Kechki tayyorgarlik, {name}. Maqsadga yana bir qadam!"
+        else:
+            emoji = "🌙"
+            msg = f"Kech bo'ldi, {name}. Yaxshi dam oling — erta tetik bo'lasiz."
+
+    return f"{emoji} {msg}"
 
 
-# ═══════════════════════════════════════════════════════
-#  VAQT YORDAMCHILARI
-# ═══════════════════════════════════════════════════════
-
-def _now_uz() -> datetime:
-    """O'zbekiston vaqti (UTC+5)."""
-    from datetime import timezone, timedelta
-    tz_uz = timezone(timedelta(hours=5))
-    return datetime.now(tz_uz)
-
-
-def _time_block(now: datetime) -> str:
-    """ertalab | kunduz | kech"""
-    h = now.hour
-    if 5 <= h < 12:
-        return "ertalab"
-    if 12 <= h < 18:
-        return "kunduz"
-    return "kech"
-
-
-# Maktab dars jadvali (daqiqa): 8:00 – 13:30 (standart)
-_SCHOOL_START = dtime(8, 0)
-_SCHOOL_END   = dtime(13, 30)
-
-
-def _is_school_time(now: datetime) -> bool:
-    t = now.time()
-    return (
-        now.weekday() < 5           # dushanba–juma
-        and _SCHOOL_START <= t <= _SCHOOL_END
-    )
-
-
-# ═══════════════════════════════════════════════════════
-#  SINF GURUHI
-# ═══════════════════════════════════════════════════════
-
-def _grade_int(grade_str: str) -> int:
-    m = re.search(r"\d+", str(grade_str))
-    return int(m.group()) if m else 5
-
-
-def _age_group(grade_str: str) -> str:
-    g = _grade_int(grade_str)
-    if g <= 4:  return "junior"
-    if g <= 8:  return "middle"
-    return "senior"
-
-
-# ═══════════════════════════════════════════════════════
-#  SALOMLASHUV MATNI
-# ═══════════════════════════════════════════════════════
-
-_GREET: dict[str, dict[str, str]] = {
-    "junior": {
-        "ertalab": "☀️ Xayrli tong",
-        "kunduz":  "🌤 Salom",
-        "kech":    "🌙 Kechqurun ham o'qish yaxshi",
-    },
-    "middle": {
-        "ertalab": "🌅 Xayrli tong",
-        "kunduz":  "👋 Salom",
-        "kech":    "🌆 Kechqurun faol bo'lding",
-    },
-    "senior": {
-        "ertalab": "🌄 Xayrli tong",
-        "kunduz":  "💼 Salom",
-        "kech":    "🌃 Kech o'quvchi — yaxshi qadam",
-    },
-}
-
-_GENDER_ICON = {
-    "Erkak":  "👦",
-    "Ayol":   "👧",
-    "":       "🧒",
-}
-
-
-def _greeting(user: dict, now: datetime) -> str:
-    group  = _age_group(user["grade"])
-    block  = _time_block(now)
-    greet  = _GREET[group][block]
-    name   = user["full_name"].split()[0]
-    icon   = _GENDER_ICON.get(user.get("gender", ""), "🧒")
-    return f"{greet}, {icon} {name}!"
-
-
-# ═══════════════════════════════════════════════════════
-#  TUG'ILGAN KUN
-# ═══════════════════════════════════════════════════════
-
-def _birthday_gift(user: dict, today: date) -> str | None:
-    bd = user.get("birth_date")
-    if not bd:
-        return None
-    try:
-        bd_date = bd if isinstance(bd, date) else date.fromisoformat(str(bd))
-    except Exception:
-        return None
-    if bd_date.month == today.month and bd_date.day == today.day:
-        name = user["full_name"].split()[0]
-        return (
-            f"🎂🎉 Bugun sening tug'ilgan kuning, {name}!\n"
-            f"Tabriklaymiz! Ko'p yasha, bilimdon bo'l! 🎁"
-        )
+def get_time_warning(hour: int, group: str) -> str | None:
+    """Vaqt bo'yicha ogohlantirish"""
+    if group == "junior" and hour >= 21:
+        return "😴 Uxlash vaqti! Sog'liq — birinchi o'rinda."
+    if group == "middle" and hour >= 23:
+        return "💤 Kech bo'ldi! Erta yotish — yaxshi natija."
+    if group == "senior" and hour >= 0 and hour < 5:
+        return "⚠️ Tun yarimidan oshdi. Dam oling!"
     return None
 
 
-# ═══════════════════════════════════════════════════════
-#  PROGRESS BLOKLARI (yoshga mos)
-# ═══════════════════════════════════════════════════════
+# ─────────────────────────────────────────
+# PROGRESS BLOKLARI
+# ─────────────────────────────────────────
 
-def _progress_block(user_id: int, user: dict) -> str:
-    from progress import get_progress, get_level, xp_display
-
-    prog   = get_progress(user_id)
-    xp     = prog["xp"]
-    streak = prog["streak"]
-    group  = _age_group(user["grade"])
-    grade  = user["grade"]
-
-    lines = []
-
-    if group == "junior":
-        stars = xp // 10
-        plant = "🌱" if xp < 50 else "🌿" if xp < 150 else "🌳"
-        bar   = "█" * min(10, xp // 20) + "░" * (10 - min(10, xp // 20))
-        lines.append(f"{plant} O'sish: {bar}")
-        lines.append(f"⭐ Yulduzlar: {stars}")
-
-    elif group == "middle":
-        lvl = get_level(xp)
-        nxt_xp = [200, 500, 1000, 2000, 9999]
-        cur_idx = [200, 500, 1000, 2000, 9999].index(
-            min(n for n in nxt_xp if n > xp), 0
-        ) if xp < 2000 else 4
-        to_next = nxt_xp[cur_idx] - xp if xp < 2000 else 0
-        lines.append(f"{lvl['icon']} {lvl['name']} — {xp} XP")
-        if to_next:
-            lines.append(f"🔜 Keyingi daraja: {to_next} XP kerak")
-
-    else:  # senior
-        pct = min(100, xp // 20)
-        bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-        lines.append(f"📈 Bilim darajasi: {bar} {pct}%")
-        lines.append(xp_display(xp, grade))
-
-    if streak > 1:
-        fire = "🔥" * min(streak, 5)
-        lines.append(f"{fire} Streak: {streak} kun!")
-
-    return "\n".join(lines)
-
-
-# ═══════════════════════════════════════════════════════
-#  ESLATMALAR BLOKI
-# ═══════════════════════════════════════════════════════
-
-def _reminders_block(user_id: int, user: dict, now: datetime) -> str:
-    from progress import get_pending_exams, get_repeat_topics, get_upcoming_exams, get_next_topic
-
-    grade   = user["grade"]
-    lines   = []
-    today   = now.date()
-
-    # Majburiy imtihon
-    pending   = get_pending_exams(user_id)
-    mandatory = [e for e in pending if e[3]]
-    if mandatory:
-        e = mandatory[0]
-        lines.append(f"🚨 MAJBURIY IMTIHON: {e[1]}")
-
-    # Takrorlash
-    repeats = get_repeat_topics(user_id)
-    if repeats:
-        lines.append(f"🔁 Takrorlash kutmoqda: {len(repeats)} ta mavzu")
-
-    # Kelayotgan imtihon
-    upcoming = get_upcoming_exams(user_id)
-    if upcoming and not mandatory:
-        days = (upcoming[0][1] - today).days
-        lines.append(f"📅 {days} kun ichida imtihon: {upcoming[0][0]}")
-
-    # Keyingi mavzu
-    next_t = get_next_topic(user_id, grade)
-    if next_t:
-        lines.append(
-            f"\n🎯 Keyingi mavzu:\n"
-            f"   📚 {next_t[3]}\n"
-            f"   📝 {next_t[2]}\n"
-            f"   🔑 {next_t[1]}"
-        )
-
-    return "\n".join(lines) if lines else "✅ Hamma narsa joyida!"
-
-
-# ═══════════════════════════════════════════════════════
-#  MAKTAB VAQTI OGOHLANTIRISHRI
-# ═══════════════════════════════════════════════════════
-
-def _school_notice(now: datetime, group: str) -> str | None:
-    if not _is_school_time(now):
-        return None
-    if group == "junior":
-        return "🏫 Hozir dars vaqti — darsdan keyin o'qiymiz! 😊"
-    if group == "middle":
-        return "🏫 Dars vaqti. Botni darsdan keyin ochasiz!"
-    return "📚 Dars jarayonida. Kechga saqla."
-
-
-# ═══════════════════════════════════════════════════════
-#  KLAVIATURA
-# ═══════════════════════════════════════════════════════
-
-def _dashboard_keyboard(user_id: int, user: dict) -> InlineKeyboardMarkup:
-    from progress import get_pending_exams, get_repeat_topics, get_next_topic
-
-    grade     = user["grade"]
-    pending   = get_pending_exams(user_id)
-    mandatory = [e for e in pending if e[3]]
-    repeats   = get_repeat_topics(user_id)
-    next_t    = get_next_topic(user_id, grade)
-
-    rows = []
-
-    # Majburiy imtihon tugmasi
-    if mandatory:
-        rows.append([InlineKeyboardButton(
-            text=f"🚨 Imtihonni boshlash",
-            callback_data=f"exam_start_{mandatory[0][0]}"
-        )])
-
-    # Darsni davom ettirish
-    if next_t:
-        rows.append([InlineKeyboardButton(
-            text="▶️ Darsni davom ettirish",
-            callback_data="lesson_continue"
-        )])
-
-    # Takrorlash
-    if repeats:
-        rows.append([InlineKeyboardButton(
-            text=f"🔁 Takrorlash ({len(repeats)} ta)",
-            callback_data="lesson_repeat"
-        )])
-
-    # Fanlar ro'yxati
-    rows.append([InlineKeyboardButton(
-        text="📚 Barcha fanlar",
-        callback_data="show_subjects"
-    )])
-
-    # Progress
-    rows.append([InlineKeyboardButton(
-        text="📊 Mening progressim",
-        callback_data="show_progress"
-    )])
-
-    # Yangilash
-    rows.append([InlineKeyboardButton(
-        text="🔄 Yangilash",
-        callback_data="dashboard_refresh"
-    )])
-
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-# ═══════════════════════════════════════════════════════
-#  ASOSIY FUNKSIYA
-# ═══════════════════════════════════════════════════════
-
-async def show_dashboard(message: Message, user_id: int | None = None) -> None:
-    """
-    Bosh ekranni yuboradi.
-    message — aiogram Message yoki callback.message
-    user_id — ixtiyoriy, default = message.from_user.id
-    """
-    uid   = user_id or message.from_user.id
-    now   = _now_uz()
-    today = now.date()
-
-    # Foydalanuvchi ma'lumotlari
-    user = _fetch_user(uid)
-    if not user:
-        await message.answer("❌ Avval ro'yxatdan o'ting.")
-        return
-
-    group = _age_group(user["grade"])
-
-    sections: list[str] = []
-
-    # 1. Tug'ilgan kun sovg'asi (eng yuqorida)
-    gift = _birthday_gift(user, today)
-    if gift:
-        sections.append(gift)
-
-    # 2. Salomlashuv
-    sections.append(_greeting(user, now))
-
-    # 3. Maktab vaqti ogohlantirishi
-    notice = _school_notice(now, group)
-    if notice:
-        sections.append(notice)
-
-    sections.append("━━━━━━━━━━━━━━")
-
-    # 4. Progress bloki
-    sections.append(_progress_block(uid, user))
-
-    sections.append("━━━━━━━━━━━━━━")
-
-    # 5. Eslatmalar
-    sections.append(_reminders_block(uid, user, now))
-
-    text = "\n".join(sections)
-
-    keyboard = _dashboard_keyboard(uid, user)
-
-    await message.answer(text, reply_markup=keyboard)
-
-
-async def refresh_dashboard(call: CallbackQuery) -> None:
-    """
-    🔄 Yangilash tugmasi bosilganda mavjud xabarni tahrirlaydi.
-    """
-    uid   = call.from_user.id
-    now   = _now_uz()
-    today = now.date()
-
-    user = _fetch_user(uid)
-    if not user:
-        await call.answer("❌ Foydalanuvchi topilmadi", show_alert=True)
-        return
-
-    group = _age_group(user["grade"])
-
-    sections: list[str] = []
-
-    gift = _birthday_gift(user, today)
-    if gift:
-        sections.append(gift)
-
-    sections.append(_greeting(user, now))
-
-    notice = _school_notice(now, group)
-    if notice:
-        sections.append(notice)
-
-    sections.append("━━━━━━━━━━━━━━")
-    sections.append(_progress_block(uid, user))
-    sections.append("━━━━━━━━━━━━━━")
-    sections.append(_reminders_block(uid, user, now))
-
-    text     = "\n".join(sections)
-    keyboard = _dashboard_keyboard(uid, user)
+def get_progress_block(user_id: int, grade: str, group: str) -> str:
+    """Yoshga mos progress ko'rsatish"""
+    conn = db(); cur = conn.cursor()
 
     try:
-        await call.message.edit_text(text, reply_markup=keyboard)
+        # XP va streak
+        cur.execute("""
+            SELECT xp, streak FROM user_progress
+            WHERE user_id = %s
+        """, (user_id,))
+        prog = cur.fetchone()
+        xp     = prog[0] if prog else 0
+        streak = prog[1] if prog else 0
+
+        # O'rganilgan mavzular
+        cur.execute("""
+            SELECT COUNT(*) FROM learned_topics
+            WHERE user_id = %s
+        """, (user_id,))
+        learned = cur.fetchone()[0]
+
+        # Bugungi darslar
+        cur.execute("""
+            SELECT COUNT(*) FROM lesson_history
+            WHERE user_id = %s AND DATE(learned_at) = %s
+        """, (user_id, date.today()))
+        today_lessons = cur.fetchone()[0]
+
+        if group == "junior":
+            stars = xp // 10
+            plant = "🌱" if xp < 50 else "🌿" if xp < 200 else "🌳"
+            bar   = "█" * min(10, xp // 20) + "░" * (10 - min(10, xp // 20))
+            lines = [
+                f"{plant} O'simlik: {bar}",
+                f"⭐ Yulduzlar: {stars}",
+                f"📖 O'rganildi: {learned} mavzu",
+            ]
+            if streak > 1:
+                lines.append(f"🔥 {streak} kun ketma-ket!")
+            if today_lessons > 0:
+                lines.append(f"✅ Bugun: {today_lessons} ta dars")
+
+        elif group == "middle":
+            from progress import get_level
+            level = get_level(xp)
+            bar   = "█" * min(10, xp // 100) + "░" * (10 - min(10, xp // 100))
+            lines = [
+                f"{level['icon']} {level['name']} — {xp} XP",
+                f"📈 {bar}",
+                f"📖 {learned} mavzu o'rganildi",
+            ]
+            if streak > 1:
+                lines.append(f"🔥 Streak: {streak} kun")
+            if today_lessons > 0:
+                lines.append(f"✅ Bugun: {today_lessons} ta dars")
+
+        else:
+            # 9-11 sinf — foiz va tahlil
+            cur.execute("""
+                SELECT COUNT(*) FROM dts_tree
+                WHERE grade = %s AND is_deleted = FALSE
+            """, (grade,))
+            total = cur.fetchone()[0] or 1
+            pct   = min(100, int(learned * 100 / total))
+            bar   = "█" * (pct // 10) + "░" * (10 - pct // 10)
+            lines = [
+                f"📈 Bilim darajasi: {bar} {pct}%",
+                f"📖 {learned}/{total} mavzu",
+            ]
+            if streak > 1:
+                lines.append(f"🔥 {streak} kun faol")
+            if today_lessons > 0:
+                lines.append(f"✅ Bugun: {today_lessons} ta dars")
+
+        return "\n".join(lines)
+
+    finally:
+        cur.close(); conn.close()
+
+
+# ─────────────────────────────────────────
+# BUGUNGI REJA
+# ─────────────────────────────────────────
+
+def get_daily_plan(user_id: int, grade: str) -> str:
+    """Bugungi reja"""
+    conn = db(); cur = conn.cursor()
+
+    try:
+        from progress import get_next_topic, get_repeat_topics
+        next_topic = get_next_topic(user_id, grade)
+        repeats    = get_repeat_topics(user_id)
+
+        lines = ["🎯 Bugungi reja:"]
+
+        if repeats:
+            lines.append(f"🔁 Takrorlash: {len(repeats)} ta mavzu")
+
+        if next_topic:
+            lines.append(f"📘 Yangi: {next_topic[1]}")
+        else:
+            lines.append("🎉 Barcha mavzular o'rganildi!")
+
+        # Kutilayotgan imtihon
+        from progress import get_upcoming_exams
+        upcoming = get_upcoming_exams(user_id)
+        if upcoming:
+            days = (upcoming[0][1] - date.today()).days
+            if days <= 3:
+                lines.append(f"⚠️ {days} kunda imtihon: {upcoming[0][0]}")
+
+        return "\n".join(lines)
+
+    finally:
+        cur.close(); conn.close()
+
+
+# ─────────────────────────────────────────
+# TUG'ILGAN KUN
+# ─────────────────────────────────────────
+
+def check_birthday(user_id: int) -> str | None:
+    """Tug'ilgan kunni tekshiradi"""
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT birth_date FROM users WHERE user_id = %s
+        """, (user_id,))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return None
+
+        bdate = row[0]
+        today = date.today()
+
+        if hasattr(bdate, 'month'):
+            if bdate.month == today.month and bdate.day == today.day:
+                age = today.year - bdate.year
+                return f"🎂 Bugun sening tug'ilgan kunin! {age} yoshga to'lding! 🎉🎁"
+        return None
     except Exception:
-        await call.message.answer(text, reply_markup=keyboard)
+        return None
+    finally:
+        cur.close(); conn.close()
 
-    await call.answer("✅ Yangilandi")
+
+# ─────────────────────────────────────────
+# MAKTAB VAQT REJIMI
+# ─────────────────────────────────────────
+
+SCHOOL_SCHEDULE = {
+    "1": {"start": 8, "end": 13},
+    "2": {"start": 8, "end": 13},
+    "3": {"start": 8, "end": 14},
+    "4": {"start": 8, "end": 14},
+    "5": {"start": 8, "end": 15},
+    "6": {"start": 8, "end": 15},
+    "7": {"start": 8, "end": 15},
+    "8": {"start": 8, "end": 16},
+    "9": {"start": 8, "end": 16},
+    "10": {"start": 8, "end": 16},
+    "11": {"start": 8, "end": 16},
+}
+
+def get_school_status(grade: str, hour: int, weekday: int) -> str | None:
+    """Maktab vaqt holati"""
+    # Shanba/Yakshanba
+    if weekday >= 5:
+        return "🏖 Bugun dam olish kuni!"
+
+    schedule = SCHOOL_SCHEDULE.get(str(grade).replace("-sinf", ""), {})
+    if not schedule:
+        return None
+
+    start = schedule["start"]
+    end   = schedule["end"]
+
+    if start <= hour < end:
+        return f"🏫 Hozir maktab vaqti ({start}:00-{end}:00)"
+    elif hour < start:
+        mins = (start - hour) * 60
+        return f"⏰ Maktabga {mins} daqiqa qoldi"
+    else:
+        return f"🏠 Maktab tugadi. Uyda o'rganish vaqti!"
 
 
-# ═══════════════════════════════════════════════════════
-#  PROGRESS EKRANI (alohida)
-# ═══════════════════════════════════════════════════════
+# ─────────────────────────────────────────
+# ASOSIY DASHBOARD QURISH
+# ─────────────────────────────────────────
 
-async def show_progress_screen(call: CallbackQuery) -> None:
-    uid  = call.from_user.id
-    user = _fetch_user(uid)
-    if not user:
-        await call.answer("❌ Topilmadi", show_alert=True)
-        return
+async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """To'liq dashboard matni va tugmalarini qaytaradi"""
 
-    from progress import get_progress, get_level, get_repeat_topics
-    prog   = get_progress(uid)
-    xp     = prog["xp"]
-    streak = prog["streak"]
-    lvl    = get_level(xp)
-    grade  = user["grade"]
+    conn = db(); cur = conn.cursor()
 
-    conn = _db(); cur = conn.cursor()
-    cur.execute("""
-        SELECT COUNT(*) FROM learned_topics WHERE user_id = %s
-    """, (uid,))
-    learned = cur.fetchone()[0]
-    cur.execute("""
-        SELECT COUNT(*) FROM dts_tree
-        WHERE grade = %s AND is_deleted = FALSE
-    """, (grade,))
-    total = cur.fetchone()[0]
-    cur.close(); conn.close()
+    try:
+        cur.execute("""
+            SELECT full_name, class, gender, birth_date, region, district
+            FROM users WHERE user_id = %s
+        """, (user_id,))
+        row = cur.fetchone()
 
-    pct = int(learned * 100 / total) if total else 0
-    bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+        if not row:
+            return "❌ Foydalanuvchi topilmadi", InlineKeyboardMarkup(inline_keyboard=[])
 
-    repeats = get_repeat_topics(uid)
+        full_name = row[0] or "O'quvchi"
+        grade     = str(row[1] or "5")
+        gender    = row[2] or ""
+        region    = row[4] or ""
+        district  = row[5] or ""
 
-    text = (
-        f"📊 {user['full_name'].split()[0]} — Progress\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"{lvl['icon']} {lvl['name']} — {xp} XP\n"
-        f"🔥 Streak: {streak} kun\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"📚 O'rganilgan: {learned}/{total}\n"
-        f"{bar} {pct}%\n"
-        f"🔁 Takrorlash kerak: {len(repeats)} ta\n"
-    )
+        name = full_name.split()[0]
 
-    await call.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="⬅️ Orqaga", callback_data="dashboard_refresh")
-        ]])
-    )
+        # Sinf guruhi
+        try:
+            g = int(grade.replace("-sinf", "").strip())
+            group = "junior" if g <= 4 else "middle" if g <= 8 else "senior"
+        except Exception:
+            group = "middle"
+
+        now     = datetime.now()
+        hour    = now.hour
+        weekday = now.weekday()
+
+        lines = []
+
+        # 1. Tug'ilgan kun
+        bday = check_birthday(user_id)
+        if bday:
+            lines.append(bday)
+            lines.append("")
+
+        # 2. Salomlashish
+        greeting = get_time_greeting(hour, group, gender, name)
+        lines.append(greeting)
+
+        # 3. Vaqt ogohlantirishlar
+        warning = get_time_warning(hour, group)
+        if warning:
+            lines.append(warning)
+
+        # 4. Maktab holati
+        school_status = get_school_status(grade, hour, weekday)
+        if school_status:
+            lines.append(school_status)
+
+        lines.append("━━━━━━━━━━━━━━")
+
+        # 5. Progress
+        try:
+            prog_block = get_progress_block(user_id, grade, group)
+            lines.append(prog_block)
+        except Exception:
+            pass
+
+        lines.append("━━━━━━━━━━━━━━")
+
+        # 6. Bugungi reja
+        try:
+            plan = get_daily_plan(user_id, grade)
+            lines.append(plan)
+        except Exception:
+            pass
+
+        # 7. Joylashuv
+        if region:
+            lines.append(f"━━━━━━━━━━━━━━")
+            lines.append(f"📍 {region}, {district}")
+
+        text = "\n".join(lines)
+
+        # Tugmalar
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
+                    InlineKeyboardButton(text="🔄 Yangilash",       callback_data="dashboard_refresh")
+                ],
+                [
+                    InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
+                    InlineKeyboardButton(text="📅 Reja",        callback_data="dashboard_plan")
+                ]
+            ]
+        )
+
+        return text, keyboard
+
+    finally:
+        cur.close(); conn.close()
+
+
+# ─────────────────────────────────────────
+# HANDLERS
+# ─────────────────────────────────────────
+
+@dp.callback_query(F.data == "dashboard_refresh")
+async def dashboard_refresh(call: CallbackQuery):
+    """Dashboardni yangilash"""
+    await call.answer("🔄 Yangilanmoqda...")
+    try:
+        text, keyboard = await build_dashboard(call.from_user.id)
+        await call.message.edit_text(text, reply_markup=keyboard)
+    except Exception as e:
+        await call.answer(f"❌ Xatolik: {e}", show_alert=True)
+
+
+@dp.callback_query(F.data == "dashboard_stats")
+async def dashboard_stats(call: CallbackQuery):
+    """Statistika"""
     await call.answer()
+    conn = db(); cur = conn.cursor()
+
+    try:
+        user_id = call.from_user.id
+
+        cur.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        row   = cur.fetchone()
+        grade = str(row[0] if row else "5")
+
+        cur.execute("SELECT COUNT(*) FROM learned_topics WHERE user_id=%s", (user_id,))
+        learned = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM lesson_history
+            WHERE user_id=%s AND DATE(learned_at)=%s
+        """, (user_id, date.today()))
+        today = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM lesson_history
+            WHERE user_id=%s AND learned_at >= %s
+        """, (user_id, date.today() - timedelta(days=7)))
+        week = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM lesson_history
+            WHERE user_id=%s AND learned_at >= %s
+        """, (user_id, date.today() - timedelta(days=30)))
+        month = cur.fetchone()[0]
+
+        cur.execute("SELECT xp, streak FROM user_progress WHERE user_id=%s", (user_id,))
+        prog   = cur.fetchone()
+        xp     = prog[0] if prog else 0
+        streak = prog[1] if prog else 0
+
+        cur.execute("""
+            SELECT COUNT(*) FROM dts_tree
+            WHERE grade=%s AND is_deleted=FALSE
+        """, (grade,))
+        total = cur.fetchone()[0] or 1
+        pct   = min(100, int(learned * 100 / total))
+
+        text = (
+            f"📊 STATISTIKA\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📈 Bilim darajasi: {pct}%\n"
+            f"📖 O'rganildi: {learned}/{total}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"✅ Bugun: {today} dars\n"
+            f"📅 Bu hafta: {week} dars\n"
+            f"🗓 Bu oy: {month} dars\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"⭐ XP: {xp}\n"
+            f"🔥 Streak: {streak} kun"
+        )
+
+        await call.message.answer(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Ortga", callback_data="dashboard_refresh")
+            ]])
+        )
+
+    finally:
+        cur.close(); conn.close()
+
+
+@dp.callback_query(F.data == "dashboard_plan")
+async def dashboard_plan(call: CallbackQuery):
+    """Haftalik reja"""
+    await call.answer()
+    conn = db(); cur = conn.cursor()
+
+    try:
+        user_id = call.from_user.id
+        cur.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        row   = cur.fetchone()
+        grade = str(row[0] if row else "5")
+
+        from progress import get_next_topic, get_repeat_topics, get_upcoming_exams
+        next_topic = get_next_topic(user_id, grade)
+        repeats    = get_repeat_topics(user_id)
+        upcoming   = get_upcoming_exams(user_id)
+
+        lines = ["📅 HAFTALIK REJA\n━━━━━━━━━━━━━━"]
+
+        if repeats:
+            lines.append(f"🔁 Takrorlash ({len(repeats)} ta):")
+            for r in repeats[:3]:
+                lines.append(f"  • {r[1]}")
+
+        if next_topic:
+            lines.append(f"\n📘 Keyingi dars:\n  {next_topic[1]}")
+
+        if upcoming:
+            lines.append("\n📅 Kelayotgan imtihonlar:")
+            for ex in upcoming:
+                days = (ex[1] - date.today()).days
+                icon = "🚨" if ex[2] else "🔔"
+                lines.append(f"  {icon} {ex[0]} — {days} kun")
+
+        if not repeats and not next_topic and not upcoming:
+            lines.append("🎉 Hamma narsa joyida!")
+
+        await call.message.answer(
+            "\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Ortga", callback_data="dashboard_refresh")
+            ]])
+        )
+
+    finally:
+        cur.close(); conn.close()
