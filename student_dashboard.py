@@ -377,55 +377,39 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         if is_night:
             night_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="📖 Baribir o'rganaman!",
-                    callback_data="lesson_continue"
-                )],
-                [InlineKeyboardButton(
-                    text="😴 Yaxshi, uxlayman",
-                    callback_data="go_sleep"
-                )]
+                [
+                    InlineKeyboardButton(text="📖 Mavzu o'rganaman", callback_data="lesson_continue"),
+                    InlineKeyboardButton(text="🧪 Test ishlaman",    callback_data="tset_start_quick"),
+                ],
+                [InlineKeyboardButton(text="😴 Yo'q, uxlayman", callback_data="go_sleep")]
             ])
-            night_text = (
+            return (
                 f"🌙 Kech bo'ldi, {name}!\n\n"
-                f"Uxlash vaqti — sog'liq muhim!\n"
-                f"Ertaga yanada samaraliroq o'rgansiz 💪\n\n"
-                f"Baribir o'rganmoqchimisiz?"
-            )
-            return night_text + "\n\n" + "\n".join(lines[1:4]), night_kb
+                f"Uxlash vaqti — sog'liq muhim 💪\n\n"
+                f"Baribir bir narsa qilmoqchimisiz?"
+            ), night_kb
 
         if is_weekend:
-            # Dam olish kuni — dars yoki test bormi tekshir
             from progress import get_next_topic, get_repeat_topics
             next_t  = get_next_topic(user_id, grade)
             repeats = get_repeat_topics(user_id)
 
-            weekend_lines = [greeting, "━━━━━━━━━━━━━━"]
-
+            extra = ""
             if repeats:
-                weekend_lines.append(f"🔁 {len(repeats)} ta mavzu takrorlash kutmoqda!")
+                extra = f"\n🔁 {len(repeats)} ta mavzu takrorlash kutmoqda!"
 
-            weekend_lines.append(
-                "🏖 Bugun dam olish kuni!\n"
-                "Ruhiy kuch to'plang, o'ynang, dam oling 😊"
-            )
-
-            if next_t or repeats:
-                weekend_lines.append("\nBaribir bir mavzu o'rganasizmi?")
-                weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="✅ Ha, o'rganaman!", callback_data="lesson_continue"),
-                        InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest")
-                    ],
-                    [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")]
-                ])
-            else:
-                weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Yangilash", callback_data="dashboard_refresh")],
-                    [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")]
-                ])
-
-            return "\n".join(weekend_lines) + "\n\n" + "\n".join(lines[3:]), weekend_kb
+            weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📖 Mavzu o'rganaman", callback_data="lesson_continue"),
+                    InlineKeyboardButton(text="🧪 Test ishlaman",    callback_data="tset_start_quick"),
+                ],
+                [InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest")]
+            ])
+            return (
+                f"🏖 Bugun dam olish kuni, {name}!\n\n"
+                f"Ruhiy kuch to'plang 😊{extra}\n\n"
+                f"Baribir bir narsa qilmoqchimisiz?"
+            ), weekend_kb
 
         # Tugmalar — oddiy
         keyboard = InlineKeyboardMarkup(
@@ -443,6 +427,72 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         return text, keyboard
 
+    finally:
+        cur.close(); conn.close()
+
+
+async def build_dashboard_full(user_id: int):
+    """Kechki/dam olish filtrsiz to'liq dashboard"""
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT full_name, class, gender, birth_date, region, district
+            FROM users WHERE user_id = %s
+        """, (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return "❌ Topilmadi", InlineKeyboardMarkup(inline_keyboard=[])
+
+        full_name = row[0] or "O'quvchi"
+        grade     = str(row[1] or "5")
+        gender    = row[2] or ""
+        region    = row[4] or ""
+        district  = row[5] or ""
+        name      = full_name.split()[0]
+
+        try:
+            g = int(grade.replace("-sinf", "").strip())
+            group = "junior" if g <= 4 else "middle" if g <= 8 else "senior"
+        except Exception:
+            group = "middle"
+
+        now     = datetime.now()
+        hour    = now.hour
+        weekday = now.weekday()
+
+        lines = []
+        greeting = get_time_greeting(hour, group, gender, name)
+        lines.append(greeting)
+        lines.append("━━━━━━━━━━━━━━")
+
+        try:
+            lines.append(get_progress_block(user_id, grade, group))
+        except Exception:
+            pass
+
+        lines.append("━━━━━━━━━━━━━━")
+
+        try:
+            lines.append(get_daily_plan(user_id, grade))
+        except Exception:
+            pass
+
+        if region:
+            lines.append("━━━━━━━━━━━━━━")
+            lines.append(f"📍 {region}, {district}")
+
+        text = "\n".join(lines)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
+                InlineKeyboardButton(text="🔄 Yangilash", callback_data="dashboard_refresh")
+            ],
+            [
+                InlineKeyboardButton(text="📊 Statistika", callback_data="dashboard_stats"),
+                InlineKeyboardButton(text="📅 Reja", callback_data="dashboard_plan")
+            ]
+        ])
+        return text, keyboard
     finally:
         cur.close(); conn.close()
 
