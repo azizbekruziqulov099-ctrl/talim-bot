@@ -1347,9 +1347,14 @@ async def handle_all(
 
         topic_stats_state[user_id]["selected_topic"] = topic_code
 
+        total = stats[0] or 0
+        oson = stats[1] or 0
+        orta = stats[2] or 0
+        qiyin = stats[3] or 0
+        murakkab = stats[4] or 0
+
         await message.answer(
             f"🔑 {topic_code}\n\n"
-
             f"🎓 Sinf: {info[0]}\n"
             f"📚 Fan: {info[1]}\n"
             f"🗓 Chorak: {info[2]}\n"
@@ -1357,20 +1362,24 @@ async def handle_all(
             f"📂 Bo'lim: {info[4]}\n"
             f"📘 Mavzu: {info[5]}\n"
             f"📌 Kichik mavzu: {info[6]}\n\n"
-
-            f"📊 Jami test: {stats[0]}\n"
-            f"🟢 Oson: {stats[1] or 0}\n"
-            f"🟡 O'rta: {stats[2] or 0}\n"
-            f"🟠 Qiyin: {stats[3] or 0}\n"
-            f"🔴 Murakkab: {stats[4] or 0}",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="📄 Excel shablon")],
-                    [KeyboardButton(text="📥 Test import qilish")],
-                    [KeyboardButton(text="🔙 Ortga")]
+            f"📊 Jami test: {total}\n"
+            f"🟢 Oson: {oson}\n"
+            f"🟡 O'rta: {orta}\n"
+            f"🟠 Qiyin: {qiyin}\n"
+            f"🔴 Murakkab: {murakkab}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📄 Excel shablon", callback_data=f"ts_excel:{topic_code}"),
+                    InlineKeyboardButton(text="📥 Import", callback_data=f"ts_import:{topic_code}"),
                 ],
-                resize_keyboard=True
-            )
+                [
+                    InlineKeyboardButton(text="🤖 AI Yaratish", callback_data=f"ts_gen:{topic_code}"),
+                    InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"ts_del:{topic_code}"),
+                ],
+                [
+                    InlineKeyboardButton(text="👁 Testlarni ko'rish", callback_data=f"ts_view:{topic_code}:0"),
+                ],
+            ])
         )
 
         return
@@ -2468,6 +2477,164 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🎮 Yaxshi dam oling!\n"
             "Ruhiy kuch to'plash ham o'rganish! 💚"
         )
+        return
+
+    if call.data.startswith("ts_"):
+        parts = call.data.split(":")
+        action = parts[0][3:]  # excel, import, gen, del, view
+
+        if action == "excel":
+            topic_code = parts[1]
+            # Excel shablon yuborish
+            topic_stats_state[user_id]["selected_topic"] = topic_code
+            await call.answer()
+            # Excel shablon generatsiya
+            import openpyxl, io
+            from openpyxl.styles import Font, PatternFill
+            from aiogram.types import BufferedInputFile
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "TESTLAR"
+            headers = ["topic_code","difficulty","situation","question","option_a","option_b","option_c","option_d","correct_answer","explanation","question_type","is_latex","image_url","audio_text","language","life_level","age_group","time_limit"]
+            for col, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=h)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="2E86AB")
+            conn_t = psycopg2.connect(DATABASE_URL)
+            cur_t = conn_t.cursor()
+            cur_t.execute("SELECT grade FROM dts_tree WHERE topic_code=%s LIMIT 1", (topic_code,))
+            row_t = cur_t.fetchone()
+            cur_t.close(); conn_t.close()
+            grade = row_t[0] if row_t else "1"
+            age_map = {"1":"6-7","2":"7-8","3":"8-9","4":"9-10","5":"10-11","6":"11-12","7":"12-13","8":"13-14","9":"14-15","10":"15-16","11":"16-17"}
+            age_group = age_map.get(str(grade), "10-11")
+            def get_diff(n):
+                if n<=10: return "oson"
+                elif n<=20: return "o'rta"
+                elif n<=30: return "qiyin"
+                else: return "murakkab"
+            for i in range(1, 41):
+                ws.append([topic_code, get_diff(i), "oddiy", "", "", "", "", "", "", "", "single_choice", False, f"{topic_code}-{i}", None, "uz", 1, age_group, 60])
+            buf = io.BytesIO()
+            wb.save(buf); buf.seek(0)
+            await call.message.answer_document(
+                BufferedInputFile(buf.read(), filename=f"shablon_{topic_code}.xlsx"),
+                caption=f"📋 Shablon: {topic_code}"
+            )
+
+        elif action == "import":
+            topic_code = parts[1]
+            admin_state[user_id] = "test_import"
+            await call.answer()
+            await call.message.answer("📥 Excel fayl yuboring")
+
+        elif action == "gen":
+            topic_code = parts[1]
+            await call.answer("🤖 AI yaratmoqda...", show_alert=True)
+            # DTS dan ma'lumot olish
+            conn_g = psycopg2.connect(DATABASE_URL)
+            cur_g = conn_g.cursor()
+            cur_g.execute("""
+                SELECT grade, subject_name, mavzu_name, kichik_name
+                FROM dts_tree WHERE topic_code=%s LIMIT 1
+            """, (topic_code,))
+            row_g = cur_g.fetchone()
+            cur_g.close(); conn_g.close()
+            if row_g:
+                grade, subject, mavzu, kichik = row_g
+                from ai_generatori import _generate_questions, _age_group
+                msg = await call.message.answer(f"🤖 AI ishlamoqda...\n📌 {kichik}")
+                try:
+                    questions = await _generate_questions(grade, subject, mavzu, kichik, topic_code)
+                    conn_s = psycopg2.connect(DATABASE_URL)
+                    cur_s = conn_s.cursor()
+                    for q in questions:
+                        cur_s.execute("""
+                            INSERT INTO generated_tests
+                            (topic_code,question,option_a,option_b,option_c,option_d,
+                             correct_answer,explanation,question_type,is_latex,
+                             image_url,audio_text,language,life_level,age_group,
+                             time_limit,difficulty,situation)
+                            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        """, (topic_code, q.get("question",""), q.get("a",""), q.get("b",""),
+                              q.get("c",""), q.get("d",""), q.get("correct",""),
+                              q.get("explanation",""), q.get("question_type","single_choice"),
+                              False, q.get("image_url"), None, "uz", 1,
+                              _age_group(grade), q.get("time_limit",60),
+                              q.get("difficulty","oson"), "oddiy"))
+                    conn_s.commit(); cur_s.close(); conn_s.close()
+                    await msg.edit_text(f"✅ {len(questions)} ta savol yaratildi!\n🔑 {topic_code}")
+                except Exception as ex:
+                    await msg.edit_text(f"❌ Xato: {ex}")
+
+        elif action == "del":
+            topic_code = parts[1]
+            await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Ha, o'chir", callback_data=f"ts_del_yes:{topic_code}"),
+                    InlineKeyboardButton(text="❌ Yo'q", callback_data=f"ts_del_no:{topic_code}"),
+                ]
+            ]))
+            await call.answer("⚠️ Tasdiqlang!")
+
+        elif action == "del_yes":
+            topic_code = parts[1]
+            conn_d = psycopg2.connect(DATABASE_URL)
+            cur_d = conn_d.cursor()
+            cur_d.execute("DELETE FROM generated_tests WHERE topic_code=%s", (topic_code,))
+            cnt = cur_d.rowcount
+            conn_d.commit(); cur_d.close(); conn_d.close()
+            await call.answer(f"✅ {cnt} ta test o'chirildi!", show_alert=True)
+            await call.message.edit_reply_markup(reply_markup=None)
+
+        elif action == "del_no":
+            await call.answer("❌ Bekor qilindi")
+            await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📄 Excel shablon", callback_data=f"ts_excel:{parts[1]}"),
+                    InlineKeyboardButton(text="📥 Import", callback_data=f"ts_import:{parts[1]}"),
+                ],
+                [
+                    InlineKeyboardButton(text="🤖 AI Yaratish", callback_data=f"ts_gen:{parts[1]}"),
+                    InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"ts_del:{parts[1]}"),
+                ],
+                [
+                    InlineKeyboardButton(text="👁 Testlarni ko'rish", callback_data=f"ts_view:{parts[1]}:0"),
+                ],
+            ]))
+
+        elif action == "view":
+            topic_code = parts[1]
+            offset = int(parts[2]) if len(parts) > 2 else 0
+            conn_v = psycopg2.connect(DATABASE_URL)
+            cur_v = conn_v.cursor()
+            cur_v.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (topic_code,))
+            total_v = cur_v.fetchone()[0]
+            cur_v.execute("""
+                SELECT id, difficulty, question, correct_answer
+                FROM generated_tests WHERE topic_code=%s
+                ORDER BY difficulty, id LIMIT 5 OFFSET %s
+            """, (topic_code, offset))
+            tests = cur_v.fetchall()
+            cur_v.close(); conn_v.close()
+
+            text = f"👁 Testlar: {topic_code}\nJami: {total_v}\n\n"
+            for tid, diff, q, correct in tests:
+                text += f"[{diff}] {q[:60]}...\n✅ {correct[:30]}\n\n"
+
+            nav = []
+            if offset > 0:
+                nav.append(InlineKeyboardButton(text="◀️", callback_data=f"ts_view:{topic_code}:{offset-5}"))
+            if offset + 5 < total_v:
+                nav.append(InlineKeyboardButton(text="▶️", callback_data=f"ts_view:{topic_code}:{offset+5}"))
+
+            kb_rows = []
+            if nav: kb_rows.append(nav)
+            kb_rows.append([InlineKeyboardButton(text="🗑 Barchasini o'chir", callback_data=f"ts_del:{topic_code}")])
+
+            await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+            await call.answer()
+
         return
 
     if call.data.startswith("gen_"):
