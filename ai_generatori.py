@@ -417,30 +417,10 @@ async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
     # Yosh guruhi
     age = _age_group(grade)
 
-    # Fan tiliga qarab til rejimi
-    is_lang_subject = any(x in subject.upper() for x in ["INGLIZ", "RUS", "ENGLISH"])
-
-    if is_lang_subject:
-        lang_note = """TIL QOIDASI — DIQQAT:
-
-TO'G'RI MISOL:
-  oson: "Qaysi bola [en]tall[/en]?"
-  o'rta: "Bu rasmda kim [en]smiling[/en]?"
-  qiyin: "[en]Who has curly hair?[/en]"
-  murakkab: "[en]What does the girl look like?[/en]"
-
-XATO MISOL (BUNDAY QILMA):
-  ❌ "[en]Describe[/en]: The [en]boy looks ___.[/en]"
-  ❌ "[en]What color[/en] is the [en]shirt[/en]?"
-
-QOIDA:
-  OSON: O'zbek savol + 1-2 ingliz so'z [en]teg[/en] bilan
-  O'RTA: Aralash + ingliz so'z/ibora [en]teg[/en] bilan
-  QIYIN: Butun ingliz jumla bitta teg: [en]Who has curly hair?[/en]
-  MURAKKAB: Butun ingliz jumla bitta teg: [en]What does she look like?[/en]
-  O'ZBEK SO'Z HECH QACHON TEG ICHIDA BO'LMASIN!"""
-    else:
-        lang_note = "Barcha savol va javoblar o'zbekcha bo'lsin. Atamalar bo'lsa izohlang."
+    # Pedagogik yo'riqnoma
+    from pedagogy import get_pedagogy, get_tag_examples
+    pedagogy_note = get_pedagogy(grade, subject)
+    tag_examples = get_tag_examples(grade, subject)
 
     # Darajaga mos qiyinlik tavsifi
     grade_int = int(grade) if str(grade).isdigit() else 1
@@ -465,41 +445,25 @@ ESLATMA: {grade}-sinf uchun MURAKKAB ham oddiy bo'lsin — faqat 1-2 ta tushunch
 - qiyin (5 ta, 50s): Tahlil va baholash
 - murakkab (5 ta, 50s): Sintez, tanqidiy fikrlash"""
 
-    prompt = f"""Siz {grade}-sinf ({age} yosh) {subject} fani o'qituvchisisiz.
+    prompt = f"""Siz {grade}-sinf {subject} fani o\'qituvchisisiz.
 Fan: {subject} | Mavzu: {mavzu} | Kichik mavzu: {kichik}
 
-{level_desc}
+{pedagogy_note}
 
-{lang_note}
+{tag_examples}
 
-SAVOL VA JAVOB YOZISH QOIDALARI:
+QATIY QOIDALAR:
+1. Savol ichida to\'g\'ri javob bo\'lmasin (qavsda ham emas!)
+2. correct = to\'g\'ri javobning AYNAN matni (A/B/C/D emas!)
+3. Faqat "{kichik}" mavzusiga oid savol yoz!
+4. 4 javob bir-biriga o\'xshash bo\'lsin, faqat 1 tasi to\'g\'ri
+5. 6 tasida has_image: true (oson va o\'rta darajada)
+6. 2 tasida write_answer (oson 1 ta, o\'rta 1 ta)
+7. write_answer da: a="", b="", c="", d=""
 
-1. INGLIZ SO'ZLAR:
-   - Savoldagi ingliz so'z/jumla: bitta butun teg ichida
-     XATO: "[en]What color[/en] is the [en]shirt[/en]?"
-     TO'G'RI: "[en]What color is the shirt?[/en]"  yoki  "Qaysi rang [en]shirt[/en]?"
-   - Javoblardagi ingliz so'z ham teg ichida: "[en]tall[/en]", "[en]brown hair[/en]"
-   - O'zbek so'z HECH QACHON teg ichida bo'lmasin!
-
-2. SAVOL SIFATI:
-   - Savol ichida to'g'ri javob bo'lmasin (qavsda ham emas!)
-     XATO: "Fill in: The sky is ___ (blue)"
-     TO'G'RI: "Fill in: The sky is ___."
-   - Faqat "{kichik}" mavzusiga oid savol yoz!
-   - 4 javob bir-biriga o'xshash bo'lsin, faqat 1 tasi to'g'ri
-   - Mazmunli, real hayotga oid bo'lsin
-
-3. CORRECT MAYDONI:
-   - To'g'ri javobning AYNAN matni (A/B/C/D emas!)
-   - Ingliz bo'lsa teg bilan: "[en]tall[/en]"
-
-4. RASMLI VA YOZMA:
-   - 6 tasida has_image: true (oson va o'rta darajada)
-   - 2 tasida write_answer (oson 1 ta, o'rta 1 ta) — javob qisqa bo'lsin
-
-FAQAT JSON (boshqa hech narsa yozma, markdown ham emas):
+FAQAT JSON (markdown, izoh, boshqa matn yozma):
 [
-{{"question":"savol","a":"javob A","b":"javob B","c":"javob C","d":"javob D","correct":"to'g'ri javob matni","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
+{{"question":"savol","a":"A","b":"B","c":"C","d":"D","correct":"to\'g\'ri matni","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
 {{"question":"savol","a":"","b":"","c":"","d":"","correct":"qisqa javob","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}}
 ]"""
 
