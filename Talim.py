@@ -1238,7 +1238,7 @@ async def handle_all(
     elif message.text == "🤖 AI Generator":
         if user_id not in ADMINS:
             return
-        from ai_generator import show_gen_start
+        from ai_generatori import show_gen_start
         await show_gen_start(message, user_id)
         return
 
@@ -2471,7 +2471,7 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         return
 
     if call.data.startswith("gen_"):
-        from ai_generator import handle_gen_callback
+        from ai_generatori import handle_gen_callback
         await handle_gen_callback(call, user_id)
         return
 
