@@ -1,1024 +1,590 @@
-import json
-from openai import AsyncOpenAI
-from keyboards import get_main_keyboard
-from aiogram.types import ReplyKeyboardRemove
-from aiogram.filters import *
-from openpyxl import load_workbook, Workbook
-from loader import dp, bot
-import os
-import psycopg2
-from aiogram import F
-from aiogram.types import (
-    Message,
-    FSInputFile,
-    KeyboardButton,
-    ReplyKeyboardMarkup
-)
-from aiogram.fsm.state import (
-    State,
-    StatesGroup
-)
+"""
+ai_generator.py — AI bilan test generatsiya qilish
+Claude API orqali har mavzu uchun 40 ta savol
+"""
+import psycopg2, os, json, asyncio
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from aiogram.fsm.context import (
-    FSMContext
-)
-class AIGeneratorState(StatesGroup):
-    select_grade = State()
-    search_grade = State()
-    add_grade = State()
+DATABASE_URL = os.getenv("DATABASE_URL")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-    select_subject = State()
-    search_subject = State()
-    add_subject = State()
+def db(): return psycopg2.connect(DATABASE_URL)
 
-    wait_file = State()
+# Generator holati
+gen_state = {}  # user_id -> {grade, subject, selected_topics, ...}
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL"
-)
 
-OPENAI_API_KEY = os.getenv(
-    "OPENAI_API_KEY"
-)
-client = AsyncOpenAI(
-    api_key=OPENAI_API_KEY
-)
-
-@dp.message(F.text == "🤖 AI Generator")
-async def ai_generator_menu(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.select_grade
-    )
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT name
-        FROM ai_grades
-        ORDER BY id
-    """)
-
-    grades = cur.fetchall()
-
-    conn.close()
-
-    keyboard = []
-
-    keyboard.append([
-        KeyboardButton(text="🔍 Qidirish"),
-        KeyboardButton(text="➕ Yangi sinf")
+# ─────────────────────────────────────────
+# 1. SINF TANLASH
+# ─────────────────────────────────────────
+async def show_gen_start(message, user_id):
+    gen_state[user_id] = {}
+    grades = ["1","2","3","4","5","6","7","8","9","10","11"]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{g}-sinf", callback_data=f"gen_grade:{g}")
+         for g in grades[i:i+4]]
+        for i in range(0, len(grades), 4)
     ])
-
-    row = []
-
-    for i, grade in enumerate(grades, start=1):
-        row.append(
-            KeyboardButton(text=grade[0])
-        )
-
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-
-    if row:
-        keyboard.append(row)
+    await message.answer("🤖 AI Test Generator\n\nSinfni tanlang:", reply_markup=kb)
 
 
-    kb = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
+# ─────────────────────────────────────────
+# 2. FAN TANLASH
+# ─────────────────────────────────────────
+async def show_subjects(call, user_id, grade):
+    gen_state[user_id] = {"grade": grade, "selected": []}
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT subject_name FROM dts_tree
+        WHERE grade=%s AND is_deleted=FALSE
+        ORDER BY subject_name
+    """, (grade,))
+    subjects = [r[0] for r in cur.fetchall()]
+    cur.close(); conn.close()
 
-    await message.answer(
-        "📚 Sinfni tanlang yoki yarating",
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=s, callback_data=f"gen_subj:{s[:40]}")]
+        for s in subjects
+    ] + [[InlineKeyboardButton(text="◀️ Orqaga", callback_data="gen_start")]])
+
+    await call.message.edit_text(
+        f"🤖 AI Generator\n🎓 {grade}-sinf\n\nFanni tanlang:",
         reply_markup=kb
     )
 
-@dp.message(
-    AIGeneratorState.select_grade,
-    F.text == "🔍 Qidirish"
-)
-async def search_grade_start(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.search_grade
-    )
 
-    await message.answer(
-        "🔍 Sinf nomini kiriting"
-    )
+# ─────────────────────────────────────────
+# 3. KICHIK MAVZULAR RO'YXATI (checkbox)
+# ─────────────────────────────────────────
+async def show_topics(call, user_id, subject):
+    state = gen_state.get(user_id, {})
+    grade = state.get("grade", "1")
+    state["subject"] = subject
+    gen_state[user_id] = state
 
-@dp.message(
-    AIGeneratorState.search_grade
-)
-async def search_grade(
-    message: Message,
-    state: FSMContext
-):
-    text = message.text.strip()
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
+    conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT name
-        FROM ai_grades
-        WHERE LOWER(name) LIKE LOWER(%s)
-        ORDER BY name
-        LIMIT 20
-    """, (f"%{text}%",))
+        SELECT topic_code, kichik_name, mavzu_name,
+               (SELECT COUNT(*) FROM generated_tests WHERE topic_code=t.topic_code) as cnt
+        FROM dts_tree t
+        WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
+        ORDER BY topic_code
+        LIMIT 60
+    """, (grade, subject))
+    topics = cur.fetchall()
+    cur.close(); conn.close()
 
-    rows = cur.fetchall()
+    state["topics"] = {t[0]: {"kichik": t[1], "mavzu": t[2], "cnt": t[3]} for t in topics}
+    selected = state.get("selected", [])
 
-    conn.close()
+    state["filter"] = "empty"  # Default: faqat bo'sh mavzular
+    gen_state[user_id] = state
+    await _render_topics(call.message, user_id, selected, grade, subject, edit=True)
 
-    if not rows:
-        await message.answer(
-            "❌ Hech narsa topilmadi"
-        )
+
+async def _render_topics(message, user_id, selected, grade, subject, edit=False):
+    state = gen_state.get(user_id, {})
+    topics_list = state.get("topics", {})
+    filt = state.get("filter", "empty")
+    page = state.get("page", 0)
+    PAGE_SIZE = 15
+
+    # Filterlash
+    if filt == "empty":
+        filtered = {k: v for k, v in topics_list.items() if v["cnt"] == 0}
+    else:
+        filtered = topics_list
+
+    items = list(filtered.items())
+    total = len(items)
+    page_items = items[page*PAGE_SIZE:(page+1)*PAGE_SIZE]
+
+    empty_cnt = sum(1 for v in topics_list.values() if v["cnt"] == 0)
+    all_cnt = len(topics_list)
+
+    text = (
+        f"🤖 AI Generator\n"
+        f"🎓 {grade}-sinf | 📚 {subject}\n\n"
+        f"🔴 Bo'sh: {empty_cnt} ta | 📊 Jami: {all_cnt} ta\n"
+        f"✅ Tanlangan: {len(selected)} ta\n"
+        f"⚠️ Max 15 ta tanlang\n\n"
+        f"{'🔴 Faqat bo\'sh mavzular' if filt=='empty' else '📋 Barcha mavzular'} "
+        f"({page*PAGE_SIZE+1}-{min((page+1)*PAGE_SIZE, total)}/{total}):"
+    )
+
+    rows = []
+    for code, info in page_items:
+        is_sel = code in selected
+        cnt = info["cnt"]
+        name = info["kichik"][:22] if info["kichik"] else code[-15:]
+        check = "✅" if is_sel else "⬜"
+        status = f"✓{cnt}" if cnt > 0 else "✗0"
+        rows.append([InlineKeyboardButton(
+            text=f"{check} {name} [{status}]",
+            callback_data=f"gen_toggle:{code}"
+        )])
+
+    # Navigatsiya
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"gen_page:{page-1}"))
+    nav.append(InlineKeyboardButton(
+        text=f"{'📋 Barchasi' if filt=='empty' else '🔴 Bo\'shlar'}",
+        callback_data="gen_filter_toggle"
+    ))
+    if (page+1)*PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"gen_page:{page+1}"))
+    rows.append(nav)
+
+    bottom = [InlineKeyboardButton(text="◀️ Fan", callback_data="gen_subj_back")]
+    if selected:
+        bottom.append(InlineKeyboardButton(text="❌", callback_data="gen_clear"))
+        bottom.append(InlineKeyboardButton(
+            text=f"🚀 Boshlash ({len(selected)})",
+            callback_data="gen_run"
+        ))
+    rows.append(bottom)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=kb)
+        except:
+            await message.answer(text, reply_markup=kb)
+    else:
+        await message.answer(text, reply_markup=kb)
+
+
+# ─────────────────────────────────────────
+# 4. TOGGLE — mavzu belgilash/olib tashlash
+# ─────────────────────────────────────────
+async def toggle_topic(call, user_id, code):
+    state = gen_state.get(user_id, {})
+    selected = state.get("selected", [])
+
+    if code in selected:
+        selected.remove(code)
+    else:
+        if len(selected) >= 15:
+            await call.answer("⚠️ Max 15 ta mavzu!", show_alert=True)
+            return
+        selected.append(code)
+
+    state["selected"] = selected
+    gen_state[user_id] = state
+    grade = state.get("grade", "1")
+    subject = state.get("subject", "")
+    await _render_topics(call.message, user_id, selected, grade, subject, edit=True)
+    await call.answer()
+
+
+# ─────────────────────────────────────────
+# 5. AI BILAN GENERATSIYA
+# ─────────────────────────────────────────
+async def run_generator(call, user_id):
+    state = gen_state.get(user_id, {})
+    selected = state.get("selected", [])
+    topics_list = state.get("topics", {})
+    grade = state.get("grade", "1")
+    subject = state.get("subject", "")
+
+    if not selected:
+        await call.answer("❌ Mavzu tanlanmagan!", show_alert=True)
         return
 
-    keyboard = []
-
-    for row in rows:
-        keyboard.append([
-            KeyboardButton(text=row[0])
-        ])
-
-    kb = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
+    await call.answer()
+    status_msg = await call.message.answer(
+        f"🤖 AI ishlamoqda...\n"
+        f"📚 {len(selected)} ta mavzu × 20 savol\n"
+        f"📊 Jami: {len(selected)*20} ta savol\n"
+        f"⏳ Taxminiy vaqt: {len(selected)*20} soniya\n\n"
+        f"0/{len(selected)} ✅"
     )
 
-    await state.set_state(
-        AIGeneratorState.select_grade
-    )
-
-    await message.answer(
-        "Topilgan sinflar:",
-        reply_markup=kb
-    )
-
-@dp.message(
-    AIGeneratorState.select_grade,
-    F.text == "➕ Yangi sinf"
-)
-async def add_grade_start(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.add_grade
-    )
-
-    await message.answer(
-        "Yangi sinf nomini yuboring"
-    )
-
-@dp.message(
-    AIGeneratorState.add_grade
-)
-async def add_grade_save(
-    message: Message,
-    state: FSMContext
-):
-    grade_name = message.text.strip()
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    try:
-        cur.execute("""
-            INSERT INTO ai_grades(name)
-            VALUES(%s)
-        """, (grade_name,))
-
-        conn.commit()
-
-        await message.answer(
-            f"✅ {grade_name} qo'shildi"
-        )
-
-    except:
-        await message.answer(
-            "❌ Bu sinf allaqachon mavjud"
-        )
-
-    finally:
-        conn.close()
-
-    await state.set_state(
-        AIGeneratorState.select_grade
-    )
-
-async def generate_bobs(
-        grade,
-        subject,
-        topics
-):
-    topics_text = "\n".join(
-        [f"- {topic}" for topic in topics]
-    )
-
-    prompt = f"""
-Siz O‘zbekiston Respublikasi DTS, o‘quv dasturlari, metodika va darsliklar bo‘yicha eng tajribali ekspertlar guruhisiz.
-
-SINF: {grade}
-
-FAN: {subject}
-
-MAVZULAR:
-
-{topics_text}
-
-VAZIFA
-
-Barcha mavzularni birgalikda tahlil qiling.
-
-Avval mavzulardagi asosiy tushunchalarni aniqlang.
-
-Keyin mazmun jihatidan o‘xshash mavzularni guruhlang.
-
-Keyin ushbu guruhlar asosida Boblar yarating.
-
-ENG MUHIM QOIDALAR
-
-- Bob mavzu emas.
-- Bob fan tarkibidagi yirik mazmuniy birlik.
-- Bob bir nechta bo‘lim va ko‘plab mavzularni o‘z ichiga olishi kerak.
-- Bir xil mazmundagi mavzular bir Bobga joylashtirilishi kerak.
-- Bir-biriga yaqin mavzular turli Boblarga ajratilmasin.
-- Boblar DTS va o‘quv dasturi uslubida yozilsin.
-- Boblar soni kamida 3 ta va ko‘pi bilan 6 ta bo‘lsin.
-- Zarurat bo‘lmasa yangi Bob yaratmang.
-
-TAQIQLANADI
-
-Quyidagilar Bob bo‘la olmaydi:
-
-- Fan nomi
-- Mavzu nomi
-- Nazorat ishi
-- Sinov ishi
-- Takrorlash
-- Mustahkamlash
-- Diagnostika
-- Loyiha faoliyati
-- Tahlil va tuzatish ishlari
-- Yakuniy baholash
-
-YOMON MISOLLAR
-
-Kasrlar
-Radius
-Aylana
-Fe'l
-Ot
-Sifat
-Elektr toki
-O'simlik
-
-Bular juda tor tushunchalar yoki mavzulardir.
-
-YAXSHI MISOLLAR
-
-Sonlar va amallar
-
-Geometrik tushunchalar
-
-So‘z turkumlari
-
-Elektr hodisalari
-
-Tirik organizmlar
-
-Tabiat va atrof-muhit
-
-Bular ko‘plab mavzularni birlashtira oladigan yirik mazmuniy birliklardir.
-
-NATIJA
-
-Faqat JSON qaytaring.
-
-[
-    "Bob nomi",
-    "Bob nomi",
-    "Bob nomi"
-]
-"""
-
-    response = await client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    try:
-        return json.loads(
-            response.choices[0].message.content
-        )
-    except:
-        return []
-
-async def generate_bolims(
-        grade,
-        subject,
-        bobs,
-        topics
-):
-    bobs_text = "\n".join(
-        [f"- {bob}" for bob in bobs]
-    )
-
-    topics_text = "\n".join(
-        [f"- {topic}" for topic in topics]
-    )
-
-    prompt = f"""
-Siz DTS, o‘quv dasturlari va metodika bo‘yicha ekspert mutaxassissiz.
-
-SINF: {grade}
-
-FAN: {subject}
-
-BOBLAR:
-
-{bobs_text}
-
-MAVZULAR:
-
-{topics_text}
-
-VAZIFA
-
-Berilgan Boblar asosida Bo‘limlar yarating.
-
-Bo‘limlar Bob tarkibidagi mazmuniy qismlar bo‘lsin.
-
-ENG MUHIM QOIDALAR
-
-- Bo‘lim mavzu emas.
-- Bo‘lim Bobdan kichik, mavzudan katta bo‘lsin.
-- Bir xil mazmundagi mavzular bitta Bo‘limga tushsin.
-- Bo‘lim nomi mavzu nomidan olinmasin.
-- Fan nomidan olinmasin.
-- Bo‘limlar DTS uslubida yozilsin.
-- Bo‘limlar soni 15 tadan 20 tagacha bo‘lsin.
-- Har bir Bo‘lim albatta mavjud Boblardan biriga tegishli bo‘lsin.
-
-TAQIQLANADI
-
-Quyidagilar Bo‘lim bo‘la olmaydi:
-
-- Nazorat ishi
-- Sinov ishi
-- Takrorlash
-- Mustahkamlash
-- Diagnostika
-- Loyiha faoliyati
-- Tahlil va tuzatish ishlari
-- Yakuniy baholash
-
-FAQAT JSON QAYTARING
-
-[
-    {{
-        "bob": "",
-        "bolim": ""
-    }}
-]
-"""
-    
-    response = await client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Siz DTS va metodika bo‘yicha ekspert mutaxassissiz."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    try:
-        return json.loads(
-            response.choices[0].message.content
-        )
-    except:
-        return []
-
-async def generate_mapping(
-        grade,
-        subject,
-        bobs,
-        bolims,
-        topics
-):
-    bobs_text = "\n".join(
-        [f"- {bob}" for bob in bobs]
-    )
-
-    bolims_text = "\n".join(
-        [
-            f"- {x['bob']} -> {x['bolim']}"
-            for x in bolims
-        ]
-    )
-
-    topics_text = "\n".join(
-        [f"- {topic}" for topic in topics]
-    )
-
-    prompt = f"""
-Siz DTS va metodika bo‘yicha ekspert mutaxassissiz.
-
-SINF: {grade}
-
-FAN: {subject}
-
-BOBLAR:
-
-{bobs_text}
-
-BO‘LIMLAR:
-
-{bolims_text}
-
-MAVZULAR:
-
-{topics_text}
-
-VAZIFA
-
-Har bir mavzuni eng mos Bob va Bo‘limga joylashtiring.
-
-QOIDALAR
-
-- Mavzu faqat bitta Bobga tegishli bo‘lsin.
-- Mavzu faqat bitta Bo‘limga tegishli bo‘lsin.
-- Yangi Bob yaratmang.
-- Yangi Bo‘lim yaratmang.
-- Faqat berilgan Bob va Bo‘limlardan foydalaning.
-- Mantiqiy yaqinlikni saqlang.
-
-FAQAT JSON QAYTARING
-
-[
-    {{
-        "bob": "",
-        "bolim": "",
-        "mavzu": ""
-    }}
-]
-"""
-
-    response = await client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Siz DTS eksperti va metodistsiz."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    try:
-        return json.loads(
-            response.choices[0].message.content
-        )
-    except:
-        return []
-
-async def generate_small_topics_batch(
-        grade,
-        subject,
-        topics
-):
-    topics_text = "\n".join(
-        [f"- {topic}" for topic in topics]
-    )
-
-    prompt = f"""
-Siz DTS va metodika bo‘yicha ekspert mutaxassissiz.
-
-SINF: {grade}
-
-FAN: {subject}
-
-MAVZULAR:
-
-{topics_text}
-
-VAZIFA
-
-Har bir mavzu uchun 4 tadan 8 tagacha
-kichik mavzu yarating.
-
-QOIDALAR
-
-- Kichik mavzular mazmunli bo‘lsin.
-- DTSga mos bo‘lsin.
-- Takrorlanmasin.
-- Bilim, ko‘nikma va amaliy faoliyatni qamrab olsin.
-- Faqat mavzu ichidagi so‘zlarni takrorlamasin.
-
-FAQAT JSON QAYTARING
-
-[
-    {{
-        "mavzu": "",
-        "kichik_mavzular": [
-            "",
-            ""
-        ]
-    }}
-]
-"""
-
-    response = await client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {
-                "role": "system",
-                "content": "Siz DTS metodistisiz."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    try:
-        return json.loads(
-            response.choices[0].message.content
-        )
-    except:
-        return []
-
-def read_topics(file_path):
-    wb = load_workbook(file_path)
-    ws = wb.active
-
-    ignore_words = [
-        "nazorat",
-        "sinov",
-        "takrorlash",
-        "mustahkamlash",
-        "loyiha",
-        "diagnostika",
-        "tahlil",
-        "yakuniy baholash"
-    ]
-
-    topics = []
-
-    for row in ws.iter_rows(min_row=2, values_only=True):
-
-        quarter = row[0]
-
-        if not row[1]:
-            continue
-
-        topic = str(row[1]).strip()
-
-        lower_topic = topic.lower()
-
-        if any(
-            word in lower_topic
-            for word in ignore_words
-        ):
-            continue
-
-        topics.append({
-            "quarter": quarter,
-            "topic": topic
-        })
-
-    return topics
-
-def create_result_excel(rows, output_file):
-    wb = Workbook()
-    ws = wb.active
-
-    ws.append([
-        "Sinf",
-        "Fan",
-        "Chorak",
-        "Bob",
-        "Bo'lim",
-        "Mavzu",
-        "Kichik mavzu"
-    ])
-
-    for row in rows:
-        ws.append(row)
-
-    wb.save(output_file)
-
-@dp.message(
-    AIGeneratorState.wait_file,
-    F.document
-)
-async def ai_generator_file(
-        message: Message,
-        state: FSMContext
-):
-    await message.answer(
-        "⏳ Fayl tahlil qilinmoqda..."
-    )
-
-    await message.answer(
-        "📚 Boblar yaratilmoqda..."
-    )
-
-    file = await bot.get_file(
-        message.document.file_id
-    )
-
-    os.makedirs(
-        "temp",
-        exist_ok=True
-    )
-
-    input_file = (
-        f"temp/{message.document.file_name}"
-    )
-
-    await bot.download_file(
-        file.file_path,
-        destination=input_file
-    )
-
-    topics_data = read_topics(
-        input_file
-    )
-
-    data = await state.get_data()
-
-    grade = data["grade"]
-    subject = data["subject"]
-
-    topic_names = [
-        x["topic"]
-        for x in topics_data
-    ]
-
-    bobs = await generate_bobs(
-        grade,
-        subject,
-        topic_names
-    )
-
-    if not bobs:
-        await message.answer(
-            "❌ Boblar yaratilmadi"
-        )
-        return
-
-    await message.answer(
-        "📖 Bo'limlar yaratilmoqda..."
-    )
-
-    bolims = await generate_bolims(
-        grade,
-        subject,
-        bobs,
-        topic_names
-    )
-
-    if not bolims:
-        await message.answer(
-            "❌ Bo'limlar yaratilmadi"
-        )
-        return    
-
-    await message.answer(
-        "🗂 Mavzular joylashtirilmoqda..."
-    )
-
-    mapping = await generate_mapping(
-        grade,
-        subject,
-        bobs,
-        bolims,
-        topic_names
-    )
-
-    if not mapping:
-        await message.answer(
-            "❌ Mavzular joylashtirilmadi"
-        )
-        return
-
-    result_rows = []
-
-    mapped_topics = list(
-        {
-            x["mavzu"]
-            for x in mapping
-        }
-    )
-
-    topic_quarters = {
-        x["topic"]: x["quarter"]
-        for x in topics_data
-    }
-
-    await message.answer(
-        "📝 Kichik mavzular yaratilmoqda..."
-    )
-
-    small_topics_data = await generate_small_topics_batch(
-        grade,
-        subject,
-        mapped_topics
-    )
-
-    if not small_topics_data:
-        await message.answer(
-            "❌ Kichik mavzular yaratilmadi"
-        )
-        return
-
-    small_topics_map = {
-        x["mavzu"]: x["kichik_mavzular"]
-        for x in small_topics_data
-    }
-
-    for item in mapping:
-
-        for km in small_topics_map.get(
-            item["mavzu"],
-            []
-        ):
-
-            topic_data = next(
-                (
-                    x for x in topics_data
-                    if x["topic"] == item["mavzu"]
-                ),
-                {}
+    conn = db(); cur = conn.cursor()
+    total_saved = 0
+    errors = []
+
+    for idx, code in enumerate(selected):
+        info = topics_list.get(code, {})
+        kichik = info.get("kichik", code)
+        mavzu = info.get("mavzu", "")
+
+        try:
+            # Status yangilash
+            await status_msg.edit_text(
+                f"🤖 AI ishlamoqda...\n"
+                f"📚 {len(selected)} ta mavzu\n\n"
+                f"{idx}/{len(selected)} ✅\n"
+                f"⏳ Hozir: {kichik[:40]}"
             )
 
-            quarter = topic_quarters.get(
-                item["mavzu"],
-                ""
+            # AI dan savol olish
+            questions = await _generate_questions(grade, subject, mavzu, kichik, code)
+
+            if questions:
+                # DBga saqlash
+                for q in questions:
+                    cur.execute("""
+                        INSERT INTO generated_tests
+                        (topic_code, question, option_a, option_b, option_c, option_d,
+                         correct_answer, explanation, question_type, is_latex,
+                         image_url, audio_text, language, life_level, age_group,
+                         time_limit, difficulty, situation)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT DO NOTHING
+                    """, (
+                        code,
+                        q.get("question",""),
+                        q.get("a",""), q.get("b",""), q.get("c",""), q.get("d",""),
+                        q.get("correct",""),
+                        q.get("explanation",""),
+                        q.get("question_type","single_choice"),
+                        False,
+                        q.get("image_url"),
+                        None, "uz", 1,
+                        _age_group(grade),
+                        q.get("time_limit", 60),
+                        q.get("difficulty","oson"),
+                        "oddiy"
+                    ))
+                    total_saved += 1
+                conn.commit()
+
+        except Exception as ex:
+            errors.append(f"{kichik[:30]}: {str(ex)[:50]}")
+
+        await asyncio.sleep(1)  # Rate limit
+
+    cur.close(); conn.close()
+
+    # Yakuniy hisobot
+    err_text = ""
+    if errors:
+        err_text = f"\n\n⚠️ Xatolar ({len(errors)}):\n" + "\n".join(errors[:5])
+
+    await status_msg.edit_text(
+        f"✅ Generatsiya tugadi!\n\n"
+        f"📊 Saqlangan: {total_saved} ta savol\n"
+        f"📚 Mavzular: {len(selected)} ta{err_text}\n\n"
+        f"📥 Excel yaratilmoqda..."
+    )
+
+    # Excel eksport — rasmli savollar ko'rinib tursin
+    try:
+        excel_buf = await _export_to_excel(selected, topics_list, grade, subject)
+        from aiogram.types import BufferedInputFile
+        await call.message.answer_document(
+            BufferedInputFile(excel_buf, filename=f"savol_{grade}sinf_{subject[:10]}.xlsx"),
+            caption=(
+                f"📊 {total_saved} ta savol\n"
+                f"🖼 Rasmli savollar belgilangan\n\n"
+                f"image_url ustunidagi nomlar bilan\n"
+                f"rasm yasab split: bilan yuboring!"
             )
-
-            result_rows.append([
-                grade,
-                subject,
-                quarter,
-                item["bob"],
-                item["bolim"],
-                item["mavzu"],
-                km
-            ])
-    output_file = (
-        f"temp/{grade}_{subject}_AI.xlsx"
-    )
-
-    create_result_excel(
-        result_rows,
-        output_file
-    )
-
-    await message.answer_document(
-        FSInputFile(output_file),
-        caption=(
-            f"✅ Tayyor\n\n"
-            f"📚 Boblar: {len(bobs)}\n"
-            f"📖 Bo'limlar: {len(bolims)}\n"
-            f"🗂 Mavzular: {len(mapping)}"
         )
-    )
-    try:
-        os.remove(input_file)
-    except:
-        pass
+    except Exception as ex:
+        await call.message.answer(f"Excel xato: {ex}")
 
-    try:
-        os.remove(output_file)
-    except:
-        pass
-    await state.clear()
 
-    await message.answer(
-        "🤖 AI Generator yakunlandi"
-    )
+def _age_group(grade):
+    m = {"1":"6-7","2":"7-8","3":"8-9","4":"9-10","5":"10-11",
+         "6":"11-12","7":"12-13","8":"13-14","9":"14-15","10":"15-16","11":"16-17"}
+    return m.get(str(grade), "10-11")
 
-@dp.message(AIGeneratorState.select_grade)
-async def select_grade(
-    message: Message,
-    state: FSMContext
-):
-    await state.update_data(
-        grade=message.text
-    )
 
-    await state.set_state(
-        AIGeneratorState.select_subject
-    )
+async def _export_to_excel(selected, topics_list, grade, subject):
+    """Saqlangan savollarni Excel ga chiqarish"""
+    import openpyxl, io
+    from openpyxl.styles import Font, PatternFill, Alignment
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "SAVOLLAR"
 
-    cur.execute("""
-        SELECT name
-        FROM ai_subjects
-        ORDER BY name
-    """)
+    headers = [
+        "topic_code", "kichik_mavzu", "difficulty", "question_type",
+        "question", "option_a", "option_b", "option_c", "option_d",
+        "correct_answer", "explanation", "image_url", "time_limit"
+    ]
 
-    subjects = cur.fetchall()
+    # Header
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="2E86AB")
+        cell.alignment = Alignment(horizontal="center")
 
-    conn.close()
+    conn = db(); cur = conn.cursor()
+    row_num = 2
 
-    keyboard = []
+    diff_colors = {
+        "oson": "C8F7C5", "o'rta": "FFF3CD",
+        "qiyin": "FFD7C4", "murakkab": "F5C6CB"
+    }
 
-    keyboard.append([
-        KeyboardButton(text="🔍 Qidirish"),
-        KeyboardButton(text="➕ Yangi fan")
-    ])
+    for code in selected:
+        info = topics_list.get(code, {})
+        kichik = info.get("kichik", code)
 
-    row = []
-
-    for subject in subjects:
-        row.append(
-            KeyboardButton(text=subject[0])
-        )
-
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-
-    if row:
-        keyboard.append(row)
-    
-    kb = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
-
-    await message.answer(
-        "📖 Fanni tanlang yoki yarating",
-        reply_markup=kb
-    )
-
-@dp.message(
-    AIGeneratorState.select_subject,
-    F.text == "🔍 Qidirish"
-)
-async def search_subject_start(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.search_subject
-    )
-
-    await message.answer(
-        "🔍 Fan nomini kiriting"
-    )
-
-@dp.message(
-    AIGeneratorState.search_subject
-)
-async def search_subject(
-    message: Message,
-    state: FSMContext
-):
-    text = message.text.strip()
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT name
-        FROM ai_subjects
-        WHERE LOWER(name) LIKE LOWER(%s)
-        ORDER BY name
-        LIMIT 20
-    """, (f"%{text}%",))
-
-    rows = cur.fetchall()
-
-    conn.close()
-
-    if not rows:
-        await message.answer(
-            "❌ Fan topilmadi"
-        )
-        return
-
-    keyboard = []
-
-    for row in rows:
-        keyboard.append([
-            KeyboardButton(text=row[0])
-        ])
-
-    kb = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
-
-    await state.set_state(
-        AIGeneratorState.select_subject
-    )
-
-    await message.answer(
-        "📖 Topilgan fanlar",
-        reply_markup=kb
-    )
-
-@dp.message(
-    AIGeneratorState.select_subject,
-    F.text == "➕ Yangi fan"
-)
-async def add_subject_start(
-    message: Message,
-    state: FSMContext
-):
-    await state.set_state(
-        AIGeneratorState.add_subject
-    )
-
-    await message.answer(
-        "Yangi fan nomini yuboring"
-    )
-
-@dp.message(
-    AIGeneratorState.add_subject
-)
-async def add_subject_save(
-    message: Message,
-    state: FSMContext
-):
-    subject_name = message.text.strip()
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
-    try:
         cur.execute("""
-            INSERT INTO ai_subjects(name)
-            VALUES(%s)
-        """, (subject_name,))
+            SELECT question, option_a, option_b, option_c, option_d,
+                   correct_answer, explanation, image_url, time_limit,
+                   difficulty, question_type
+            FROM generated_tests
+            WHERE topic_code=%s
+            ORDER BY difficulty, id
+        """, (code,))
+        rows = cur.fetchall()
 
-        conn.commit()
+        for r in rows:
+            q, a, b, c, d, correct, expl, img, tl, diff, qtype = r
 
-        await message.answer(
-            f"✅ {subject_name} qo'shildi"
-        )
+            ws.cell(row_num, 1).value = code
+            ws.cell(row_num, 2).value = kichik
+            ws.cell(row_num, 3).value = diff
+            ws.cell(row_num, 4).value = qtype
+            ws.cell(row_num, 5).value = q
+            ws.cell(row_num, 6).value = a
+            ws.cell(row_num, 7).value = b
+            ws.cell(row_num, 8).value = c
+            ws.cell(row_num, 9).value = d
+            ws.cell(row_num, 10).value = correct
+            ws.cell(row_num, 11).value = expl
+            ws.cell(row_num, 12).value = img
+            ws.cell(row_num, 13).value = tl
 
-    except:
-        await message.answer(
-            "❌ Bu fan allaqachon mavjud"
-        )
+            # Rang — qiyinlikka qarab
+            color = diff_colors.get(diff, "FFFFFF")
+            for col in range(1, 14):
+                ws.cell(row_num, col).fill = PatternFill("solid", fgColor=color)
 
-    finally:
-        conn.close()
+            # Rasmli savolni belgilash
+            if img:
+                ws.cell(row_num, 12).font = Font(bold=True, color="FF0000")
 
-    await state.set_state(
-        AIGeneratorState.select_subject
-    )
+            row_num += 1
 
-@dp.message(AIGeneratorState.select_subject)
-async def select_subject(
-    message: Message,
-    state: FSMContext
-):
-    await state.update_data(
-        subject=message.text
-    )
+        # Mavzular orasiga bo'sh qator
+        row_num += 1
 
-    await state.set_state(
-        AIGeneratorState.wait_file
-    )
+    cur.close(); conn.close()
 
-    await message.answer(
-        "📄 Excel fayl yuboring",
-        reply_markup=get_main_keyboard("Admin")
-    )
+    # Ustun kengliklari
+    ws.column_dimensions['A'].width = 25
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['E'].width = 50
+    for col in ['F','G','H','I','J']:
+        ws.column_dimensions[col].width = 20
+    ws.column_dimensions['K'].width = 40
+    ws.column_dimensions['L'].width = 25
+
+    # Rasmlar varag'i — faqat rasmli savollar
+    ws2 = wb.create_sheet("RASMLI SAVOLLAR")
+    ws2.append(["image_url", "kichik_mavzu", "savol"])
+
+    conn2 = db(); cur2 = conn2.cursor()
+    for code in selected:
+        info = topics_list.get(code, {})
+        kichik = info.get("kichik", code)
+        cur2.execute("""
+            SELECT image_url, question FROM generated_tests
+            WHERE topic_code=%s AND image_url IS NOT NULL
+            ORDER BY id
+        """, (code,))
+        for img_url, q in cur2.fetchall():
+            ws2.append([img_url, kichik, q])
+    cur2.close(); conn2.close()
+
+    ws2['A1'].font = Font(bold=True)
+    ws2['B1'].font = Font(bold=True)
+    ws2['C1'].font = Font(bold=True)
+    ws2.column_dimensions['A'].width = 30
+    ws2.column_dimensions['B'].width = 30
+    ws2.column_dimensions['C'].width = 60
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
+    """Claude API orqali 40 ta savol yaratish"""
+    import aiohttp
+
+    def diff(n):
+        if n <= 10: return "oson"
+        elif n <= 20: return "o'rta"
+        elif n <= 30: return "qiyin"
+        else: return "murakkab"
+
+    def tl(n):
+        if n <= 10: return 60
+        elif n <= 20: return 55
+        elif n <= 30: return 50
+        else: return 50
+
+    def eng_pct(n):
+        if n <= 10: return "5-10%"
+        elif n <= 20: return "20-30%"
+        elif n <= 30: return "50%"
+        else: return "70-80%"
+
+    # Yosh guruhi
+    age = _age_group(grade)
+
+    # Fan tiliga qarab til rejimi
+    is_lang_subject = any(x in subject.upper() for x in ["INGLIZ", "RUS", "ENGLISH"])
+
+    if is_lang_subject:
+        lang_note = f"""TIL QOIDASI (Ingliz tili fani uchun):
+- OSON: O'zbekcha savol, ingliz so'zlar [en]...[/en] ichida (5-10%)
+- O'RTA: Aralash, ingliz so'zlar teg ichida (25%)
+- QIYIN: Ko'proq ingliz teg bilan (50%)
+- MURAKKAB: Asosan ingliz teg bilan (75%)
+- O'zbek so'zlar HECH QACHON teg ichida bo'lmasin"""
+    else:
+        lang_note = "Barcha savol va javoblar o'zbekcha bo'lsin. Atamalar bo'lsa izohlang."
+
+    prompt = f"""Sen {grade}-sinf ({age} yosh) {subject} fani bo'yicha test yaratasang.
+Mavzu: {mavzu} — {kichik}
+
+VAZIFA: 20 ta test savoli yarat (har darajadan 5 ta):
+
+DARAJALAR:
+1. oson (5 ta, 60s): Eng oddiy — rasm/narsa/so'zni tanish. {grade}-sinf o'quvchisi uchun tushunarli.
+2. o'rta (5 ta, 55s): O'rta qiyinlik — qo'llash, to'ldirish.
+3. qiyin (5 ta, 50s): Qiyinroq — tushunish, tahlil.
+4. murakkab (5 ta, 50s): Eng qiyin — sintez, amaliy qo'llash.
+
+{lang_note}
+
+QOIDA:
+- correct: to'g'ri javobning aynan matni (A/B/C/D emas!)
+- Savol ichida javob bo'lmasin (qavsda ham)
+- Qisqa, aniq, yosh ({age})ga mos
+- has_image: 20 savoldan 6 tasida true (rasmli savol)
+- question_type: asosan "single_choice", 2 tasida "write_answer" (oson 1 ta, o'rta 1 ta)
+- write_answer da option a/b/c/d bo'sh (""), correct = to'g'ri qisqa javob matni
+
+JSON FORMATI (boshqa hech narsa yozma):
+[
+{{"question":"...","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
+...
+]"""
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+    }
+
+    body = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 4000,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers, json=body, timeout=aiohttp.ClientTimeout(total=120)
+        ) as resp:
+            data = await resp.json()
+            text = data["content"][0]["text"]
+
+            # JSON ni tozalab olish
+            import re
+            match = re.search(r'\[.*\]', text, re.DOTALL)
+            if not match:
+                raise ValueError("JSON topilmadi")
+
+            questions = json.loads(match.group())
+
+            # Fieldlarni to'ldirish
+            img_counter = 0
+            for i, q in enumerate(questions):
+                q.setdefault("difficulty", "oson")
+                q.setdefault("time_limit", 60)
+                q.setdefault("question_type", "single_choice")
+                q.setdefault("has_image", False)
+
+                # Rasmli savol uchun image_url
+                if q.get("has_image"):
+                    img_counter += 1
+                    q["image_url"] = f"{topic_code}-{img_counter}"
+                else:
+                    q["image_url"] = None
+
+                # write_answer uchun javoblarni tozalash
+                if q.get("question_type") == "write_answer":
+                    q["a"] = q["b"] = q["c"] = q["d"] = ""
+
+            return questions
+
+
+# ─────────────────────────────────────────
+# CALLBACK HANDLER
+# ─────────────────────────────────────────
+async def handle_gen_callback(call, user_id):
+    data = call.data
+
+    if data == "gen_start":
+        await call.answer()
+        await show_gen_start(call.message, user_id)
+
+    elif data.startswith("gen_grade:"):
+        grade = data[10:]
+        await call.answer()
+        await show_subjects(call, user_id, grade)
+
+    elif data.startswith("gen_subj:"):
+        subject = data[9:]
+        await call.answer()
+        await show_topics(call, user_id, subject)
+
+    elif data == "gen_subj_back":
+        state = gen_state.get(user_id, {})
+        grade = state.get("grade", "1")
+        await call.answer()
+        await show_subjects(call, user_id, grade)
+
+    elif data.startswith("gen_toggle:"):
+        code = data[11:]
+        await toggle_topic(call, user_id, code)
+
+    elif data == "gen_clear":
+        state = gen_state.get(user_id, {})
+        state["selected"] = []
+        gen_state[user_id] = state
+        grade = state.get("grade", "1")
+        subject = state.get("subject", "")
+        await _render_topics(call.message, user_id, [], grade, subject, edit=True)
+        await call.answer("✅ Tozalandi")
+
+    elif data.startswith("gen_page:"):
+        page = int(data[9:])
+        state = gen_state.get(user_id, {})
+        state["page"] = page
+        gen_state[user_id] = state
+        selected = state.get("selected", [])
+        grade = state.get("grade", "1")
+        subject = state.get("subject", "")
+        await _render_topics(call.message, user_id, selected, grade, subject, edit=True)
+        await call.answer()
+
+    elif data == "gen_filter_toggle":
+        state = gen_state.get(user_id, {})
+        state["filter"] = "all" if state.get("filter") == "empty" else "empty"
+        state["page"] = 0
+        gen_state[user_id] = state
+        selected = state.get("selected", [])
+        grade = state.get("grade", "1")
+        subject = state.get("subject", "")
+        await _render_topics(call.message, user_id, selected, grade, subject, edit=True)
+        await call.answer()
+
+    elif data == "gen_run":
+        await run_generator(call, user_id)
