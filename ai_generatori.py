@@ -108,9 +108,9 @@ async def _render_topics(message, user_id, selected, grade, subject, edit=False)
         f"🔴 Bo'sh: {empty_cnt} ta | 📊 Jami: {all_cnt} ta\n"
         f"✅ Tanlangan: {len(selected)} ta\n"
         f"⚠️ Max 15 ta tanlang\n\n"
-        f"{'🔴 Faqat bo\'sh mavzular' if filt=='empty' else '📋 Barcha mavzular'} "
-        f"({page*PAGE_SIZE+1}-{min((page+1)*PAGE_SIZE, total)}/{total}):"
     )
+    filter_label = "🔴 Faqat bo'sh mavzular" if filt == "empty" else "📋 Barcha mavzular"
+    text += f"{filter_label} ({page*PAGE_SIZE+1}-{min((page+1)*PAGE_SIZE, total)}/{total}):"
 
     rows = []
     for code, info in page_items:
