@@ -1235,9 +1235,11 @@ async def handle_all(
 
         return
 
-    elif message.text == "🖼 Rasmlar boshqaruvi":
-        from image_admin import show_image_panel
-        await show_image_panel(message)
+    elif message.text == "🤖 AI Generator":
+        if user_id not in ADMINS:
+            return
+        from ai_generator import show_gen_start
+        await show_gen_start(message, user_id)
         return
 
     elif message.text == "📚 DTS boshqaruvi":
@@ -2466,6 +2468,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🎮 Yaxshi dam oling!\n"
             "Ruhiy kuch to'plash ham o'rganish! 💚"
         )
+        return
+
+    if call.data.startswith("gen_"):
+        from ai_generator import handle_gen_callback
+        await handle_gen_callback(call, user_id)
         return
 
     if call.data.startswith("sts_"):
