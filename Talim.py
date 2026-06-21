@@ -1235,6 +1235,29 @@ async def handle_all(
 
         return
 
+    elif message.text == "🧪 Test sinovi":
+        if user_id not in ADMINS:
+            return
+        from test_sinovi import show_sinov_start
+        await show_sinov_start(message, user_id)
+        return
+
+    elif message.text == "👥 Foydalanuvchilar":
+        if user_id not in ADMINS:
+            return
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT COUNT(*) FROM users")
+        total = cur2.fetchone()[0]
+        cur2.execute("SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY COUNT(*) DESC")
+        roles = cur2.fetchall()
+        cur2.close(); conn2.close()
+        text = f"👥 Foydalanuvchilar: {total} ta\n\n"
+        for role, cnt in roles:
+            text += f"• {role}: {cnt} ta\n"
+        await message.answer(text)
+        return
+
     elif message.text == "🤖 AI Generator":
         if user_id not in ADMINS:
             return
@@ -2477,6 +2500,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🎮 Yaxshi dam oling!\n"
             "Ruhiy kuch to'plash ham o'rganish! 💚"
         )
+        return
+
+    if call.data.startswith("sinov_"):
+        from test_sinovi import handle_sinov_callback
+        await handle_sinov_callback(call, user_id)
         return
 
     if call.data.startswith("ts_"):
