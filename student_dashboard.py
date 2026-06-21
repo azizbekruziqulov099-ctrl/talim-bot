@@ -371,47 +371,19 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         text = "\n".join(lines)
 
-        # ── KECHKI REJIM (22-6) ──
-        is_night = hour >= 22 or hour < 6
-        is_weekend = weekday >= 5  # Shanba, Yakshanba
+        # Vaqt/kun holati
+        is_night   = hour >= 22 or hour < 6
+        is_weekend = weekday >= 5
 
+        # Salomlashishga qo'shimcha
         if is_night:
-            night_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="📖 Mavzu o'rganaman", callback_data="lesson_continue"),
-                    InlineKeyboardButton(text="🧪 Test ishlaman",    callback_data="tset_start_quick"),
-                ],
-                [InlineKeyboardButton(text="😴 Yo'q, uxlayman", callback_data="go_sleep")]
-            ])
-            return (
-                f"🌙 Kech bo'ldi, {name}!\n\n"
-                f"Uxlash vaqti — sog'liq muhim 💪\n\n"
-                f"Baribir bir narsa qilmoqchimisiz?"
-            ), night_kb
+            lines.insert(1, "🌙 Kech bo'ldi! Uxlash vaqti yaqinlashmoqda.")
+        elif is_weekend:
+            lines.insert(1, "🏖 Bugun dam olish kuni! Yaxshi dam oling.")
 
-        if is_weekend:
-            from progress import get_next_topic, get_repeat_topics
-            next_t  = get_next_topic(user_id, grade)
-            repeats = get_repeat_topics(user_id)
+        text = "\n".join(lines)
 
-            extra = ""
-            if repeats:
-                extra = f"\n🔁 {len(repeats)} ta mavzu takrorlash kutmoqda!"
-
-            weekend_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="📖 Mavzu o'rganaman", callback_data="lesson_continue"),
-                    InlineKeyboardButton(text="🧪 Test ishlaman",    callback_data="tset_start_quick"),
-                ],
-                [InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest")]
-            ])
-            return (
-                f"🏖 Bugun dam olish kuni, {name}!\n\n"
-                f"Ruhiy kuch to'plang 😊{extra}\n\n"
-                f"Baribir bir narsa qilmoqchimisiz?"
-            ), weekend_kb
-
-        # Tugmalar — oddiy
+        # Tugmalar — har doim bir xil
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
