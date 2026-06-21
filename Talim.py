@@ -1019,6 +1019,11 @@ async def handle_all(
             except Exception:
                 pass
 
+    if message.text == "⚙️ Sozlamalar":
+        from student_settings import show_settings
+        await show_settings(message, user_id)
+        return
+
     if message.text == "🧪 Bilimni sinash":
         await message.answer(
             "🧪 Bilimni sinash\n\nQanday test ishlaysiz?",
@@ -1106,6 +1111,39 @@ async def handle_all(
 
     if user_id not in user_locks:
         user_locks[user_id] = asyncio.Lock()
+
+    # SOZLAMALAR HOLATLARI
+    if user_state.get(user_id) == "change_name":
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2 = conn2.cursor()
+        cur2.execute("UPDATE users SET full_name=%s WHERE user_id=%s", (message.text, user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        user_state[user_id] = None
+        await message.answer(f"✅ Ism o'zgartirildi: {message.text}")
+        return
+
+    if user_state.get(user_id) == "change_bdate":
+        try:
+            from datetime import datetime
+            bdate = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
+            conn2 = psycopg2.connect(DATABASE_URL)
+            cur2 = conn2.cursor()
+            cur2.execute("UPDATE users SET birth_date=%s WHERE user_id=%s", (bdate, user_id))
+            conn2.commit(); cur2.close(); conn2.close()
+            user_state[user_id] = None
+            await message.answer(f"✅ Tug'ilgan kun saqlandi: {message.text}")
+        except Exception:
+            await message.answer("❌ Format xato! Masalan: 15.03.2015")
+        return
+
+    if user_state.get(user_id) == "change_school_settings":
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2 = conn2.cursor()
+        cur2.execute("UPDATE users SET school=%s WHERE user_id=%s", (message.text, user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        user_state[user_id] = None
+        await message.answer(f"✅ Maktab saqlandi: {message.text}")
+        return
 
     # REGISTRATSIYA
     if user_state.get(user_id) and user_state.get(user_id) not in ("text_answer",):
@@ -2423,6 +2461,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🎮 Yaxshi dam oling!\n"
             "Ruhiy kuch to'plash ham o'rganish! 💚"
         )
+        return
+
+    if call.data.startswith("sts_"):
+        from student_settings import handle_settings_callback
+        await handle_settings_callback(call, user_id, user_state)
         return
 
     if call.data == "img_panel":
