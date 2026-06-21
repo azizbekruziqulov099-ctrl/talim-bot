@@ -445,8 +445,7 @@ async def _show_result(user_id, message, result_text):
     done    = correct + wrong
     total   = len(session["questions"])
 
-    bar = "🟩" * correct + "🟥" * wrong + "⬜" * (total - done)
-    full_text = f"{result_text}\n\n{bar}\n✅ {correct}  ❌ {wrong}  📊 {done}/{total}"
+    full_text = result_text
 
     try:
         if board_msg_id:
@@ -621,14 +620,6 @@ async def finish_test(user_id, message=None):
 
     board_chat_id = session.get("board_chat_id")
     board_msg_id  = session.get("board_msg_id")
-    bar_msg_id    = session.get("bar_msg_id")
-
-    # Progress bar xabarini o'chirish
-    if bar_msg_id and board_chat_id:
-        try:
-            await bot.delete_message(board_chat_id, bar_msg_id)
-        except Exception:
-            pass
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home_dashboard")
