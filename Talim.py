@@ -2219,13 +2219,28 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         row = cur2.fetchone()
         cur2.close(); conn2.close()
         role = row[0] if row else "🧒 O'quvchi"
+
+        # Eski xabarlarni o'chirish
+        try:
+            for i in range(call.message.message_id, call.message.message_id - 20, -1):
+                try:
+                    await bot.delete_message(call.message.chat.id, i)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         try:
             from student_dashboard import build_dashboard
             text, kb = await build_dashboard(call.from_user.id)
-            await call.message.answer(text, reply_markup=kb)
+            await bot.send_message(call.message.chat.id, text, reply_markup=kb)
         except Exception:
             pass
-        await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard(role))
+        await bot.send_message(
+            call.message.chat.id,
+            "🏠 Bosh menyu",
+            reply_markup=get_main_keyboard(role)
+        )
         return
 
     if call.data == "go_home":
@@ -2242,19 +2257,20 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         )
         return
 
-    if call.data == "lesson_continue":
+    if call.data in ("lesson_continue", "lesson_continue_force"):
         from datetime import datetime
-        now     = datetime.now()
-        hour    = now.hour
-        weekday = now.weekday()
+        now        = datetime.now()
+        hour       = now.hour
+        weekday    = now.weekday()
         is_night   = hour >= 22 or hour < 6
         is_weekend = weekday >= 5
+        forced     = call.data == "lesson_continue_force"
 
-        if is_night:
-            await call.answer("😴 Tun vaqti — uxlash vaqti!", show_alert=True)
+        if is_night and not forced:
+            await call.answer("🌙 Tun vaqti! Uxlash sog'liq uchun muhim.", show_alert=True)
             return
 
-        if is_weekend:
+        if is_weekend and not forced:
             await call.answer()
             await call.message.answer(
                 "🏖 Bugun dam olish kuni!\n\nBaribir dars o'rganasizmi?",
@@ -2265,12 +2281,6 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             )
             return
 
-        await call.answer()
-        await call.message.delete()
-        await open_teacher_lesson(call.message, _user_id=call.from_user.id)
-        return
-
-    if call.data == "lesson_continue_force":
         await call.answer()
         try:
             await call.message.delete()
@@ -3112,49 +3122,20 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
         return
 
-    if call.data == "tset_start_force":
-        await call.answer()
-        try:
-            await call.message.delete()
-        except Exception:
-            pass
-        conn2 = psycopg2.connect(DATABASE_URL)
-        cur2  = conn2.cursor()
-        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-        row = cur2.fetchone()
-        grade = row[0] if row else "5"
-        cur2.execute("""
-            SELECT question, option_a, option_b, option_c, option_d,
-                   correct_answer, explanation, question_type, is_latex,
-                   image_url, audio_text, language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
-            )
-            AND question IS NOT NULL AND option_a IS NOT NULL
-            ORDER BY RANDOM() LIMIT 20
-        """, (grade,))
-        tests = cur2.fetchall()
-        cur2.close(); conn2.close()
-        if not tests:
-            await call.answer("❌ Testlar topilmadi!", show_alert=True)
-            return
-        await start_test(user_id, tests, call.message)
-        return
-
-    if call.data == "tset_start_quick":
+    if call.data in ("tset_start_quick", "tset_start_force"):
         from datetime import datetime
-        now     = datetime.now()
-        hour    = now.hour
-        weekday = now.weekday()
+        now        = datetime.now()
+        hour       = now.hour
+        weekday    = now.weekday()
         is_night   = hour >= 22 or hour < 6
         is_weekend = weekday >= 5
+        forced     = call.data == "tset_start_force"
 
-        if is_night:
-            await call.answer("😴 Tun vaqti — uxlash vaqti!", show_alert=True)
+        if is_night and not forced:
+            await call.answer("🌙 Tun vaqti! Uxlash sog'liq uchun muhim.", show_alert=True)
             return
 
-        if is_weekend:
+        if is_weekend and not forced:
             await call.answer()
             await call.message.answer(
                 "🏖 Bugun dam olish kuni!\n\nBaribir test ishlaysizmi?",
