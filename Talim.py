@@ -2425,6 +2425,77 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
         )
         return
 
+    if call.data == "img_panel":
+        from image_admin import show_image_panel
+        await call.answer()
+        await show_image_panel(call.message)
+        return
+
+    if call.data.startswith("img_group:"):
+        from image_admin import show_image_group
+        await call.answer()
+        prefix = call.data[10:]
+        await show_image_group(call, prefix)
+        return
+
+    if call.data.startswith("img_all:"):
+        from image_admin import show_all_images
+        await call.answer()
+        offset = int(call.data[8:])
+        await show_all_images(call, offset)
+        return
+
+    if call.data.startswith("img_view:"):
+        from image_admin import view_image
+        name = call.data[9:]
+        await view_image(call, name)
+        return
+
+    if call.data.startswith("img_del:"):
+        from image_admin import delete_image
+        name = call.data[8:]
+        await delete_image(call, name)
+        return
+
+    if call.data.startswith("img_del_group:"):
+        from image_admin import delete_group
+        prefix = call.data[14:]
+        await delete_group(call, prefix)
+        return
+
+    if call.data == "img_dups":
+        from image_admin import show_duplicates
+        await show_duplicates(call)
+        return
+
+    if call.data == "img_del_dups":
+        from image_admin import delete_duplicates
+        await delete_duplicates(call)
+        return
+
+    if call.data == "img_clear_all":
+        await call.answer()
+        await call.message.edit_text(
+            "⚠️ Barcha rasmlarni o'chirasizmi?\n\nBu amalni qaytarib bo'lmaydi!",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Ha, o'chir", callback_data="img_clear_confirm"),
+                 InlineKeyboardButton(text="❌ Yo'q", callback_data="img_panel")]
+            ])
+        )
+        return
+
+    if call.data == "img_clear_confirm":
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2 = conn2.cursor()
+        cur2.execute("DELETE FROM images")
+        cnt = cur2.rowcount
+        conn2.commit()
+        cur2.close(); conn2.close()
+        await call.answer(f"✅ {cnt} ta rasm o'chirildi!", show_alert=True)
+        from image_admin import show_image_panel
+        await show_image_panel(call.message)
+        return
+
     if call.data == "go_home_dashboard":
         await call.answer()
         conn2 = psycopg2.connect(DATABASE_URL)
