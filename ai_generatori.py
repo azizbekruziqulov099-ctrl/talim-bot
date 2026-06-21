@@ -421,51 +421,86 @@ async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
     is_lang_subject = any(x in subject.upper() for x in ["INGLIZ", "RUS", "ENGLISH"])
 
     if is_lang_subject:
-        lang_note = f"""TIL QOIDASI (Ingliz tili fani uchun):
-- OSON: O'zbekcha savol, ingliz so'zlar [en]...[/en] ichida (5-10%)
-- O'RTA: Aralash, ingliz so'zlar teg ichida (25%)
-- QIYIN: Ko'proq ingliz teg bilan (50%)
-- MURAKKAB: Asosan ingliz teg bilan (75%)
-- O'zbek so'zlar HECH QACHON teg ichida bo'lmasin"""
+        lang_note = """TIL QOIDASI — DIQQAT:
+
+TO'G'RI MISOL:
+  oson: "Qaysi bola [en]tall[/en]?"
+  o'rta: "Bu rasmda kim [en]smiling[/en]?"
+  qiyin: "[en]Who has curly hair?[/en]"
+  murakkab: "[en]What does the girl look like?[/en]"
+
+XATO MISOL (BUNDAY QILMA):
+  ❌ "[en]Describe[/en]: The [en]boy looks ___.[/en]"
+  ❌ "[en]What color[/en] is the [en]shirt[/en]?"
+
+QOIDA:
+  OSON: O'zbek savol + 1-2 ingliz so'z [en]teg[/en] bilan
+  O'RTA: Aralash + ingliz so'z/ibora [en]teg[/en] bilan
+  QIYIN: Butun ingliz jumla bitta teg: [en]Who has curly hair?[/en]
+  MURAKKAB: Butun ingliz jumla bitta teg: [en]What does she look like?[/en]
+  O'ZBEK SO'Z HECH QACHON TEG ICHIDA BO'LMASIN!"""
     else:
         lang_note = "Barcha savol va javoblar o'zbekcha bo'lsin. Atamalar bo'lsa izohlang."
 
+    # Darajaga mos qiyinlik tavsifi
+    grade_int = int(grade) if str(grade).isdigit() else 1
+
+    if grade_int <= 2:
+        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — boshlang'ich):
+- oson (5 ta, 60s): Rasmga qarab bitta so'z tanish. Eng oddiy. Masalan: "Qaysi bola baland?"
+- o'rta (5 ta, 55s): Oddiy jumla to'ldirish yoki tarjima. Masalan: "Tom ... bo'yli." 
+- qiyin (5 ta, 50s): 2-3 so'zli savol, tushunish kerak. Masalan: "Who has long hair?"
+- murakkab (5 ta, 50s): Qisqa gap tuzish yoki tanlash. Masalan: "What does she look like?"
+ESLATMA: {grade}-sinf uchun MURAKKAB ham oddiy bo'lsin — faqat 1-2 ta tushuncha birlashtirilsin!"""
+    elif grade_int <= 5:
+        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — o'rta bosqich):
+- oson (5 ta, 60s): Asosiy tushunchani aniqlash
+- o'rta (5 ta, 55s): Qo'llash, to'ldirish, oddiy tahlil
+- qiyin (5 ta, 50s): Qoidani qo'llash, tushunish
+- murakkab (5 ta, 50s): Amaliy vaziyat, sintez"""
+    else:
+        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — yuqori bosqich):
+- oson (5 ta, 60s): Asosiy bilim
+- o'rta (5 ta, 55s): Tushunish va qo'llash
+- qiyin (5 ta, 50s): Tahlil va baholash
+- murakkab (5 ta, 50s): Sintez, tanqidiy fikrlash"""
+
     prompt = f"""Siz {grade}-sinf ({age} yosh) {subject} fani o'qituvchisisiz.
+Fan: {subject} | Mavzu: {mavzu} | Kichik mavzu: {kichik}
 
-Fan: {subject}
-Mavzu: {mavzu}
-Kichik mavzu: {kichik}
-
-VAZIFA: Aynan shu kichik mavzu bo'yicha 20 ta test savoli yarat.
-
-DARAJALAR (har biridan 5 ta):
-- oson: Eng oddiy. Rasmga qarab bitta so'z/narsa/rangni tanish. time_limit: 60
-- o'rta: O'rtacha. Jumlani to'ldirish, oddiy tarjima. time_limit: 55
-- qiyin: Qiyinroq. Qoidani qo'llash, tushunish. time_limit: 50
-- murakkab: Eng qiyin. Amaliy qo'llash, sintez. time_limit: 50
+{level_desc}
 
 {lang_note}
 
-QATIY TAQIQLAR (BUZILSA YAROQSIZ):
-❌ Savol yoki javob ichida to'g'ri javobni ko'rsatma — na qavsda, na boshqa shaklda!
-   XATO: "How many balls? (3)"  TO'G'RI: "How many balls are there?"
-   XATO: "Fill in: sky is ___ (blue)"  TO'G'RI: "Fill in: The sky is ___."
-❌ Mavzuga aloqasiz savol yozma — faqat "{kichik}" haqida!
-❌ Inglizcha so'zni tegsiz yozma — faqat [en]so'z[/en] ichida!
-❌ O'zbekcha so'zni teg ichiga olma!
+SAVOL VA JAVOB YOZISH QOIDALARI:
 
-QOIDALAR:
-✅ correct = to'g'ri javobning AYNAN matni (A/B/C/D emas!)
-✅ 4 javob mantiqan bir-biriga o'xshash bo'lsin, faqat bittasi to'g'ri
-✅ explanation: nima uchun shu javob to'g'ri — qisqa izoh
-✅ 20 savoldan 6 tasida has_image: true (rasmli)
-✅ 2 tasida question_type: "write_answer" — biri oson, biri o'rta
-✅ write_answer da: a="", b="", c="", d="", correct = qisqa to'g'ri javob
+1. INGLIZ SO'ZLAR:
+   - Savoldagi ingliz so'z/jumla: bitta butun teg ichida
+     XATO: "[en]What color[/en] is the [en]shirt[/en]?"
+     TO'G'RI: "[en]What color is the shirt?[/en]"  yoki  "Qaysi rang [en]shirt[/en]?"
+   - Javoblardagi ingliz so'z ham teg ichida: "[en]tall[/en]", "[en]brown hair[/en]"
+   - O'zbek so'z HECH QACHON teg ichida bo'lmasin!
 
-FAQAT JSON QAYTARGIN (izoh, markdown, boshqa matn yozma):
+2. SAVOL SIFATI:
+   - Savol ichida to'g'ri javob bo'lmasin (qavsda ham emas!)
+     XATO: "Fill in: The sky is ___ (blue)"
+     TO'G'RI: "Fill in: The sky is ___."
+   - Faqat "{kichik}" mavzusiga oid savol yoz!
+   - 4 javob bir-biriga o'xshash bo'lsin, faqat 1 tasi to'g'ri
+   - Mazmunli, real hayotga oid bo'lsin
+
+3. CORRECT MAYDONI:
+   - To'g'ri javobning AYNAN matni (A/B/C/D emas!)
+   - Ingliz bo'lsa teg bilan: "[en]tall[/en]"
+
+4. RASMLI VA YOZMA:
+   - 6 tasida has_image: true (oson va o'rta darajada)
+   - 2 tasida write_answer (oson 1 ta, o'rta 1 ta) — javob qisqa bo'lsin
+
+FAQAT JSON (boshqa hech narsa yozma, markdown ham emas):
 [
-{{"question":"...","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
-...
+{{"question":"savol","a":"javob A","b":"javob B","c":"javob C","d":"javob D","correct":"to'g'ri javob matni","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
+{{"question":"savol","a":"","b":"","c":"","d":"","correct":"qisqa javob","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}}
 ]"""
 
 
