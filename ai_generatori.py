@@ -195,13 +195,8 @@ async def run_generator(call, user_id):
         return
 
     await call.answer()
-    status_msg = await call.message.answer(
-        f"🤖 AI ishlamoqda...\n"
-        f"📚 {len(selected)} ta mavzu × 20 savol\n"
-        f"📊 Jami: {len(selected)*20} ta savol\n"
-        f"⏳ Taxminiy vaqt: {len(selected)*20} soniya\n\n"
-        f"0/{len(selected)} ✅"
-    )
+    # Shablon rejimi — AI emas, bo'sh shablon
+    await _generate_template(call, user_id, selected, topics_list, grade, subject)
 
     conn = db(); cur = conn.cursor()
     total_saved = 0
@@ -279,14 +274,120 @@ async def run_generator(call, user_id):
         await call.message.answer_document(
             BufferedInputFile(excel_buf, filename=f"savol_{grade}sinf_{subject[:10]}.xlsx"),
             caption=(
-                f"📊 {total_saved} ta savol\n"
-                f"🖼 Rasmli savollar belgilangan\n\n"
-                f"image_url ustunidagi nomlar bilan\n"
-                f"rasm yasab split: bilan yuboring!"
+                "📋 Shablon tayyor!\n\n"
+                + f"📚 {len(selected)} ta mavzu × 20 qator\n"
+                + f"📊 Jami: {len(selected)*20} ta qator\n\n"
+                + "✏️ Savol, javob, izohlarni to'ldiring\n"
+                + "📥 Keyin: Test import qilish"
             )
         )
     except Exception as ex:
         await call.message.answer(f"Excel xato: {ex}")
+
+
+async def _generate_template(call, user_id, selected, topics_list, grade, subject):
+    import openpyxl, io
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from aiogram.types import BufferedInputFile
+
+    wb = openpyxl.Workbook()
+    ws1 = wb.active
+    ws1.title = "TESTLAR"
+
+    headers = [
+        "topic_code","difficulty","situation","question",
+        "option_a","option_b","option_c","option_d",
+        "correct_answer","explanation","question_type",
+        "is_latex","image_url","audio_text","language",
+        "life_level","age_group","time_limit"
+    ]
+    for col, h in enumerate(headers, 1):
+        cell = ws1.cell(row=1, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="2E86AB")
+        cell.alignment = Alignment(horizontal="center")
+
+    diff_colors = {
+        "oson": "C8F7C5", "o'rta": "FFF3CD",
+        "qiyin": "FFD7C4", "murakkab": "F5C6CB"
+    }
+    diff_times = {"oson": 60, "o'rta": 55, "qiyin": 50, "murakkab": 45}
+    difficulties = ["oson"]*5 + ["o'rta"]*5 + ["qiyin"]*5 + ["murakkab"]*5
+
+    conn = db(); cur = conn.cursor()
+    row_num = 2
+
+    for code in selected:
+        cur.execute("SELECT grade FROM dts_tree WHERE topic_code=%s LIMIT 1", (code,))
+        r = cur.fetchone()
+        g = r[0] if r else grade
+        age = _age_group(g)
+
+        for i, diff in enumerate(difficulties):
+            n = i + 1
+            img_url = f"{code}-{n}"  # Hammaga rasm
+
+            ws1.append([
+                code, diff, "oddiy", "", "", "", "", "",
+                "", "", "single_choice", False,
+                img_url, "", "uz", 1, age, diff_times[diff]
+            ])
+            color = diff_colors[diff]
+            for col in range(1, 19):
+                ws1.cell(row_num, col).fill = PatternFill("solid", fgColor=color)
+            row_num += 1
+
+        ws1.append([""] * 18)
+        row_num += 1
+
+    cur.close(); conn.close()
+
+    ws1.column_dimensions["A"].width = 28
+    ws1.column_dimensions["D"].width = 55
+    for c in ["E","F","G","H"]: ws1.column_dimensions[c].width = 22
+    ws1.column_dimensions["I"].width = 22
+    ws1.column_dimensions["J"].width = 35
+    ws1.column_dimensions["M"].width = 28
+
+    ws2 = wb.create_sheet("MALUMOT")
+    ws2.append(["#","Topic code","Sinf","Fan","Chorak","Bob","Bolim","Mavzu","Kichik mavzu","Test soni"])
+    for cell in ws2[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="2E86AB")
+
+    conn2 = db(); cur2 = conn2.cursor()
+    for idx, code in enumerate(selected, 1):
+        cur2.execute("""
+            SELECT grade,subject_name,quarter,bob_name,bolim_name,mavzu_name,kichik_name
+            FROM dts_tree WHERE topic_code=%s LIMIT 1
+        """, (code,))
+        r = cur2.fetchone()
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (code,))
+        cnt = cur2.fetchone()[0]
+        if r:
+            ws2.append([idx, code, r[0], r[1], r[2], r[3], r[4], r[5], r[6], cnt])
+        else:
+            ws2.append([idx, code, "","","","","","","", cnt])
+    cur2.close(); conn2.close()
+
+    for col, w in zip(["A","B","C","D","E","F","G","H","I","J"],
+                      [4, 28, 6, 18, 8, 35, 35, 35, 35, 10]):
+        ws2.column_dimensions[col].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+
+    fname = f"shablon_{grade}sinf_{len(selected)}mavzu.xlsx"
+    await call.message.answer_document(
+        BufferedInputFile(buf.read(), filename=fname),
+        caption=(
+            "✅ Shablon tayyor!\n"
+            + f"📚 {len(selected)} mavzu x 20 qator\n"
+            + f"📊 Jami: {len(selected)*20} qator\n\n"
+            + "Bo\'sh: savol, javoblar, izoh\n"
+            + "To\'ldirib import qiling!"
+        )
+    )
 
 
 def _age_group(grade):
@@ -461,10 +562,17 @@ QATIY QOIDALAR:
 6. 2 tasida write_answer (oson 1 ta, o\'rta 1 ta)
 7. write_answer da: a="", b="", c="", d=""
 
+TARTIB: Avval 5 ta oson, keyin 5 ta o'rta, keyin 5 ta qiyin, keyin 5 ta murakkab!
+Har daraja ichida TAKRORLANMASIN — har savol o'ziga xos bo'lsin!
+
 FAQAT JSON (markdown, izoh, boshqa matn yozma):
 [
-{{"question":"savol","a":"A","b":"B","c":"C","d":"D","correct":"to\'g\'ri matni","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
-{{"question":"savol","a":"","b":"","c":"","d":"","correct":"qisqa javob","explanation":"izoh","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}}
+  {{"question":"oson savol 1","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":true}},
+  {{"question":"oson savol 2","a":"","b":"","c":"","d":"","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}},
+  {{"question":"oson savol 3","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
+  {{"question":"oson savol 4","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":true}},
+  {{"question":"oson savol 5","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":true}},
+  ... (keyin 5 ta o'rta, 5 ta qiyin, 5 ta murakkab)
 ]"""
 
 
@@ -591,4 +699,3 @@ async def handle_gen_callback(call, user_id):
 
     elif data == "gen_run":
         await run_generator(call, user_id)
-    
