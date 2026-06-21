@@ -601,4 +601,3 @@ def latex_to_image(latex_text, filename):
         plt.close(fig)
     except Exception:
         pass
-    
