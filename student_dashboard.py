@@ -291,17 +291,14 @@ def get_school_status(grade: str, hour: int, weekday: int) -> str | None:
 # ─────────────────────────────────────────
 
 async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
-    """To'liq dashboard matni va tugmalarini qaytaradi"""
-
+    """To'liq dashboard — vaqtga qarab to'g'ri ko'rsatadi"""
     conn = db(); cur = conn.cursor()
-
     try:
         cur.execute("""
             SELECT full_name, class, gender, birth_date, region, district
             FROM users WHERE user_id = %s
         """, (user_id,))
         row = cur.fetchone()
-
         if not row:
             return "❌ Foydalanuvchi topilmadi", InlineKeyboardMarkup(inline_keyboard=[])
 
@@ -310,10 +307,8 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
         gender    = row[2] or ""
         region    = row[4] or ""
         district  = row[5] or ""
+        name      = full_name.split()[0]
 
-        name = full_name.split()[0]
-
-        # Sinf guruhi
         try:
             g = int(grade.replace("-sinf", "").strip())
             group = "junior" if g <= 4 else "middle" if g <= 8 else "senior"
@@ -323,84 +318,76 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
         now     = datetime.now()
         hour    = now.hour
         weekday = now.weekday()
+        is_night   = hour >= 22 or hour < 6
+        is_weekend = weekday >= 5  # 5=Shanba, 6=Yakshanba
 
         lines = []
 
-        # 1. Tug'ilgan kun
+        # Tug'ilgan kun
         bday = check_birthday(user_id)
         if bday:
             lines.append(bday)
-            lines.append("")
 
-        # 2. Salomlashish
-        greeting = get_time_greeting(hour, group, gender, name)
-        lines.append(greeting)
-
-        # 3. Vaqt ogohlantirishlar
-        warning = get_time_warning(hour, group)
-        if warning:
-            lines.append(warning)
-
-        # 4. Maktab holati
-        school_status = get_school_status(grade, hour, weekday)
-        if school_status:
-            lines.append(school_status)
+        # Salomlashish
+        if is_night:
+            lines.append(f"🌙 Kech bo'ldi, {name}! Erta dam oling.")
+        elif is_weekend:
+            lines.append(f"🏖 Xayrli dam olish kuni, {name}!")
+        else:
+            greeting = get_time_greeting(hour, group, gender, name)
+            lines.append(greeting)
 
         lines.append("━━━━━━━━━━━━━━")
 
-        # 5. Progress
+        # Progress
         try:
-            prog_block = get_progress_block(user_id, grade, group)
-            lines.append(prog_block)
+            lines.append(get_progress_block(user_id, grade, group))
         except Exception:
             pass
 
         lines.append("━━━━━━━━━━━━━━")
 
-        # 6. Bugungi reja
+        # Bugungi reja
         try:
-            plan = get_daily_plan(user_id, grade)
-            lines.append(plan)
+            lines.append(get_daily_plan(user_id, grade))
         except Exception:
             pass
 
-        # 7. Joylashuv
         if region:
             lines.append("━━━━━━━━━━━━━━")
             lines.append(f"📍 {region}, {district}")
 
         text = "\n".join(lines)
 
-        # Vaqt/kun holati
-        is_night   = hour >= 22 or hour < 6
-        is_weekend = weekday >= 5
-
-        # Salomlashishga qo'shimcha
+        # Tugmalar — vaqtga qarab
         if is_night:
-            lines.insert(1, "🌙 Kech bo'ldi! Uxlash vaqti yaqinlashmoqda.")
+            # Tun — dars/test bloklangan, faqat statistika
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📊 Statistika", callback_data="dashboard_stats"),
+                 InlineKeyboardButton(text="🔄 Yangilash",  callback_data="dashboard_refresh")],
+            ])
         elif is_weekend:
-            lines.insert(1, "🏖 Bugun dam olish kuni! Yaxshi dam oling.")
-
-        text = "\n".join(lines)
-
-        # Tugmalar — har doim bir xil
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
-                    InlineKeyboardButton(text="🔄 Yangilash",       callback_data="dashboard_refresh")
-                ],
-                [
-                    InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
-                    InlineKeyboardButton(text="📅 Reja",        callback_data="dashboard_plan")
-                ]
-            ]
-        )
+            # Dam olish — dars/test bor, lekin ogohlantirish bilan
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
+                 InlineKeyboardButton(text="🧪 Test ishlash",    callback_data="tset_start_quick")],
+                [InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
+                 InlineKeyboardButton(text="🔄 Yangilash",   callback_data="dashboard_refresh")],
+            ])
+        else:
+            # Oddiy vaqt
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
+                 InlineKeyboardButton(text="🔄 Yangilash",       callback_data="dashboard_refresh")],
+                [InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
+                 InlineKeyboardButton(text="📅 Reja",        callback_data="dashboard_plan")],
+            ])
 
         return text, keyboard
 
     finally:
         cur.close(); conn.close()
+
 
 
 async def build_dashboard_full(user_id: int):
