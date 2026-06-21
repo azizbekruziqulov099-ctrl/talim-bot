@@ -430,32 +430,47 @@ async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
     else:
         lang_note = "Barcha savol va javoblar o'zbekcha bo'lsin. Atamalar bo'lsa izohlang."
 
-    prompt = f"""Sen {grade}-sinf ({age} yosh) {subject} fani bo'yicha test yaratasang.
-Mavzu: {mavzu} — {kichik}
+    prompt = f"""Sen {grade}-sinf ({age} yosh) {subject} fani o'qituvchisisna. Sifatli test savollari yarat.
 
-VAZIFA: 20 ta test savoli yarat (har darajadan 5 ta):
+Fan: {subject}
+Mavzu: {mavzu}
+Kichik mavzu: {kichik}
+O'quvchi yoshi: {age}
 
-DARAJALAR:
-1. oson (5 ta, 60s): Eng oddiy — rasm/narsa/so'zni tanish. {grade}-sinf o'quvchisi uchun tushunarli.
-2. o'rta (5 ta, 55s): O'rta qiyinlik — qo'llash, to'ldirish.
-3. qiyin (5 ta, 50s): Qiyinroq — tushunish, tahlil.
-4. murakkab (5 ta, 50s): Eng qiyin — sintez, amaliy qo'llash.
+VAZIFA: Aynan 20 ta savol yarat — har darajadan 5 tadan.
+
+=== DARAJALAR ===
+1. oson (5 ta, 60s): Rasmga qarab eng oddiy savol. Bitta narsa/so'z/shaxsni aniqlash.
+2. o'rta (5 ta, 55s): Qo'llash, jumlani to'ldirish, tarjima qilish.
+3. qiyin (5 ta, 50s): Tushunish, tahlil, qoidani qo'llash.
+4. murakkab (5 ta, 50s): Sintez, amaliy vaziyat, kompleks savol.
 
 {lang_note}
 
-QOIDA:
-- correct: to'g'ri javobning aynan matni (A/B/C/D emas!)
-- Savol ichida javob bo'lmasin (qavsda ham)
-- Qisqa, aniq, yosh ({age})ga mos
-- has_image: 20 savoldan 6 tasida true (rasmli savol)
-- question_type: asosan "single_choice", 2 tasida "write_answer" (oson 1 ta, o'rta 1 ta)
-- write_answer da option a/b/c/d bo'sh (""), correct = to'g'ri qisqa javob matni
+=== QATIY QOIDALAR ===
+1. correct maydoni: to'g'ri javobning AYNAN matni (A/B/C/D YOZMA!)
+2. Savol ichida to'g'ri javob bo'lmasin — qavsda ham, ishora bilan ham!
+3. 4 ta javob varianti mantiqan to'g'ri ko'rinsin, faqat bittasi to'g'ri
+4. explanation: qisqa, aniq izoh — nima uchun shu javob to'g'ri
+5. Har savol o'ziga xos bo'lsin — takrorlanmasin
+6. Yosh ({age})ga mos: oddiy so'zlar, qisqa gaplar
 
-JSON FORMATI (boshqa hech narsa yozma):
+=== RASMLI SAVOLLAR ===
+- 20 savoldan 6 tasida has_image: true
+- Rasmli savollar tasvirga asoslangan bo'lsin ("Rasmda...", "Ko'rsating...")
+- Rasmli savollar oson va o'rta darajada bo'lsin
+
+=== YOZMA SAVOLLAR ===
+- 2 tasida question_type: "write_answer" (oson 1 ta, o'rta 1 ta)
+- write_answer da a/b/c/d = "" (bo'sh), correct = qisqa to'g'ri javob
+
+=== JSON FORMATI (FAQAT JSON, boshqa hech narsa yozma) ===
 [
 {{"question":"...","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
+{{"question":"...","a":"","b":"","c":"","d":"","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}},
 ...
 ]"""
+
 
     # OpenAI API
     import re
