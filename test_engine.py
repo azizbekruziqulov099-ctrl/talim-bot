@@ -292,19 +292,21 @@ async def show_question(user_id, message):
                             pass
 
                 s = test_sessions.get(user_id)
-                if not s or s.get("current") != current:
-                    return
-                user_state[user_id] = None
-                s["wrong"] += 1
-                h = await _build_board_text(s, f"⏰ Vaqt tugadi!\n\n✅ To'g'ri: {render_text(str(correct))}")
-                try:
-                    await bot.edit_message_text(h, chat_id=s.get("board_chat_id"), message_id=s.get("board_msg_id"))
-                except Exception:
-                    pass
-                await asyncio.sleep(2)
                 s = test_sessions.get(user_id)
-                if s and s.get("current") == current:
-                    await next_question(user_id, None)
+                if not s:
+                    return
+                if s.get("current") == current:
+                    user_state[user_id] = None
+                    s["wrong"] += 1
+                    h = await _build_board_text(s, f"⏰ Vaqt tugadi!\n\n✅ To'g'ri: {render_text(str(correct))}")
+                    try:
+                        await bot.edit_message_text(h, chat_id=s.get("board_chat_id"), message_id=s.get("board_msg_id"))
+                    except Exception:
+                        pass
+                    await asyncio.sleep(2)
+                    s2 = test_sessions.get(user_id)
+                    if s2 and s2.get("current") == current:
+                        await next_question(user_id, None)
 
             task = asyncio.create_task(write_countdown())
             session["timer_task"] = task
@@ -364,19 +366,20 @@ async def show_question(user_id, message):
                     pass
 
         s = test_sessions.get(user_id)
-        if not s or s.get("current") != current:
-            return
-        s["wrong"] += 1
-        h = await _build_board_text(s, f"⏰ Vaqt tugadi!\n\n✅ To'g'ri: {render_text(str(correct))}")
-        try:
-            await bot.edit_message_text(h, chat_id=s.get("board_chat_id"), message_id=s.get("board_msg_id"))
-        except Exception:
-            pass
-        await asyncio.sleep(2)
         s = test_sessions.get(user_id)
-        if s and s.get("current") == current:
-            await next_question(user_id, None)
-
+        if not s:
+            return
+        if s.get("current") == current:
+            s["wrong"] += 1
+            h = await _build_board_text(s, f"⏰ Vaqt tugadi!\n\n✅ To'g'ri: {render_text(str(correct))}")
+            try:
+                await bot.edit_message_text(h, chat_id=s.get("board_chat_id"), message_id=s.get("board_msg_id"))
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+            s = test_sessions.get(user_id)
+            if s and s.get("current") == current:
+                await next_question(user_id, None)
     task = asyncio.create_task(countdown())
     session["timer_task"] = task
 
