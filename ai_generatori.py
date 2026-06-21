@@ -430,44 +430,41 @@ async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
     else:
         lang_note = "Barcha savol va javoblar o'zbekcha bo'lsin. Atamalar bo'lsa izohlang."
 
-    prompt = f"""Sen {grade}-sinf ({age} yosh) {subject} fani o'qituvchisisna. Sifatli test savollari yarat.
+    prompt = f"""Siz {grade}-sinf ({age} yosh) {subject} fani o'qituvchisisiz.
 
 Fan: {subject}
 Mavzu: {mavzu}
 Kichik mavzu: {kichik}
-O'quvchi yoshi: {age}
 
-VAZIFA: Aynan 20 ta savol yarat — har darajadan 5 tadan.
+VAZIFA: Aynan shu kichik mavzu bo'yicha 20 ta test savoli yarat.
 
-=== DARAJALAR ===
-1. oson (5 ta, 60s): Rasmga qarab eng oddiy savol. Bitta narsa/so'z/shaxsni aniqlash.
-2. o'rta (5 ta, 55s): Qo'llash, jumlani to'ldirish, tarjima qilish.
-3. qiyin (5 ta, 50s): Tushunish, tahlil, qoidani qo'llash.
-4. murakkab (5 ta, 50s): Sintez, amaliy vaziyat, kompleks savol.
+DARAJALAR (har biridan 5 ta):
+- oson: Eng oddiy. Rasmga qarab bitta so'z/narsa/rangni tanish. time_limit: 60
+- o'rta: O'rtacha. Jumlani to'ldirish, oddiy tarjima. time_limit: 55
+- qiyin: Qiyinroq. Qoidani qo'llash, tushunish. time_limit: 50
+- murakkab: Eng qiyin. Amaliy qo'llash, sintez. time_limit: 50
 
 {lang_note}
 
-=== QATIY QOIDALAR ===
-1. correct maydoni: to'g'ri javobning AYNAN matni (A/B/C/D YOZMA!)
-2. Savol ichida to'g'ri javob bo'lmasin — qavsda ham, ishora bilan ham!
-3. 4 ta javob varianti mantiqan to'g'ri ko'rinsin, faqat bittasi to'g'ri
-4. explanation: qisqa, aniq izoh — nima uchun shu javob to'g'ri
-5. Har savol o'ziga xos bo'lsin — takrorlanmasin
-6. Yosh ({age})ga mos: oddiy so'zlar, qisqa gaplar
+QATIY TAQIQLAR (BUZILSA YAROQSIZ):
+❌ Savol yoki javob ichida to'g'ri javobni ko'rsatma — na qavsda, na boshqa shaklda!
+   XATO: "How many balls? (3)"  TO'G'RI: "How many balls are there?"
+   XATO: "Fill in: sky is ___ (blue)"  TO'G'RI: "Fill in: The sky is ___."
+❌ Mavzuga aloqasiz savol yozma — faqat "{kichik}" haqida!
+❌ Inglizcha so'zni tegsiz yozma — faqat [en]so'z[/en] ichida!
+❌ O'zbekcha so'zni teg ichiga olma!
 
-=== RASMLI SAVOLLAR ===
-- 20 savoldan 6 tasida has_image: true
-- Rasmli savollar tasvirga asoslangan bo'lsin ("Rasmda...", "Ko'rsating...")
-- Rasmli savollar oson va o'rta darajada bo'lsin
+QOIDALAR:
+✅ correct = to'g'ri javobning AYNAN matni (A/B/C/D emas!)
+✅ 4 javob mantiqan bir-biriga o'xshash bo'lsin, faqat bittasi to'g'ri
+✅ explanation: nima uchun shu javob to'g'ri — qisqa izoh
+✅ 20 savoldan 6 tasida has_image: true (rasmli)
+✅ 2 tasida question_type: "write_answer" — biri oson, biri o'rta
+✅ write_answer da: a="", b="", c="", d="", correct = qisqa to'g'ri javob
 
-=== YOZMA SAVOLLAR ===
-- 2 tasida question_type: "write_answer" (oson 1 ta, o'rta 1 ta)
-- write_answer da a/b/c/d = "" (bo'sh), correct = qisqa to'g'ri javob
-
-=== JSON FORMATI (FAQAT JSON, boshqa hech narsa yozma) ===
+FAQAT JSON QAYTARGIN (izoh, markdown, boshqa matn yozma):
 [
 {{"question":"...","a":"...","b":"...","c":"...","d":"...","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"single_choice","has_image":false}},
-{{"question":"...","a":"","b":"","c":"","d":"","correct":"...","explanation":"...","difficulty":"oson","time_limit":60,"question_type":"write_answer","has_image":false}},
 ...
 ]"""
 
