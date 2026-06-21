@@ -381,6 +381,7 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
                  InlineKeyboardButton(text="🔄 Yangilash",       callback_data="dashboard_refresh")],
                 [InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
                  InlineKeyboardButton(text="📅 Reja",        callback_data="dashboard_plan")],
+                [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")],
             ])
 
         return text, keyboard
