@@ -702,28 +702,97 @@ async def show_topics_page(
 async def save_image(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
-    if not message.caption:
+
+    caption = (message.caption or "").strip()
+
+    # Agar caption "split:TOPIC_CODE" formatida bo'lsa — 40 ga bo'lish
+    if caption.lower().startswith("split:"):
+        parts = caption[6:].strip().split(":")
+        topic_code = parts[0].strip()
+        rows = int(parts[1]) if len(parts) > 1 else 5
+        cols = int(parts[2]) if len(parts) > 2 else 8
+        total = rows * cols
         await message.answer(
-            "Rasm nomini captionga yozing")
+            f"⏳ Rasm {rows}×{cols}={total} ga bo'linmoqda...\n"
+            f"📌 Kod: {topic_code}"
+        )
+
+        # Rasmni yuklab olish
+        import io
+        from PIL import Image
+
+        file = await message.bot.get_file(message.photo[-1].file_id)
+        buf = io.BytesIO()
+        await message.bot.download_file(file.file_path, buf)
+        buf.seek(0)
+        img = Image.open(buf)
+        W, H = img.size
+
+        # 5 qator x 8 ustun = 40 ta (yoki berilgan o'lcham)
+        cell_w = W // cols
+        cell_h = H // rows
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        saved = 0
+
+        for row in range(rows):
+            for col in range(cols):
+                n = row * cols + col + 1
+                if n > total:
+                    break
+
+                # Kesish
+                x1 = col * cell_w
+                y1 = row * cell_h
+                x2 = x1 + cell_w
+                y2 = y1 + cell_h
+                piece = img.crop((x1, y1, x2, y2))
+
+                # Telegram ga yuborish va file_id olish
+                piece_buf = io.BytesIO()
+                piece.save(piece_buf, format="JPEG")
+                piece_buf.seek(0)
+
+                from aiogram.types import BufferedInputFile
+                sent = await message.answer_photo(
+                    BufferedInputFile(piece_buf.read(), filename=f"{topic_code}-{n}.jpg"),
+                    caption=f"{topic_code}-{n}"
+                )
+                file_id = sent.photo[-1].file_id
+
+                # DBga saqlash
+                name = f"{topic_code}-{n}"
+                cur.execute("""
+                    INSERT INTO images(name, file_id)
+                    VALUES(%s,%s)
+                    ON CONFLICT (name) DO UPDATE SET file_id=EXCLUDED.file_id
+                """, (name, file_id))
+                saved += 1
+
+        conn.commit()
+        cur.close(); conn.close()
+        await message.answer(f"✅ {saved} ta rasm saqlandi!\n📁 {topic_code}-1 ... {topic_code}-{total}")
         return
-    name = message.caption.strip()
+
+    # Oddiy rasm saqlash
+    if not caption:
+        await message.answer("Rasm nomini captionga yozing\n\nYoki 40 ga bo'lish uchun:\nsplit:TOPIC_CODE")
+        return
+
+    name = caption
     file_id = message.photo[-1].file_id
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
     cur.execute("""
-    INSERT INTO images(
-        name,
-        file_id
-    )
+    INSERT INTO images(name, file_id)
     VALUES(%s,%s)
     ON CONFLICT (name)
-    DO UPDATE SET
-    file_id = EXCLUDED.file_id
+    DO UPDATE SET file_id = EXCLUDED.file_id
     """, (name, file_id))
     conn.commit()
-    conn.close()
-    await message.answer(
-        f"✅ Saqlandi: {name}")
+    cur.close(); conn.close()
+    await message.answer(f"✅ Saqlandi: {name}")
 
 # ====== START ======
 @dp.message(CommandStart())
