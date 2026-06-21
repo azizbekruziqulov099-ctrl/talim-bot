@@ -180,6 +180,7 @@ BTN_GLOBAL = "global_stats"
 
 BACK = "🔙 Ortga"
 HOME = "🏠 Bosh menyu"
+HOME2 = "🏠 Bosh ekran"
 
 SUBJECTS_BY_LEVEL = {
 
@@ -969,6 +970,31 @@ async def handle_all(
                 ]
             )
         )
+        return
+
+    if message.text == "🏠 Bosh ekran":
+        user_state[user_id] = None
+        # Eski xabarlarni o'chirish
+        try:
+            for i in range(message.message_id - 1, message.message_id - 20, -1):
+                try:
+                    await bot.delete_message(message.chat.id, i)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            from student_dashboard import build_dashboard
+            text, kb = await build_dashboard(user_id)
+            await message.answer(text, reply_markup=kb)
+        except Exception:
+            pass
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
+        row = cur2.fetchone()
+        cur2.close(); conn2.close()
+        await message.answer("🏠", reply_markup=get_main_keyboard(row[0] if row else "🧒 O'quvchi"))
         return
 
     if message.text == "🎯 Bugungi reja":
@@ -1806,7 +1832,7 @@ async def handle_all(
             return
 
         # 🏠 HOME
-        elif message.text == HOME:
+        elif message.text in (HOME, HOME2):
 
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
