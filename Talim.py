@@ -1480,12 +1480,131 @@ async def handle_all(
         return
 
     elif message.text == "📄 Excel shablon":
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl import Workbook
+        import io
 
+        # Tanlangan mavzu kodini olish
+        topic_code = ""
+        grade = ""
+        if user_id in topic_stats_state:
+            topic_code = topic_stats_state[user_id].get("selected_topic", "")
+            grade = str(topic_stats_state[user_id].get("grade", ""))
+
+        # Sinf bo'yicha age_group
+        age_map = {
+            "1": "6-7", "2": "7-8", "3": "8-9", "4": "9-10",
+            "5": "10-11", "6": "11-12", "7": "12-13", "8": "13-14",
+            "9": "14-15", "10": "15-16", "11": "16-17"
+        }
+        age_group = age_map.get(grade, "10-11")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TESTLAR"
+
+        headers = [
+            "topic_code", "difficulty", "situation", "question",
+            "option_a", "option_b", "option_c", "option_d",
+            "correct_answer", "explanation", "question_type",
+            "is_latex", "image_url", "audio_text", "language",
+            "life_level", "age_group", "time_limit"
+        ]
+
+        # Header qatori
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="2E86AB")
+            cell.alignment = Alignment(horizontal="center")
+
+        # 40 ta qator — har biri uchun difficulty va nom
+        def get_difficulty(n):
+            if n <= 10: return "oson"
+            elif n <= 20: return "o'rta"
+            elif n <= 30: return "qiyin"
+            else: return "murakkab"
+
+        for i in range(1, 41):
+            diff = get_difficulty(i)
+            row = [
+                topic_code,              # topic_code — o'zi
+                diff,                    # difficulty
+                "oddiy",                 # situation
+                "",                      # question
+                "",                      # option_a
+                "",                      # option_b
+                "",                      # option_c
+                "",                      # option_d
+                "",                      # correct_answer
+                "",                      # explanation
+                "single_choice",         # question_type
+                False,                   # is_latex
+                f"{topic_code}-{i}",     # image_url — kod-1, kod-2...
+                "",                      # audio_text
+                "uz",                    # language
+                1,                       # life_level
+                age_group,               # age_group
+                60,                      # time_limit
+            ]
+            ws.append(row)
+            # Difficulty rangini ko'rsatish
+            colors = {"oson": "C8F7C5", "o'rta": "FFF3CD", "qiyin": "FFD7C4", "murakkab": "F5C6CB"}
+            ws.cell(row=i+1, column=2).fill = PatternFill("solid", fgColor=colors.get(diff, "FFFFFF"))
+
+        # Ustun kengliklari
+        ws.column_dimensions['A'].width = 35
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 10
+        ws.column_dimensions['D'].width = 50
+        for col in ['E','F','G','H']:
+            ws.column_dimensions[col].width = 20
+        ws.column_dimensions['I'].width = 15
+        ws.column_dimensions['J'].width = 30
+
+        # Ma'lumot varag'i
+        ws2 = wb.create_sheet("MA'LUMOT")
+        ws2.append(["Maydon", "Qiymatlar"])
+        ws2.append(["difficulty", "oson | o'rta | qiyin | murakkab"])
+        ws2.append(["situation", "oddiy | hayotiy | laboratoriya"])
+        ws2.append(["question_type", "single_choice | write_answer | true_false"])
+        ws2.append(["correct_answer", "A | B | C | D  (yoki matn)"])
+        ws2.append(["is_latex", "True | False"])
+        ws2.append(["language", "uz | ru | en"])
+        ws2.append(["age_group", f"{age_group} (avtomatik)"])
+        ws2.append(["time_limit", "60 (sekund)"])
+        ws2.append(["", ""])
+        ws2.append(["Mavzu kodi", topic_code or "—"])
+        ws2.append(["Sinf", f"{grade}-sinf"])
+        ws2.append(["", ""])
+        ws2.append(["1-10 qator", "OSON 🟢"])
+        ws2.append(["11-20 qator", "O'RTA 🟡"])
+        ws2.append(["21-30 qator", "QIYIN 🟠"])
+        ws2.append(["31-40 qator", "MURAKKAB 🔴"])
+
+        # Xotiraga saqlash
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        fname = f"shablon_{topic_code or 'mavzu'}.xlsx"
+        from aiogram.types import BufferedInputFile
         await message.answer_document(
-            FSInputFile("test_import_template.xlsx"),
-            caption="📋 Test import shabloni"
+            BufferedInputFile(buf.read(), filename=fname),
+            caption=(
+                f"📋 Test shabloni tayyor!\n\n"
+                f"🔑 Mavzu kodi: {topic_code or '—'}\n"
+                f"🎓 Sinf: {grade or '—'}\n"
+                f"👶 Yosh guruhi: {age_group}\n\n"
+                f"📝 40 ta qator:\n"
+                f"🟢 1-10: Oson\n"
+                f"🟡 11-20: O'rta\n"
+                f"🟠 21-30: Qiyin\n"
+                f"🔴 31-40: Murakkab\n\n"
+                f"Faqat bo'sh ustunlarni to'ldiring!"
+            )
         )
-
         return
     
     elif message.text == "▶️ Generatorni boshlash":
