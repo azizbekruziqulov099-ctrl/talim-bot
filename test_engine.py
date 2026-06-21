@@ -293,7 +293,20 @@ async def show_question(user_id, message=None):
                 sx["answered"] = True
                 sx["wrong"] += 1
                 user_state[user_id] = None
-                await _go_next(user_id, correct, "⏰ Vaqt tugadi!")
+                txt = _build_board_text(sx, f"⏰ Vaqt tugadi!\n✅ To'g'ri: {render_text(str(correct))}")
+                try:
+                    await bot.edit_message_text(txt, chat_id=sx["board_chat_id"], message_id=sx["board_msg_id"])
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
+                sx = test_sessions.get(user_id)
+                if not sx:
+                    return
+                sx["current"] += 1
+                if sx["current"] >= len(sx["questions"]):
+                    await finish_test(user_id)
+                else:
+                    await show_question(user_id)
             s["timer_task"] = asyncio.create_task(write_cd())
         return
 
@@ -342,7 +355,20 @@ async def show_question(user_id, message=None):
             return
         sx["answered"] = True
         sx["wrong"] += 1
-        await _go_next(user_id, correct, "⏰ Vaqt tugadi!")
+        txt = _build_board_text(sx, f"⏰ Vaqt tugadi!\n✅ To'g'ri: {render_text(str(correct))}")
+        try:
+            await bot.edit_message_text(txt, chat_id=sx["board_chat_id"], message_id=sx["board_msg_id"])
+        except Exception:
+            pass
+        await asyncio.sleep(2)
+        sx = test_sessions.get(user_id)
+        if not sx:
+            return
+        sx["current"] += 1
+        if sx["current"] >= len(sx["questions"]):
+            await finish_test(user_id)
+        else:
+            await show_question(user_id)
 
     s["timer_task"] = asyncio.create_task(cd())
 
@@ -367,11 +393,16 @@ async def _show_result(user_id, message, result_text):
 
     try:
         if msg_id:
-            await bot.edit_message_text(txt, chat_id=chat_id, message_id=msg_id)
+            await bot.edit_message_text(txt, chat_id=chat_id, message_id=msg_id, reply_markup=None)
         else:
-            await bot.send_message(chat_id, txt)
+            nm = await bot.send_message(chat_id, txt)
+            s["board_msg_id"] = nm.message_id
     except Exception:
-        pass
+        try:
+            nm = await bot.send_message(chat_id, txt)
+            s["board_msg_id"] = nm.message_id
+        except Exception:
+            pass
 
     await asyncio.sleep(2)
 
