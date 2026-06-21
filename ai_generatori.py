@@ -476,10 +476,10 @@ FAQAT JSON (markdown, izoh, boshqa matn yozma):
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Faqat to'g'ri JSON array qaytargin. Boshqa hech narsa yozma. Markdown, izoh, ```json kabi belgilar ishlatma."},
+                {"role": "system", "content": "Faqat to'g'ri JSON array qaytargin. AYNAN 20 ta element bo'lsin — kam bo'lmasin! Boshqa hech narsa yozma. Markdown, izoh, ```json kabi belgilar ishlatma."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=4000,
+            max_tokens=8000,
             temperature=0.5
         )
         return response.choices[0].message.content
@@ -591,3 +591,4 @@ async def handle_gen_callback(call, user_id):
 
     elif data == "gen_run":
         await run_generator(call, user_id)
+    
