@@ -243,26 +243,25 @@ async def show_question(user_id, message):
                     left = max(0, left - 5)
 
                     s = test_sessions.get(user_id)
-                    if not s or s.get("current") != current:
+                    if not s:
                         return
 
                     s["time_left"] = left
-                    new_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="🔊",  callback_data="speak_question"),
-                        InlineKeyboardButton(text=f"⏱ {left}s" if left > 0 else "⏰", callback_data="noop_timer"),
-                        InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
-                    ]])
-                    try:
-                        await bot.edit_message_reply_markup(
-                            chat_id=s.get("board_chat_id"),
-                            message_id=s.get("board_msg_id"),
-                            reply_markup=new_kb
-                        )
-                    except Exception:
-                        pass
 
-                    if left == 0:
-                        break
+                    if left > 0:
+                        new_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="🔊",  callback_data="speak_question"),
+                            InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
+                            InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+                        ]])
+                        try:
+                            await bot.edit_message_reply_markup(
+                                chat_id=s.get("board_chat_id"),
+                                message_id=s.get("board_msg_id"),
+                                reply_markup=new_kb
+                            )
+                        except Exception:
+                            pass
 
                 # Vaqt tugadi
                 s = test_sessions.get(user_id)
@@ -338,25 +337,23 @@ async def show_question(user_id, message):
             left = max(0, left - 5)
 
             s = test_sessions.get(user_id)
-            if not s or s.get("current") != current:
+            if not s:
                 return
 
             s["time_left"] = left
-            new_kb = _build_kb(a_show, b_show, c_show, d_show, left)
 
-            try:
-                await bot.edit_message_reply_markup(
-                    chat_id=s.get("board_chat_id"),
-                    message_id=s.get("board_msg_id"),
-                    reply_markup=new_kb
-                )
-            except Exception:
-                pass
+            if left > 0:
+                new_kb = _build_kb(a_show, b_show, c_show, d_show, left)
+                try:
+                    await bot.edit_message_reply_markup(
+                        chat_id=s.get("board_chat_id"),
+                        message_id=s.get("board_msg_id"),
+                        reply_markup=new_kb
+                    )
+                except Exception:
+                    pass
 
-            if left == 0:
-                break
-
-        # Vaqt tugadi
+        # Vaqt tugadi — faqat shu savolda bo'lsa
         s = test_sessions.get(user_id)
         if not s or s.get("current") != current:
             return
@@ -372,7 +369,9 @@ async def show_question(user_id, message):
             pass
 
         await asyncio.sleep(2)
-        await next_question(user_id, None)
+        s = test_sessions.get(user_id)
+        if s and s.get("current") == current:
+            await next_question(user_id, None)
 
     task = asyncio.create_task(countdown())
     session["timer_task"] = task
