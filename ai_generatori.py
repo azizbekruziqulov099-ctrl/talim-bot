@@ -475,10 +475,13 @@ FAQAT JSON QAYTARGIN (izoh, markdown, boshqa matn yozma):
 
     def call_openai():
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Faqat to'g'ri JSON array qaytargin. Boshqa hech narsa yozma. Markdown, izoh, ```json kabi belgilar ishlatma."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=4000,
-            temperature=0.7
+            temperature=0.5
         )
         return response.choices[0].message.content
 
@@ -487,14 +490,22 @@ FAQAT JSON QAYTARGIN (izoh, markdown, boshqa matn yozma):
         text = await loop.run_in_executor(pool, call_openai)
 
     # JSON ni tozalab olish
-    match = re.search(r'\[.*?\]', text, re.DOTALL)
-    if not match:
-        # Butun javobni tekshir
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-    if not match:
-        raise ValueError(f"JSON topilmadi: {text[:200]}")
+    import re
+    # Markdown code block larni olib tashlash
+    text = re.sub(r'```json\s*', '', text)
+    text = re.sub(r'```\s*', '', text)
+    text = text.strip()
 
-    questions = json.loads(match.group())
+    # JSON array topish
+    match = re.search(r'\[.*\]', text, re.DOTALL)
+    if not match:
+        raise ValueError(f"JSON topilmadi: {text[:300]}")
+
+    json_str = match.group()
+    # Nazorat belgilarini tozalash
+    json_str = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', json_str)
+
+    questions = json.loads(json_str)
 
     # Fieldlarni to'ldirish
     img_counter = 0
