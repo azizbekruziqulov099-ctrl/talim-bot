@@ -128,8 +128,9 @@ async def _render_topics(message, user_id, selected, grade, subject, edit=False)
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="◀️", callback_data=f"gen_page:{page-1}"))
+    _btn = "📋 Barchasi" if filt == "empty" else "🔴 Bo'shlar"
     nav.append(InlineKeyboardButton(
-        text=f"{'📋 Barchasi' if filt=='empty' else '🔴 Bo\'shlar'}",
+        text=_btn,
         callback_data="gen_filter_toggle"
     ))
     if (page+1)*PAGE_SIZE < total:
