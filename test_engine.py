@@ -21,6 +21,28 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 test_sessions = {}
 
+HOME_BTN = [InlineKeyboardButton(text="🏠 Bosh ekran", callback_data="go_home_dashboard")]
+
+
+def _build_kb(a, b, c, d, time_left=0):
+    timer_text = f"⏱ {time_left}s" if time_left > 0 else "∞"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔊", callback_data="speak_question"),
+            InlineKeyboardButton(text=timer_text, callback_data="noop_timer"),
+            InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+        ],
+        [InlineKeyboardButton(text=a, callback_data="ans_A"),
+         InlineKeyboardButton(text="🔊", callback_data="speak_a")],
+        [InlineKeyboardButton(text=b, callback_data="ans_B"),
+         InlineKeyboardButton(text="🔊", callback_data="speak_b")],
+        [InlineKeyboardButton(text=c, callback_data="ans_C"),
+         InlineKeyboardButton(text="🔊", callback_data="speak_c")],
+        [InlineKeyboardButton(text=d, callback_data="ans_D"),
+         InlineKeyboardButton(text="🔊", callback_data="speak_d")],
+        HOME_BTN,
+    ])
+
 
 def render_text(text: str) -> str:
     """Teglarni olib, matnni tozalaydi"""
@@ -223,11 +245,14 @@ async def show_question(user_id, message):
             f"📝 Javobingizni yozing:"
         )
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔊", callback_data="speak_question"),
-            InlineKeyboardButton(text=timer_text, callback_data="noop_timer"),
-            InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
-        ]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔊", callback_data="speak_question"),
+                InlineKeyboardButton(text=timer_text, callback_data="noop_timer"),
+                InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+            ],
+            HOME_BTN,
+        ])
 
         try:
             if board_msg_id:
