@@ -1,12 +1,12 @@
 """
 ai_generator.py — AI bilan test generatsiya qilish
-Claude API orqali har mavzu uchun 40 ta savol
+OpenAI GPT-4o-mini orqali har mavzu uchun 20 ta savol
 """
 import psycopg2, os, json, asyncio
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from openai_client import client
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 def db(): return psycopg2.connect(DATABASE_URL)
 
@@ -411,26 +411,7 @@ async def _export_to_excel(selected, topics_list, grade, subject):
 
 
 async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
-    """Claude API orqali 40 ta savol yaratish"""
-    import aiohttp
-
-    def diff(n):
-        if n <= 10: return "oson"
-        elif n <= 20: return "o'rta"
-        elif n <= 30: return "qiyin"
-        else: return "murakkab"
-
-    def tl(n):
-        if n <= 10: return 60
-        elif n <= 20: return 55
-        elif n <= 30: return 50
-        else: return 50
-
-    def eng_pct(n):
-        if n <= 10: return "5-10%"
-        elif n <= 20: return "20-30%"
-        elif n <= 30: return "50%"
-        else: return "70-80%"
+    """OpenAI API orqali 20 ta savol yaratish"""
 
     # Yosh guruhi
     age = _age_group(grade)
@@ -475,54 +456,53 @@ JSON FORMATI (boshqa hech narsa yozma):
 ...
 ]"""
 
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-    }
+    # OpenAI API
+    import re
+    from concurrent.futures import ThreadPoolExecutor
 
-    body = {
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 4000,
-        "messages": [{"role": "user", "content": prompt}]
-    }
+    def call_openai():
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=4000,
+            temperature=0.7
+        )
+        return response.choices[0].message.content
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers, json=body, timeout=aiohttp.ClientTimeout(total=120)
-        ) as resp:
-            data = await resp.json()
-            text = data["content"][0]["text"]
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        text = await loop.run_in_executor(pool, call_openai)
 
-            # JSON ni tozalab olish
-            import re
-            match = re.search(r'\[.*\]', text, re.DOTALL)
-            if not match:
-                raise ValueError("JSON topilmadi")
+    # JSON ni tozalab olish
+    match = re.search(r'\[.*?\]', text, re.DOTALL)
+    if not match:
+        # Butun javobni tekshir
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+    if not match:
+        raise ValueError(f"JSON topilmadi: {text[:200]}")
 
-            questions = json.loads(match.group())
+    questions = json.loads(match.group())
 
-            # Fieldlarni to'ldirish
-            img_counter = 0
-            for i, q in enumerate(questions):
-                q.setdefault("difficulty", "oson")
-                q.setdefault("time_limit", 60)
-                q.setdefault("question_type", "single_choice")
-                q.setdefault("has_image", False)
+    # Fieldlarni to'ldirish
+    img_counter = 0
+    for i, q in enumerate(questions):
+        q.setdefault("difficulty", "oson")
+        q.setdefault("time_limit", 60)
+        q.setdefault("question_type", "single_choice")
+        q.setdefault("has_image", False)
 
-                # Rasmli savol uchun image_url
-                if q.get("has_image"):
-                    img_counter += 1
-                    q["image_url"] = f"{topic_code}-{img_counter}"
-                else:
-                    q["image_url"] = None
+        # Rasmli savol uchun image_url
+        if q.get("has_image"):
+            img_counter += 1
+            q["image_url"] = f"{topic_code}-{img_counter}"
+        else:
+            q["image_url"] = None
 
-                # write_answer uchun javoblarni tozalash
-                if q.get("question_type") == "write_answer":
-                    q["a"] = q["b"] = q["c"] = q["d"] = ""
+        # write_answer uchun javoblarni tozalash
+        if q.get("question_type") == "write_answer":
+            q["a"] = q["b"] = q["c"] = q["d"] = ""
 
-            return questions
+    return questions
 
 
 # ─────────────────────────────────────────
