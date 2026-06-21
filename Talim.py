@@ -1235,6 +1235,11 @@ async def handle_all(
 
         return
 
+    elif message.text == "🖼 Rasmlar boshqaruvi":
+        from image_admin import show_image_panel
+        await show_image_panel(message)
+        return
+
     elif message.text == "📚 DTS boshqaruvi":
 
         await dts_menu(
