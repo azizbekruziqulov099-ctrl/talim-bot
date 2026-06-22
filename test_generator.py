@@ -34,28 +34,21 @@ def get_last_questions(topic_code, limit=60):
 def save_test(test_data):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
+    # To'liq tekshiruv: savol + option_a + correct_answer
     cur.execute("""
         SELECT 1
         FROM generated_tests
         WHERE topic_code=%s
         AND question=%s
+        AND option_a=%s
+        AND correct_answer=%s
         LIMIT 1
     """, (
         test_data["topic_code"],
-        test_data["question"]
-    ))
-    old_questions = get_last_questions(
-        test_data["topic_code"],
-        limit=100
-    )
-    if is_similar(
         test_data["question"],
-        old_questions
-    ):
-        print("O'XSHASH SAVOL")
-        cur.close()
-        conn.close()
-        return "duplicate"
+        test_data.get("option_a"),
+        test_data.get("correct_answer"),
+    ))
     if cur.fetchone():
         print("DUPLIKAT TEST")
         cur.close()
