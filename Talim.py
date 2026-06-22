@@ -1303,6 +1303,13 @@ async def handle_all(
         await message.answer(text)
         return
 
+    elif message.text == "🖼 Rasmlar boshqaruvi":
+        if user_id not in ADMINS:
+            return
+        from image_admin import show_image_panel
+        await show_image_panel(message)
+        return
+
     elif message.text == "📚 Shablon yaratish":
         if user_id not in ADMINS:
             return
