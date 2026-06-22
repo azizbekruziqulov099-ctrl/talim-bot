@@ -77,7 +77,7 @@ async def show_topics(call, user_id, subject):
     state["topics"] = {t[0]: {"kichik": t[1], "mavzu": t[2], "cnt": t[3]} for t in topics}
     selected = state.get("selected", [])
 
-    state["filter"] = "empty"  # Default: faqat bo'sh mavzular
+    state["filter"] = "all"  # Default: barcha mavzular
     gen_state[user_id] = state
     await _render_topics(call.message, user_id, selected, grade, subject, edit=True)
 
