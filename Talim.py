@@ -1179,6 +1179,21 @@ async def handle_all(
 
         return
 
+    # Shablon import
+    if message.document:
+        from shablon_yaratish import handle_shablon_document, shablon_state
+        if shablon_state.get(user_id, {}).get("step") == "import_wait":
+            await handle_shablon_document(message, user_id, bot)
+            return
+
+    # Shablon mavzu matni
+    from shablon_yaratish import shablon_state as sh_state, handle_shablon_message
+    if sh_state.get(user_id, {}).get("step") in ("sinf_fan", "mavzular"):
+        await handle_shablon_message(message, user_id)
+        return
+
+
+
     if (
         admin_state.get(user_id) == "test_import"
         and message.document
@@ -1256,6 +1271,13 @@ async def handle_all(
         for role, cnt in roles:
             text += f"• {role}: {cnt} ta\n"
         await message.answer(text)
+        return
+
+    elif message.text == "📚 Shablon yaratish":
+        if user_id not in ADMINS:
+            return
+        from shablon_yaratish import show_shablon_menu
+        await show_shablon_menu(message, user_id)
         return
 
     elif message.text == "🤖 AI Generator":
@@ -2500,6 +2522,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             "🎮 Yaxshi dam oling!\n"
             "Ruhiy kuch to'plash ham o'rganish! 💚"
         )
+        return
+
+    if call.data.startswith("sh_"):
+        from shablon_yaratish import handle_shablon_callback
+        await handle_shablon_callback(call, user_id)
         return
 
     if call.data.startswith("sinov_"):
