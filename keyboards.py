@@ -41,7 +41,7 @@ def get_main_keyboard(role=None):
                 KeyboardButton(text="🧪 Test sinovi"),
             ],
             [
-                KeyboardButton(text="📚 DTS boshqaruvi"),
+                KeyboardButton(text="📚 Shablon yaratish"),
                 KeyboardButton(text="🖼 Rasmlar boshqaruvi"),
                 KeyboardButton(text="📝 Dars boshqaruvi"),
             ],
