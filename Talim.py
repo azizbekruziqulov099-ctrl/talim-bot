@@ -929,7 +929,7 @@ async def import_tests_excel(message):
                 "correct_answer": str(row["correct_answer"]).strip(),
                 "explanation": "" if pd.isna(row["explanation"]) else str(row["explanation"]),
                 "question_type": str(row["question_type"]).strip(),
-                "is_latex": False if pd.isna(row["is_latex"]) else row["is_latex"],
+                "is_latex": False if pd.isna(row["is_latex"]) else bool(row["is_latex"]),
                 "image_url": None if pd.isna(row["image_url"]) else str(row["image_url"]),
                 "audio_text": None if pd.isna(row["audio_text"]) else str(row["audio_text"]),
                 "language": "uz" if pd.isna(row["language"]) else str(row["language"]),
@@ -939,6 +939,36 @@ async def import_tests_excel(message):
             }
 
             result = save_test(test_data)
+
+            # Agar save_test serverda to'liq tekshirmasa — o'zimiz tekshiramiz
+            if result == "duplicate":
+                # Faqat savol emas, to'liq (savol+javoblar+topic_code) tekshiramiz
+                import psycopg2
+                _conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+                _cur = _conn.cursor()
+                _cur.execute("""
+                    SELECT COUNT(*) FROM generated_tests
+                    WHERE topic_code=%s
+                      AND question=%s
+                      AND option_a=%s
+                      AND option_b=%s
+                      AND option_c=%s
+                      AND option_d=%s
+                      AND correct_answer=%s
+                """, (
+                    test_data["topic_code"],
+                    test_data["question"],
+                    test_data["option_a"],
+                    test_data["option_b"],
+                    test_data["option_c"],
+                    test_data["option_d"],
+                    test_data["correct_answer"],
+                ))
+                cnt = _cur.fetchone()[0]
+                _cur.close(); _conn.close()
+                if cnt == 0:
+                    # Aslida duplikat emas — qayta saqlashga urinib ko'ramiz
+                    result = save_test(test_data)
 
             if result == "saved":
                 success += 1
