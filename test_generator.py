@@ -136,7 +136,7 @@ def save_test(test_data):
         )
         VALUES (
             %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-            %s,%s,%s,%s,%s,%s,%s,%s
+            %s::boolean,%s,%s,%s,%s,%s,%s,%s
         )
     """, (
         test_data["topic_code"],
