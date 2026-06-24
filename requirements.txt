@@ -1,11 +1,10 @@
 aiogram
+aiogram-calendar
 edge-tts
 psycopg2-binary
 openpyxl
 openai
 rapidfuzz
 pandas
-edge-tts
 matplotlib
-aiogram-calendar
 pydub==0.25.1
