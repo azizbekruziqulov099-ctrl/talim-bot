@@ -658,49 +658,50 @@ async def register_handler(message):
             return
 
         temp_user[user_id]["class_letter"] = message.text
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-        INSERT INTO users(
-            user_id,
-            role,
-            full_name,
-            birth_date,
-            gender,
-            region,
-            district,
-            education_type,
-            school_type,
-            school,
-            class,
-            class_letter
-        )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            user_id,
-            temp_user[user_id].get("role"),
-            temp_user[user_id].get("full_name"),
-
-            datetime.strptime(
-                temp_user[user_id].get("birth_date"),
-                "%d.%m.%Y"
-            ).date(),
-
-            temp_user[user_id].get("gender"),
-            temp_user[user_id].get("region"),
-            temp_user[user_id].get("district"),
-            temp_user[user_id].get("education_type"),
-            temp_user[user_id].get("school_type"),
-            temp_user[user_id].get("school"),
-            temp_user[user_id].get("class"),
-            temp_user[user_id].get("class_letter")
-        ))
-
-        conn.commit()
-        conn.close()
-
+        
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+        
+            cur.execute("""
+            INSERT INTO users(
+                user_id,
+                role,
+                full_name,
+                birth_date,
+                gender,
+                region,
+                district,
+                education_type,
+                school_type,
+                school,
+                class,
+                class_letter
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                user_id,
+                temp_user[user_id].get("role"),
+                temp_user[user_id].get("full_name"),
+                datetime.strptime(
+                    temp_user[user_id].get("birth_date"),
+                    "%d.%m.%Y"
+                ).date(),
+                temp_user[user_id].get("gender"),
+                temp_user[user_id].get("region"),
+                temp_user[user_id].get("district"),
+                temp_user[user_id].get("education_type"),
+                temp_user[user_id].get("school_type"),
+                temp_user[user_id].get("school"),
+                temp_user[user_id].get("class"),
+                temp_user[user_id].get("class_letter")
+            ))
+        
+            conn.commit()
+            conn.close()
+        
+        except Exception as e:
+            print("DATABASE ERROR:", e)
         try:
             await message.delete()
         except:
