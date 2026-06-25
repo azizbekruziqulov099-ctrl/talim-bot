@@ -442,6 +442,127 @@ def init_db():
         ON lesson_history(user_id, learned_at DESC)
     """)
 
+    # ===== Yetishmayotgan 10 ta jadval (auto-create, idempotent) =====
+    cur.execute("""
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS gender     TEXT
+    """)
+    cur.execute("""
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS dts_tree (
+        id SERIAL PRIMARY KEY,
+        topic_code TEXT UNIQUE,
+        grade TEXT, subject_code TEXT, subject_name TEXT, quarter TEXT,
+        bob_code TEXT, bob_name TEXT, bolim_code TEXT, bolim_name TEXT,
+        mavzu_code TEXT, mavzu_name TEXT, kichik_code TEXT, kichik_name TEXT,
+        is_deleted BOOLEAN DEFAULT FALSE
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_dts_tree_grade_subj ON dts_tree (grade, subject_code, quarter)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_dts_tree_active ON dts_tree (is_deleted)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS generated_tests (
+        id SERIAL PRIMARY KEY,
+        topic_code TEXT, difficulty TEXT, situation TEXT, question TEXT,
+        option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
+        correct_answer TEXT, explanation TEXT, question_type TEXT,
+        is_latex BOOLEAN DEFAULT FALSE, image_url TEXT, audio_text TEXT,
+        language TEXT, life_level TEXT, age_group TEXT, time_limit INTEGER
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gen_tests_topic ON generated_tests (topic_code)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gen_tests_topic_diff ON generated_tests (topic_code, difficulty)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS teacher_lessons (
+        id SERIAL PRIMARY KEY,
+        topic_code TEXT UNIQUE,
+        intro TEXT, part_1 TEXT, part_2 TEXT, part_3 TEXT, part_4 TEXT,
+        simple_1 TEXT, simple_2 TEXT, simple_3 TEXT, simple_4 TEXT,
+        example_1 TEXT, example_2 TEXT, exercise_1 TEXT, exercise_2 TEXT,
+        summary TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS learned_topics (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        topic_code TEXT NOT NULL,
+        score INTEGER DEFAULT 0,
+        repeat_count INTEGER DEFAULT 0,
+        learned_at TIMESTAMP DEFAULT NOW(),
+        next_repeat DATE,
+        UNIQUE (user_id, topic_code)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learned_user ON learned_topics (user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_learned_repeat ON learned_topics (next_repeat)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_progress (
+        user_id BIGINT PRIMARY KEY,
+        xp INTEGER DEFAULT 0,
+        streak INTEGER DEFAULT 0,
+        last_active DATE
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lesson_progress (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        topic_code TEXT,
+        current_step INTEGER DEFAULT 0,
+        completed BOOLEAN DEFAULT FALSE
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lesson_prog_user ON lesson_progress (user_id)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS achievements (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        badge_code TEXT NOT NULL,
+        earned_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (user_id, badge_code)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS exams (
+        id SERIAL PRIMARY KEY,
+        title TEXT, grade TEXT, exam_date DATE,
+        is_mandatory BOOLEAN DEFAULT FALSE,
+        created_by BIGINT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS exam_results (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        exam_id INTEGER REFERENCES exams(id) ON DELETE CASCADE,
+        status TEXT DEFAULT 'pending',
+        UNIQUE (user_id, exam_id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_results_user ON exam_results (user_id)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS topic_generation (
+        topic_code TEXT PRIMARY KEY,
+        current_count INTEGER DEFAULT 0,
+        target_count INTEGER DEFAULT 10,
+        last_generated_at TIMESTAMP
+    )
+    """)
+    # ===== Yetishmayotgan jadvallar tugadi =====
+
+
     conn.commit()
     conn.close()
 
