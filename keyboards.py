@@ -36,24 +36,18 @@ def get_main_keyboard(role=None):
     elif role == "Admin":
         keyboard = [
             [
-                KeyboardButton(text="🤖 AI Generator"),
-                KeyboardButton(text="📊 Mavzular statistikasi"),
+                KeyboardButton(text="📋 Shablonlar"),
+                KeyboardButton(text="📊 Test statistikasi"),
                 KeyboardButton(text="🧪 Test sinovi"),
             ],
             [
-                KeyboardButton(text="📚 Shablon yaratish"),
                 KeyboardButton(text="🖼 Rasmlar boshqaruvi"),
-                KeyboardButton(text="📚 DTS boshqaruvi"),
-            ],
-            [
                 KeyboardButton(text="👥 Foydalanuvchilar"),
                 KeyboardButton(text="📋 So'rovnoma natijalari"),
-                KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             ],
             [
-                KeyboardButton(text="🤖 Test generator"),
-                KeyboardButton(text="📚 BILIMNI SINASH bazasi"),
-                KeyboardButton(text="📥 Test import qilish"),
+                KeyboardButton(text="🧭 DTS topik boshqaruvi"),
+                KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             ],
         ]
 
