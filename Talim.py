@@ -1026,7 +1026,21 @@ async def import_tests_excel(message):
         path
     )
 
-    df = pd.read_excel(path,sheet_name="TESTLAR")
+    # Varaq nomi har qanday bo'lsa ishlasin: avval TESTLAR, bo'lmasa birinchi varaq
+    try:
+        _xls = pd.ExcelFile(path)
+        _sheet = "TESTLAR" if "TESTLAR" in _xls.sheet_names else _xls.sheet_names[0]
+        df = pd.read_excel(path, sheet_name=_sheet)
+    except Exception as _e:
+        await message.answer(f"❌ Excel o'qib bo'lmadi: {_e}")
+        return
+
+    if "topic_code" not in df.columns:
+        await message.answer(
+            "❌ Excel ustunlari mos emas.\n"
+            "Birinchi qatorda 'topic_code, difficulty, question ...' ustunlari bo'lishi kerak."
+        )
+        return
 
     success = 0
     duplicates = 0
@@ -1067,10 +1081,14 @@ async def import_tests_excel(message):
             _cur.execute("""
                 SELECT COUNT(*) FROM generated_tests
                 WHERE topic_code=%s AND question=%s
-                  AND option_a=%s AND correct_answer=%s
+                  AND option_a=%s AND option_b=%s
+                  AND option_c=%s AND option_d=%s
+                  AND correct_answer=%s
             """, (
                 test_data["topic_code"], test_data["question"],
-                test_data["option_a"], test_data["correct_answer"],
+                test_data["option_a"], test_data["option_b"],
+                test_data["option_c"], test_data["option_d"],
+                test_data["correct_answer"],
             ))
             already = _cur.fetchone()[0]
 
