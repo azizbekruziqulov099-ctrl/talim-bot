@@ -1468,28 +1468,25 @@ async def handle_all(
             )
         return
 
-    elif message.text == "🤖 Test generator":
+    elif message.text == "📊 Test statistikasi":
 
         await message.answer(
-            "Generator boshqaruvi",
+            "📊 Test statistikasi / Generator",
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[
-                    [KeyboardButton(text="📄 Excel shablon"),
-                    KeyboardButton(text="📥 Test import qilish")],
                     [KeyboardButton(text="📚 Mavzular statistikasi"),
-                    KeyboardButton(text="▶️ Generatorni boshlash")],
-                    [KeyboardButton(text="⏹ Generatorni to‘xtatish"),
                     KeyboardButton(text="📊 Generator statistikasi")],
-                    [KeyboardButton(text="📚 Mavzular statistikasi"),
-                    KeyboardButton(text="🔙 Ortga")]
-                ],               
+                    [KeyboardButton(text="▶️ Generatorni boshlash"),
+                    KeyboardButton(text="⏹ Generatorni to‘xtatish")],
+                    [KeyboardButton(text="🔙 Ortga")]
+                ],
                   resize_keyboard=True
             )
         )
 
         return
 
-    elif message.text == "📚 Mavzular statistikasi":
+    elif message.text in ("📚 Mavzular statistikasi", "🧪 Test shablon"):
 
         grades = get_grades()
 
@@ -1623,6 +1620,69 @@ async def handle_all(
         )
 
         return
+
+    # ===== 📋 SHABLONLAR — yagona shablon/import markazi =====
+    elif message.text == "📋 Shablonlar":
+        if user_id not in ADMINS:
+            return
+        await message.answer(
+            "📋 Shablonlar va Import\n\n"
+            "Chap — bo'sh shablon olish, o'ng — to'ldirilganni import qilish:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="📋 Topik shablon"), KeyboardButton(text="📥 Topik import")],
+                    [KeyboardButton(text="🧪 Test shablon"),  KeyboardButton(text="📥 Test import")],
+                    [KeyboardButton(text="📚 Dars shablon"),  KeyboardButton(text="📥 Dars import")],
+                    [KeyboardButton(text="🔙 Admin menyu")],
+                ],
+                resize_keyboard=True
+            )
+        )
+        return
+
+    elif message.text == "📋 Topik shablon":
+        if user_id not in ADMINS:
+            return
+        from shablon_yaratish import shablon_state
+        shablon_state[user_id] = {"step": "sinf_fan"}
+        await message.answer(
+            "📋 Topik kod uchun shablon\n\n"
+            "Sinf va fanni yozing:\nMasalan: 1 Ingliz tili"
+        )
+        return
+
+    elif message.text == "📥 Topik import":
+        if user_id not in ADMINS:
+            return
+        await dts_import_menu(message, admin_state, user_id)
+        return
+
+    elif message.text == "📥 Test import":
+        if user_id not in ADMINS:
+            return
+        admin_state[user_id] = "test_import"
+        await message.answer("📥 Test import\n\nTo'ldirilgan Excel faylni yuboring:")
+        return
+
+    elif message.text == "📚 Dars shablon":
+        if user_id not in ADMINS:
+            return
+        await lesson_admin.la_show_grades(message)
+        return
+
+    elif message.text == "📥 Dars import":
+        if user_id not in ADMINS:
+            return
+        await state.set_state(lesson_admin.LessonAdminState.waiting_excel)
+        await message.answer("📥 Dars import\n\nTo'ldirilgan Excel faylini yuboring:")
+        return
+
+    elif message.text == "🔙 Admin menyu":
+        if user_id not in ADMINS:
+            return
+        await message.answer("⚙️ Admin menyusi", reply_markup=get_main_keyboard("Admin"))
+        return
+    # ===== Shablonlar markazi tugadi =====
 
     elif (
         user_id in topic_stats_state
