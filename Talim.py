@@ -1461,7 +1461,7 @@ async def handle_all(
         await show_gen_start(message, user_id)
         return
 
-    elif message.text == "📚 DTS boshqaruvi":
+    elif message.text in ("📚 DTS boshqaruvi", "🧭 DTS topik boshqaruvi"):
 
         await dts_menu(
                 message
