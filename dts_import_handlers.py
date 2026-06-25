@@ -2063,7 +2063,7 @@ async def dts_menu(
 
     await message.answer(
 
-        "📚 DTS Boshqaruv Paneli",
+        "🧭 DTS topik boshqaruvi",
 
         reply_markup=kb
 
