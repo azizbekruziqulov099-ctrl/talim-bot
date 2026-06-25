@@ -1013,18 +1013,53 @@ async def start(message: types.Message):
         ])
     )
 
-async def import_tests_excel(message):
+# Test import uchun vaqtincha fayl yo'llari (user_id -> path)
+test_import_files = {}
 
-    file = await bot.get_file(
-        message.document.file_id
+async def prepare_test_import(message, user_id):
+    """Excel ni yuklab, tekshirib, tasdiq so'raydi (darrov import qilmaydi)."""
+    file = await bot.get_file(message.document.file_id)
+    path = f"temp_import_{user_id}.xlsx"
+    await bot.download_file(file.file_path, path)
+
+    try:
+        _xls = pd.ExcelFile(path)
+        _sheet = "TESTLAR" if "TESTLAR" in _xls.sheet_names else _xls.sheet_names[0]
+        df = pd.read_excel(path, sheet_name=_sheet)
+    except Exception as _e:
+        await message.answer(f"❌ Excel o'qib bo'lmadi: {_e}")
+        admin_state[user_id] = None
+        return
+
+    if "topic_code" not in df.columns:
+        await message.answer(
+            "❌ Excel ustunlari mos emas.\n"
+            "Birinchi qatorda 'topic_code, difficulty, question ...' ustunlari bo'lishi kerak."
+        )
+        admin_state[user_id] = None
+        return
+
+    valid = 0
+    for _, r in df.iterrows():
+        if not pd.isna(r.get("topic_code")) and not pd.isna(r.get("question")):
+            valid += 1
+
+    test_import_files[user_id] = path
+    admin_state[user_id] = "test_import_confirm"
+
+    await message.answer(
+        f"📋 Faylda {valid} ta savol topildi.\n\nImport qilaylikmi?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[
+                KeyboardButton(text="✅ Ha, import qil"),
+                KeyboardButton(text="❌ Bekor"),
+            ]],
+            resize_keyboard=True
+        )
     )
 
-    path = "temp_import.xlsx"
 
-    await bot.download_file(
-        file.file_path,
-        path
-    )
+async def import_tests_excel(target, path, user_id):
 
     # Varaq nomi har qanday bo'lsa ishlasin: avval TESTLAR, bo'lmasa birinchi varaq
     try:
@@ -1032,11 +1067,11 @@ async def import_tests_excel(message):
         _sheet = "TESTLAR" if "TESTLAR" in _xls.sheet_names else _xls.sheet_names[0]
         df = pd.read_excel(path, sheet_name=_sheet)
     except Exception as _e:
-        await message.answer(f"❌ Excel o'qib bo'lmadi: {_e}")
+        await target.answer(f"❌ Excel o'qib bo'lmadi: {_e}")
         return
 
     if "topic_code" not in df.columns:
-        await message.answer(
+        await target.answer(
             "❌ Excel ustunlari mos emas.\n"
             "Birinchi qatorda 'topic_code, difficulty, question ...' ustunlari bo'lishi kerak."
         )
@@ -1162,7 +1197,7 @@ async def import_tests_excel(message):
             index=False
         )
 
-    await message.answer(
+    await target.answer(
         f"✅ Import tugadi\n\n"
         f"📥 Saqlandi: {success}\n"
         f"⚠️ Duplikat: {duplicates}\n"
@@ -1171,12 +1206,12 @@ async def import_tests_excel(message):
 
     if error_rows:
 
-        await message.answer_document(
+        await target.answer_document(
             FSInputFile("import_errors.xlsx"),
             caption="📋 Import xatolari hisoboti"
         )
 
-    admin_state[message.from_user.id] = None
+    admin_state[user_id] = None
 
 @dp.message()
 async def handle_all(
@@ -1384,9 +1419,7 @@ async def handle_all(
         and message.document
     ):
 
-        await import_tests_excel(
-            message
-        )
+        await prepare_test_import(message, user_id)
 
         return
 
@@ -1472,7 +1505,7 @@ async def handle_all(
         await show_shablon_menu(message, user_id)
         return
 
-    elif message.text == "🤖 AI Generator":
+    elif message.text in ("🤖 AI Generator", "🧪 Test shablon"):
         if user_id not in ADMINS:
             return
         from ai_generatori import show_gen_start
@@ -1504,7 +1537,7 @@ async def handle_all(
 
         return
 
-    elif message.text in ("📚 Mavzular statistikasi", "🧪 Test shablon"):
+    elif message.text == "📚 Mavzular statistikasi":
 
         grades = get_grades()
 
@@ -1680,6 +1713,36 @@ async def handle_all(
             return
         admin_state[user_id] = "test_import"
         await message.answer("📥 Test import\n\nTo'ldirilgan Excel faylni yuboring:")
+        return
+
+    elif message.text == "✅ Ha, import qil" and admin_state.get(user_id) == "test_import_confirm":
+        if user_id not in ADMINS:
+            return
+        path = test_import_files.get(user_id)
+        admin_state[user_id] = None
+        if not path or not os.path.exists(path):
+            await message.answer("❌ Fayl topilmadi, qaytadan yuboring.",
+                                 reply_markup=get_main_keyboard("Admin"))
+            return
+        await message.answer("⏳ Import qilinmoqda...", reply_markup=get_main_keyboard("Admin"))
+        await import_tests_excel(message, path, user_id)
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        test_import_files.pop(user_id, None)
+        return
+
+    elif message.text == "❌ Bekor" and admin_state.get(user_id) == "test_import_confirm":
+        admin_state[user_id] = None
+        path = test_import_files.pop(user_id, None)
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        await message.answer("❌ Import bekor qilindi.",
+                             reply_markup=get_main_keyboard("Admin"))
         return
 
     elif message.text == "📚 Dars shablon":
