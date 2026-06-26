@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 with open("regions.json","r",encoding="utf-8") as f:
     REGIONS = json.load(f)
 
-ROLES        = ["🧒 O'quvchi","👨‍🏫 O'qituvchi"]
+ROLES        = ["🧒 O'quvchi","👨‍🏫 O'qituvchi","👨‍👩‍👧 Ota-ona"]
 EDU_TYPES    = ["👶 Maktabgacha","🏫 Maktab"]
 MONTHS       = ["Yanvar","Fevral","Mart","Aprel","May","Iyun",
                 "Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"]
@@ -279,13 +279,23 @@ async def reg_year_callback(call):
     elif action.isdigit() and len(digits)<4:
         digits+=action
     temp_user[user_id]["year_digits"] = digits
+    registration_message[user_id] = call.message.message_id
     try:
         await bot.edit_message_text(
             text=reg_status(temp_user[user_id])+"\n\n🎂 Tug'ilgan yilingizni kiriting:",
             chat_id=chat_id, message_id=call.message.message_id,
             reply_markup=year_inline_kb(digits)
         )
-    except: pass
+    except Exception:
+        # Edit muvaffaqiyatsiz bo'lsa — yangi xabar yuboramiz
+        try: await bot.delete_message(chat_id, call.message.message_id)
+        except: pass
+        nm = await bot.send_message(
+            chat_id,
+            reg_status(temp_user[user_id])+"\n\n🎂 Tug'ilgan yilingizni kiriting:",
+            reply_markup=year_inline_kb(digits)
+        )
+        registration_message[user_id] = nm.message_id
     await call.answer()
 
 # ── Yakuniy saqlash ──
