@@ -361,6 +361,12 @@ def init_db():
         conn.commit()
     except Exception:
         conn.rollback()
+    for _col_sql in [
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS kindergarten TEXT',
+        'ALTER TABLE users ADD COLUMN IF NOT EXISTS "group" TEXT',
+    ]:
+        try: cur.execute(_col_sql); conn.commit()
+        except Exception: conn.rollback()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS survey_answers (
