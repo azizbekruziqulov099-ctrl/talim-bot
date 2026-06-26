@@ -213,7 +213,7 @@ async def speak_mixed_text(user_id, message, text):
 
 async def read_current_page(user_id, message, user_state):
 
-    text = user_state.get(user_id, {}).get("speak_text")
+    text = lesson_state.get(user_id, {}).get("speak_text")
 
     if not text:
         await message.answer(
@@ -539,7 +539,7 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
         f"👤 {full_name} | {sinf}\n"
         f"📘 {fan} • {mavzu} • {bugun}\n"
         f"━━━━━━━━━━━━━━\n\n"
-        f"{render_text(str(build_board_text(parts[0]) or "")) or render_text(render_content(parts[0]))}\n\n"
+        f"{render_text(build_board_text(parts[0]) or '') or render_text(render_content(parts[0]))}\n\n"
         f"📄 1/{len(parts)} qadam",
         reply_markup=keyboard
     )
@@ -550,7 +550,7 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
 async def lesson_review_start(user_id, message):
     """Takrorlash testini boshlaydi"""
 
-    questions = user_state.get(user_id, {}).get("review_questions", [])
+    questions = lesson_state.get(user_id, {}).get("review_questions", [])
     await send_review_question(user_id, message, questions, 0)
 
 
@@ -559,17 +559,17 @@ async def send_review_question(user_id, message, questions, index):
 
     if index >= len(questions):
         # Takrorlash tugadi — darsni boshlash
-        correct = user_state.get(user_id, {}).get("review_correct", 0)
+        correct = lesson_state.get(user_id, {}).get("review_correct", 0)
         total   = len(questions)
 
         emoji = "🔥" if correct == total else "👍" if correct >= total // 2 else "💪"
 
-        parts     = user_state.get(user_id, {}).get("parts", [])
-        full_name = user_state.get(user_id, {}).get("full_name", "O'quvchi")
-        sinf      = user_state.get(user_id, {}).get("sinf", "")
-        fan       = user_state.get(user_id, {}).get("fan", "")
-        mavzu     = user_state.get(user_id, {}).get("mavzu", "")
-        bugun     = user_state.get(user_id, {}).get("bugun", "")
+        parts     = lesson_state.get(user_id, {}).get("parts", [])
+        full_name = lesson_state.get(user_id, {}).get("full_name", "O'quvchi")
+        sinf      = lesson_state.get(user_id, {}).get("sinf", "")
+        fan       = lesson_state.get(user_id, {}).get("fan", "")
+        mavzu     = lesson_state.get(user_id, {}).get("mavzu", "")
+        bugun     = lesson_state.get(user_id, {}).get("bugun", "")
 
         await message.answer(
             f"{emoji} Takrorlash: {correct}/{total}\n\n"
@@ -604,8 +604,8 @@ async def send_review_question(user_id, message, questions, index):
 async def lesson_review_answer(user_id, message, answer):
     """Takrorlash javobini tekshiradi"""
 
-    questions = user_state.get(user_id, {}).get("review_questions", [])
-    index     = user_state.get(user_id, {}).get("review_index", 0)
+    questions = lesson_state.get(user_id, {}).get("review_questions", [])
+    index     = lesson_state.get(user_id, {}).get("review_index", 0)
 
     if not questions or index >= len(questions):
         return
@@ -694,7 +694,7 @@ async def lesson_next(user_id, message):
             # Dars tugadi — mustahkamlash testiga o'tish
             await message.edit_text(
                 f"🎉 Dars tugadi!\n\n"
-                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"📘 {lesson_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
                 f"Bilimingizni mustahkamlash uchun\n"
                 f"5 ta savol javob bering! 🧠",
                 reply_markup=InlineKeyboardMarkup(
@@ -749,7 +749,7 @@ async def lesson_next(user_id, message):
             f"👤 {fn} | {sinf}\n"
             f"📘 {fan} • {mav} • {bgun}\n"
             f"━━━━━━━━━━━━━━\n\n"
-            f"{render_text(str(build_board_text(parts[next_step]) or "")) or render_text(render_content(parts[next_step]))}\n\n"
+            f"{render_text(build_board_text(parts[next_step]) or '') or render_text(render_content(parts[next_step]))}\n\n"
             f"📄 {next_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
@@ -914,7 +914,7 @@ async def lesson_prev(user_id, message):
             f"👤 {fn} | {sinf}\n"
             f"📘 {fan} • {mav} • {bgun}\n"
             f"━━━━━━━━━━━━━━\n\n"
-            f"{render_text(str(build_board_text(parts[prev_step]) or "")) or render_text(render_content(parts[prev_step]))}\n\n"
+            f"{render_text(build_board_text(parts[prev_step]) or '') or render_text(render_content(parts[prev_step]))}\n\n"
             f"📄 {prev_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
@@ -927,7 +927,7 @@ async def lesson_prev(user_id, message):
                 f"👤 {fn} | {sinf}\n"
                 f"📘 {fan} • {mav} • {bgun}\n"
                 f"━━━━━━━━━━━━━━\n\n"
-                f"{render_text(str(build_board_text(parts[prev_step]) or "")) or render_text(render_content(parts[prev_step]))}\n\n"
+                f"{render_text(build_board_text(parts[prev_step]) or '') or render_text(render_content(parts[prev_step]))}\n\n"
                 f"📄 {prev_step + 1}/{len(parts)} qadam",
                 reply_markup=keyboard
             )
@@ -996,7 +996,7 @@ async def lesson_help(
             simple_text = ""
         main_text = str(parts[current_step])
 
-        u    = user_state.get(user_id, {}) if isinstance(lesson_state.get(user_id), dict) else {}
+        u    = lesson_state.get(user_id) or {}
         fn   = u.get("full_name", "O'quvchi")
         sinf = u.get("sinf", "")
         fan  = u.get("fan", "")
@@ -1180,7 +1180,7 @@ async def lesson_consolidation_test(user_id, message):
 
     try:
 
-        topic_code = user_state.get(user_id, {}).get("topic_code", "TEST_001")
+        topic_code = lesson_state.get(user_id, {}).get("topic_code", "TEST_001")
 
         # generated_tests dan mavzu topic_code lari
         cur.execute("""
@@ -1220,8 +1220,8 @@ async def lesson_consolidation_test(user_id, message):
                 """, (
                     user_id,
                     topic_code,
-                    user_state.get(user_id, {}).get("mavzu", ""),
-                    user_state.get(user_id, {}).get("fan", ""),
+                    lesson_state.get(user_id, {}).get("mavzu", ""),
+                    lesson_state.get(user_id, {}).get("fan", ""),
                     0, 0
                 ))
                 conn.commit()
@@ -1230,7 +1230,7 @@ async def lesson_consolidation_test(user_id, message):
 
             await message.edit_text(
                 f"✅ Dars muvaffaqiyatli tugallandi!\n\n"
-                f"📘 {user_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
+                f"📘 {lesson_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
                 f"⚠️ Bu mavzu bo'yicha testlar hali qo'shilmagan.",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[[
@@ -1266,7 +1266,7 @@ async def send_test_question(user_id, message, questions, index):
     """Bitta test savolini yuboradi"""
 
     if index >= len(questions):
-        correct = user_state.get(user_id, {}).get("test_correct", 0)
+        correct = lesson_state.get(user_id, {}).get("test_correct", 0)
         total   = len(questions)
         pct     = int(correct / total * 100)
 
@@ -1276,7 +1276,7 @@ async def send_test_question(user_id, message, questions, index):
         try:
             conn = psycopg2.connect(DATABASE_URL)
             cur  = conn.cursor()
-            topic_code = user_state.get(user_id, {}).get("topic_code", "")
+            topic_code = lesson_state.get(user_id, {}).get("topic_code", "")
             cur.execute("""
                 INSERT INTO lesson_history
                 (user_id, topic_code, mavzu, fan, score, total)
@@ -1284,8 +1284,8 @@ async def send_test_question(user_id, message, questions, index):
             """, (
                 user_id,
                 topic_code,
-                user_state.get(user_id, {}).get("mavzu", ""),
-                user_state.get(user_id, {}).get("fan", ""),
+                lesson_state.get(user_id, {}).get("mavzu", ""),
+                lesson_state.get(user_id, {}).get("fan", ""),
                 correct,
                 total
             ))
@@ -1304,7 +1304,7 @@ async def send_test_question(user_id, message, questions, index):
         streak    = update_streak(user_id)
 
         # Mavzuni o'rganilgan deb belgilash
-        topic_code = user_state.get(user_id, {}).get("topic_code", "")
+        topic_code = lesson_state.get(user_id, {}).get("topic_code", "")
         if topic_code:
             mark_learned(user_id, topic_code, pct)
 
@@ -1512,8 +1512,8 @@ async def lesson_finish(
     try:
 
         # Mavzu topic_code ni oldindan saqlab olamiz
-        topic_code = user_state.get(user_id, {}).get("topic_code", "") if isinstance(lesson_state.get(user_id), dict) else ""
-        grade      = user_state.get(user_id, {}).get("sinf", "") if isinstance(lesson_state.get(user_id), dict) else ""
+        topic_code = lesson_state.get(user_id, {}).get("topic_code", "") if isinstance(lesson_state.get(user_id), dict) else ""
+        grade      = lesson_state.get(user_id, {}).get("sinf", "") if isinstance(lesson_state.get(user_id), dict) else ""
 
         if user_id in user_state:
             user_state.pop(user_id)
