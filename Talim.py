@@ -354,7 +354,13 @@ def init_db():
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
-
+    # user_id INTEGER -> BIGINT (Telegram ID lari INTEGER chegarasidan oshib ketadi)
+    try:
+        cur.execute("ALTER TABLE users ALTER COLUMN user_id TYPE BIGINT")
+        cur.execute("ALTER TABLE survey_answers ALTER COLUMN user_id TYPE BIGINT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS survey_answers (
@@ -998,20 +1004,9 @@ async def start(message: types.Message):
 
         return
 
-    # YANGI FOYDALANUVCHI
-    user_state[message.from_user.id] = "role"
-
-    await message.answer(
-        "🎓 TA'LIM PLATFORMASI\n\n"
-        "Xush kelibsiz!\n\n"
-        "Platformadan foydalanish uchun "
-        "o'zingizga mos rolni tanlang.",
-        reply_markup=make_keyboard([
-            "🧒 O‘quvchi",
-            "👨‍🏫 O‘qituvchi",
-            "👨‍👩‍👧 Ota-ona"
-        ])
-    )
+    # YANGI FOYDALANUVCHI — inline registratsiya
+    from register import start_registration
+    await start_registration(message)
 
 # Test import uchun vaqtincha fayl yo'llari (user_id -> path)
 test_import_files = {}
@@ -3206,6 +3201,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
+        return
+
+    if call.data.startswith("reg:"):
+        from register import reg_callback
+        await reg_callback(call)
         return
 
     if call.data.startswith("reg_yr:"):
