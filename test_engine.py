@@ -251,6 +251,7 @@ async def show_question(user_id, message=None):
                 sx = test_sessions.get(user_id)
                 if not sx or sx.get("answered"): return
                 sx["answered"] = True; sx["wrong"] += 1
+                sx["timer_task"] = None
                 user_state[user_id] = None
                 await _advance(user_id)
             s["timer_task"] = asyncio.create_task(write_cd())
@@ -278,11 +279,16 @@ async def show_question(user_id, message=None):
                 except: pass
         sx = test_sessions.get(user_id)
         if not sx or sx.get("answered"): return
-        sx["answered"] = True; sx["wrong"] += 1
-        # Timer tugadi — natija ko'rsatib keyingisiga o'tish
+        sx["answered"] = True
+        sx["wrong"]   += 1
+        sx["timer_task"] = None  # avval tozala — _show_result chaqirmasdan
+        # To'g'ridan-to'g'ri natija ko'rsat va keyingisiga o't
         try:
-            await _show_result(user_id, None, "⏱ Vaqt tugadi!")
+            await _edit_board(sx, _board_text(sx, "⏱ Vaqt tugadi!"))
         except Exception:
+            pass
+        await asyncio.sleep(2.0)
+        if test_sessions.get(user_id):
             await _advance(user_id)
     s["timer_task"] = asyncio.create_task(cd())
 
