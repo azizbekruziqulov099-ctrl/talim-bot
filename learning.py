@@ -185,7 +185,7 @@ async def speak_mixed_text(user_id, message, text):
             try:
                 await message.bot.delete_message(
                     chat_id=message.chat.id,
-                    message_id=lesson_state[user_id]["voice_message_id"]
+                    message_id=lesson_state.setdefault(user_id, {})["voice_message_id"]
                 )
             except Exception:
                 pass
@@ -194,10 +194,10 @@ async def speak_mixed_text(user_id, message, text):
             FSInputFile(final_file)
         )
 
-        if user_id not in user_state:
-            user_state[user_id] = {}
+        if not isinstance(lesson_state.get(user_id), dict):
+            lesson_state[user_id] = {}
 
-        lesson_state[user_id]["voice_message_id"] = voice_msg.message_id
+        lesson_state.setdefault(user_id, {})["voice_message_id"] = voice_msg.message_id
 
     except Exception as e:
         await message.answer(f"❌ Audio xatolik: {e}")
@@ -412,17 +412,17 @@ async def open_teacher_lesson(message, topic_code=None, _user_id=None):
 
         # user_state string bo'lsa (masalan "in_test") — dict ga o'tkazamiz
         if not isinstance(lesson_state.get(user_id), dict):
-            user_state[user_id] = {}
+            lesson_state[user_id] = {}
 
-        lesson_state[user_id]["lesson"]       = lesson
-        lesson_state[user_id]["parts"]        = parts
-        lesson_state[user_id]["current_step"] = 0
-        lesson_state[user_id]["topic_code"]   = topic_code
-        lesson_state[user_id]["full_name"]    = full_name
-        lesson_state[user_id]["sinf"]         = sinf
-        lesson_state[user_id]["fan"]          = fan
-        lesson_state[user_id]["mavzu"]        = mavzu
-        lesson_state[user_id]["bugun"]        = bugun
+        lesson_state.setdefault(user_id, {})["lesson"]       = lesson
+        lesson_state.setdefault(user_id, {})["parts"]        = parts
+        lesson_state.setdefault(user_id, {})["current_step"] = 0
+        lesson_state.setdefault(user_id, {})["topic_code"]   = topic_code
+        lesson_state.setdefault(user_id, {})["full_name"]    = full_name
+        lesson_state.setdefault(user_id, {})["sinf"]         = sinf
+        lesson_state.setdefault(user_id, {})["fan"]          = fan
+        lesson_state.setdefault(user_id, {})["mavzu"]        = mavzu
+        lesson_state.setdefault(user_id, {})["bugun"]        = bugun
 
         cur.execute("""
             DELETE FROM lesson_progress WHERE user_id = %s
@@ -468,10 +468,10 @@ async def open_teacher_lesson(message, topic_code=None, _user_id=None):
 
             if review_qs:
                 # Takrorlash testini boshlaylik
-                lesson_state[user_id]["review_questions"] = review_qs
-                lesson_state[user_id]["review_index"]     = 0
-                lesson_state[user_id]["review_correct"]   = 0
-                lesson_state[user_id]["after_review"]     = "start_lesson"
+                lesson_state.setdefault(user_id, {})["review_questions"] = review_qs
+                lesson_state.setdefault(user_id, {})["review_index"]     = 0
+                lesson_state.setdefault(user_id, {})["review_correct"]   = 0
+                lesson_state.setdefault(user_id, {})["after_review"]     = "start_lesson"
 
                 await message.answer(
                     f"🔁 Avval kechagi mavzuni eslab olaylik!\n\n"
@@ -546,7 +546,7 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
         reply_markup=keyboard
     )
 
-    lesson_state[user_id]["board_message_id"] = msg.message_id
+    lesson_state.setdefault(user_id, {})["board_message_id"] = msg.message_id
 
 
 async def lesson_review_start(user_id, message):
@@ -619,7 +619,7 @@ async def lesson_review_answer(user_id, message, answer):
     is_correct = answer.upper() == correct.upper()
 
     if is_correct:
-        lesson_state[user_id]["review_correct"] = (
+        lesson_state.setdefault(user_id, {})["review_correct"] = (
             user_state[user_id].get("review_correct", 0) + 1
         )
         result = "✅ To'g'ri!"
@@ -630,7 +630,7 @@ async def lesson_review_answer(user_id, message, answer):
         result += f"\n💡 {explanation}"
 
     next_index = index + 1
-    lesson_state[user_id]["review_index"] = next_index
+    lesson_state.setdefault(user_id, {})["review_index"] = next_index
 
     await message.answer(
         result,
@@ -652,8 +652,8 @@ async def lesson_next(user_id, message):
 
     try:
 
-        if user_id not in user_state:
-            user_state[user_id] = {}
+        if not isinstance(lesson_state.get(user_id), dict):
+            lesson_state[user_id] = {}
 
         cur.execute("""
             SELECT topic_code, current_step
@@ -1246,13 +1246,13 @@ async def lesson_consolidation_test(user_id, message):
             return
 
         # Testni user_state ga saqlaymiz
-        if user_id not in user_state:
-            user_state[user_id] = {}
+        if not isinstance(lesson_state.get(user_id), dict):
+            lesson_state[user_id] = {}
 
-        lesson_state[user_id]["test_questions"] = questions
-        lesson_state[user_id]["test_index"]     = 0
-        lesson_state[user_id]["test_correct"]   = 0
-        lesson_state[user_id]["test_mode"]      = "consolidation"
+        lesson_state.setdefault(user_id, {})["test_questions"] = questions
+        lesson_state.setdefault(user_id, {})["test_index"]     = 0
+        lesson_state.setdefault(user_id, {})["test_correct"]   = 0
+        lesson_state.setdefault(user_id, {})["test_mode"]      = "consolidation"
 
         await send_test_question(user_id, message, questions, 0)
 
@@ -1428,11 +1428,11 @@ async def lesson_test_answer(user_id, message, answer):
                 return
 
             if user_id not in user_state or not isinstance(lesson_state.get(user_id), dict):
-                user_state[user_id] = {}
+                lesson_state[user_id] = {}
 
-            lesson_state[user_id]["test_questions"] = questions
-            lesson_state[user_id]["test_index"]     = 0
-            lesson_state[user_id]["test_correct"]   = 0
+            lesson_state.setdefault(user_id, {})["test_questions"] = questions
+            lesson_state.setdefault(user_id, {})["test_index"]     = 0
+            lesson_state.setdefault(user_id, {})["test_correct"]   = 0
             index = 0
         finally:
             cur.close(); conn.close()
@@ -1467,8 +1467,8 @@ async def lesson_test_answer(user_id, message, answer):
 
     if is_correct:
         if not isinstance(lesson_state.get(user_id), dict):
-            user_state[user_id] = {}
-        lesson_state[user_id]["test_correct"] = (
+            lesson_state[user_id] = {}
+        lesson_state.setdefault(user_id, {})["test_correct"] = (
             user_state[user_id].get("test_correct", 0) + 1
         )
         result_text = "✅ To'g'ri!"
@@ -1480,9 +1480,9 @@ async def lesson_test_answer(user_id, message, answer):
 
     next_index = index + 1
     if not isinstance(lesson_state.get(user_id), dict):
-        user_state[user_id] = {}
-    lesson_state[user_id]["test_index"] = next_index
-    lesson_state[user_id]["last_result_text"] = result_text
+        lesson_state[user_id] = {}
+    lesson_state.setdefault(user_id, {})["test_index"] = next_index
+    lesson_state.setdefault(user_id, {})["last_result_text"] = result_text
 
     await message.answer(
         f"🧠 Mustahkamlash testi\n"
