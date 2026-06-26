@@ -1,98 +1,68 @@
 from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton
 )
-import json
-import psycopg2
-import os
+import json, psycopg2, os, re
 from keyboards import get_main_keyboard
-from storage import user_state, temp_user, registration_message
-import re
+from storage import user_state, temp_user, registration_message, reg_kbd_message
 from datetime import datetime
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 with open("regions.json", "r", encoding="utf-8") as f:
     REGIONS = json.load(f)
 
-ROLES = [
-    "🧒 O‘quvchi",
-    "👨‍🏫 O‘qituvchi"
+ROLES           = ["🧒 O'quvchi", "👨‍🏫 O'qituvchi"]
+EDUCATION_TYPES = ["👶 Maktabgacha", "🏫 Maktab"]
+CURRENT_YEAR    = datetime.now().year
+BIRTH_YEARS     = [str(i) for i in range(CURRENT_YEAR - 100, CURRENT_YEAR)]
+MONTHS = ["Yanvar","Fevral","Mart","Aprel","May","Iyun",
+          "Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"]
+DAYS            = [str(i) for i in range(1, 32)]
+CLASS_LEVELS    = [str(i) for i in range(1, 12)]
+CLASS_LETTERS   = ["A","B","C","D","E","Bilmadim"]
+SCHOOL_TYPES    = [
+    "🏫 Oddiy maktab","⭐️ Ixtisoslashtirilgan maktab",
+    "🇺🇿 Prezident maktabi","🧮 Al-Xorazmiy maktabi",
+    "🪖 Harbiy maktab","🎨 San'at maktabi","📖 IDUM"
 ]
+MONTH_MAP = {
+    "Yanvar":"01","Fevral":"02","Mart":"03","Aprel":"04",
+    "May":"05","Iyun":"06","Iyul":"07","Avgust":"08",
+    "Sentabr":"09","Oktabr":"10","Noyabr":"11","Dekabr":"12"
+}
 
-EDUCATION_TYPES = [
-    "👶 Maktabgacha",
-    "🏫 Maktab"
-]
-
-CURRENT_YEAR = datetime.now().year
-
-BIRTH_YEARS = [
-    str(i)
-    for i in range(CURRENT_YEAR - 100, CURRENT_YEAR)
-]
-
-MONTHS = [
-    "Yanvar",
-    "Fevral",
-    "Mart",
-    "Aprel",
-    "May",
-    "Iyun",
-    "Iyul",
-    "Avgust",
-    "Sentabr",
-    "Oktabr",
-    "Noyabr",
-    "Dekabr"
-]
-
-DAYS = [str(i) for i in range(1, 32)]
-
-CLASS_LEVELS = [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-    "11"
-]
-
-SCHOOL_TYPES = [
-    "🏫 Oddiy maktab",
-    "⭐️ Ixtisoslashtirilgan maktab",
-    "🇺🇿 Prezident maktabi",
-    "🧮 Al-Xorazmiy maktabi",
-    "🪖 Harbiy maktab",
-    "🎨 San'at maktabi",
-    "📖 IDUM"
-]
-
-CLASS_LETTERS = [
-    "A", "B", "C", "D", "E", "Bilmadim"
-]
-
+# ─────────── reg_status: to'ldirilgan qiymatlari ko'rinadi ───────────
 def reg_status(data):
+    def v(key, label):
+        val = data.get(key)
+        if val:
+            return f"✅ {label}: {val}"
+        return f"⬜ {label}"
+    lines = [
+        "📋 Ro'yxatdan o'tish\n",
+        v("full_name",      "F.I.Sh"),
+        v("birth_date",     "Tug'ilgan sana"),
+        v("gender",         "Jins"),
+        v("region",         "Viloyat"),
+        v("district",       "Tuman"),
+        v("education_type", "Ta'lim turi"),
+    ]
+    if data.get("education_type") == "🏫 Maktab":
+        lines += [
+            v("school_type",  "Maktab turi"),
+            v("school",       "Maktab"),
+            v("class",        "Sinf"),
+            v("class_letter", "Harf"),
+        ]
+    else:
+        lines += [
+            v("kindergarten", "Bog'cha"),
+            v("group",        "Guruh"),
+        ]
+    return "\n".join(lines)
 
-    return (
-        "📋 Registratsiya\n\n"
-
-        f"{'✅' if data.get('full_name') else '⬜'} F.I.Sh\n"
-        f"{'✅' if data.get('birth_date') else '⬜'} Tug‘ilgan sana\n"
-        f"{'✅' if data.get('gender') else '⬜'} Jins\n"
-        f"{'✅' if data.get('region') else '⬜'} Viloyat\n"
-        f"{'✅' if data.get('district') else '⬜'} Tuman\n"
-        f"{'✅' if data.get('education_type') else '⬜'} Ta'lim turi\n"
-        f"{'✅' if data.get('school_type') else '⬜'} Maktab turi\n"
-        f"{'✅' if data.get('school') else '⬜'} Maktab\n"
-        f"{'✅' if data.get('class') else '⬜'} Sinf\n"
-        f"{'✅' if data.get('class_letter') else '⬜'} Harf"
-    )
-
+# ─────────── klaviaturalar ───────────
 def make_keyboard(items):
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=i)] for i in items],
@@ -100,642 +70,485 @@ def make_keyboard(items):
     )
 
 def base_keyboard(items):
-
-    keyboard = []
-    row = []
-
+    keyboard, row = [], []
     for i, item in enumerate(items, start=1):
-
-        row.append(
-            KeyboardButton(text=str(item))
-        )
-
+        row.append(KeyboardButton(text=str(item)))
         if i % 4 == 0:
-            keyboard.append(row)
-            row = []
+            keyboard.append(row); row = []
+    if row: keyboard.append(row)
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-    if row:
-        keyboard.append(row)
+def year_inline_kb(digits=""):
+    """0-9 pad, backspace, confirm — inline (editlash uchun)."""
+    display = ""
+    for i in range(4):
+        display += digits[i] if i < len(digits) else "▢"
+        if i < 3: display += " "
+    confirm_ok = len(digits) == 4 and digits in BIRTH_YEARS
+    rows = [
+        [InlineKeyboardButton(text=display, callback_data="noop_yr")],
+        [InlineKeyboardButton(text=str(n), callback_data=f"reg_yr:{n}") for n in [1,2,3]],
+        [InlineKeyboardButton(text=str(n), callback_data=f"reg_yr:{n}") for n in [4,5,6]],
+        [InlineKeyboardButton(text=str(n), callback_data=f"reg_yr:{n}") for n in [7,8,9]],
+        [
+            InlineKeyboardButton(text="⬅️", callback_data="reg_yr:back"),
+            InlineKeyboardButton(text="0",  callback_data="reg_yr:0"),
+            InlineKeyboardButton(
+                text="✅ Tasdiqlash" if confirm_ok else "—",
+                callback_data="reg_yr:ok" if confirm_ok else "noop_yr"
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
+# ─────────── bitta xabar edit qilish ───────────
+async def _update_board(bot, chat_id, user_id, text, reply_kb=None):
+    """
+    Asosiy holat xabarini EDIT qiladi (delete+send emas → uchib-chiqmaydi).
+    reply_kb — ReplyKeyboardMarkup (ixtiyoriy).
+    """
+    mid = registration_message.get(user_id)
 
-async def update_reg_message(
-    message,
-    user_id,
-    text,
-    reply_markup=None
-):
-    try:
-        await message.bot.delete_message(
-            chat_id=message.chat.id,
-            message_id=registration_message[user_id]
-        )
-    except:
-        pass
-
-    msg = await message.answer(
-        text,
-        reply_markup=reply_markup
-    )
-
-    registration_message[user_id] = msg.message_id
-
-async def register_handler(message):
-
-    user_id = message.from_user.id
-
-    # ROLE
-    if user_state.get(user_id) == "role":
-
-        temp_user[user_id] = {
-            "role": message.text
-        }
-
-        user_state[user_id] = "full_name"
-
-        msg = await message.answer(
-            reg_status(temp_user[user_id]) +
-            "\n\n👤 F.I.Sh ni kiriting:\n\n"
-            "Masalan:\n"
-            "Familyangiz Ismingiz"
-        )
-        registration_message[user_id] = msg.message_id
-
-        return
-
-    elif user_state.get(user_id) == "full_name":
-
-        name = message.text.strip()
-
-        if len(name.split()) < 2:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
-                reg_status(temp_user[user_id]) +
-                "\n\n❌ F.I.Sh ni to'liq kiriting"
+    # 1) Boardni edit qil
+    if mid:
+        try:
+            await bot.edit_message_text(
+                text=text, chat_id=chat_id, message_id=mid
             )
+        except Exception:
+            # Edit bo'lmadi (inline klaviatura bor edi) — o'chir va qayta yubor
+            try: await bot.delete_message(chat_id, mid)
+            except: pass
+            nm = await bot.send_message(chat_id, text)
+            registration_message[user_id] = nm.message_id
+    else:
+        nm = await bot.send_message(chat_id, text)
+        registration_message[user_id] = nm.message_id
 
-            return
-        temp_user[user_id]["full_name"] = message.text
+    # 2) Eski klaviatura xabarini o'chir
+    old_kbd = reg_kbd_message.get(user_id)
+    if old_kbd:
+        try: await bot.delete_message(chat_id, old_kbd)
+        except: pass
+        reg_kbd_message.pop(user_id, None)
 
+    # 3) Yangi reply klaviatura xabarini yubor
+    if reply_kb:
+        km = await bot.send_message(chat_id, "👇", reply_markup=reply_kb)
+        reg_kbd_message[user_id] = km.message_id
+
+async def _update_board_inline(bot, chat_id, user_id, text, inline_kb):
+    """Inline klaviaturali xabarni EDIT qiladi."""
+    mid = registration_message.get(user_id)
+    # Eski reply klaviatura xabarini o'chir
+    old_kbd = reg_kbd_message.get(user_id)
+    if old_kbd:
+        try: await bot.delete_message(chat_id, old_kbd)
+        except: pass
+        reg_kbd_message.pop(user_id, None)
+
+    if mid:
         try:
-            await message.delete()
-        except:
-            pass
+            await bot.edit_message_text(
+                text=text, chat_id=chat_id, message_id=mid,
+                reply_markup=inline_kb
+            )
+            return
+        except Exception:
+            try: await bot.delete_message(chat_id, mid)
+            except: pass
+    nm = await bot.send_message(chat_id, text, reply_markup=inline_kb)
+    registration_message[user_id] = nm.message_id
 
+# ─────────── F.I.Sh tekshirish ───────────
+def validate_name(text):
+    """
+    Kamida 2 ta so'z, har biri katta harf bilan boshlansin,
+    har biri kamida 2 ta belgidan iborat bo'lsin.
+    """
+    words = text.strip().split()
+    if len(words) < 2:
+        return False
+    return all(
+        len(w) >= 2 and w[0].isupper()
+        for w in words
+    )
+
+# ─────────── asosiy handler ───────────
+async def register_handler(message):
+    user_id  = message.from_user.id
+    bot      = message.bot
+    chat_id  = message.chat.id
+    state    = user_state.get(user_id)
+
+    # ── ROL ──
+    if state == "role":
+        temp_user[user_id] = {"role": message.text}
+        user_state[user_id] = "full_name"
+        try: await message.delete()
+        except: pass
+        text = reg_status(temp_user[user_id]) + "\n\n👤 F.I.Sh ni kiriting:\nMasalan: Toshmatov Alisher"
+        nm = await bot.send_message(chat_id, text)
+        registration_message[user_id] = nm.message_id
+        return
+
+    # ── F.I.Sh ──
+    elif state == "full_name":
+        name = message.text.strip()
+        try: await message.delete()
+        except: pass
+
+        if not validate_name(name):
+            await _update_board(
+                bot, chat_id, user_id,
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Familiyani to'liq kiriting"
+            )
+            return
+
+        temp_user[user_id]["full_name"] = name
         user_state[user_id] = "birth_year"
-
-        await update_reg_message(
-            message,
-            user_id,
-            reg_status(temp_user[user_id]) +
-            "\n\n🎂 Tug‘ilgan yilingizni tanlang:",
-            base_keyboard(BIRTH_YEARS)
+        text = (reg_status(temp_user[user_id]) +
+                "\n\n🎂 Tug'ilgan yilingizni kiriting:")
+        await _update_board_inline(
+            bot, chat_id, user_id, text,
+            year_inline_kb("")
         )
-
         return
 
-    elif user_state.get(user_id) == "birth_year":
-
-        if message.text not in BIRTH_YEARS:
-            return
-
-        temp_user[user_id]["birth_year"] = message.text
-
-        user_state[user_id] = "birth_month"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
-            reg_status(temp_user[user_id]) +
-            "\n\n📅 Tug‘ilgan oyingizni tanlang:",
-            base_keyboard(MONTHS)
-        )
-
-        return
-
-    elif user_state.get(user_id) == "birth_month":
-
+    # ── TUG'ILGAN OY ──
+    elif state == "birth_month":
         if message.text not in MONTHS:
             return
-
-        month_map = {
-            "Yanvar": "01",
-            "Fevral": "02",
-            "Mart": "03",
-            "Aprel": "04",
-            "May": "05",
-            "Iyun": "06",
-            "Iyul": "07",
-            "Avgust": "08",
-            "Sentabr": "09",
-            "Oktabr": "10",
-            "Noyabr": "11",
-            "Dekabr": "12"
-        }
-
-        temp_user[user_id]["birth_month"] = month_map[message.text]
-
+        try: await message.delete()
+        except: pass
+        temp_user[user_id]["birth_month"] = MONTH_MAP[message.text]
         user_state[user_id] = "birth_day"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
-            "\n\n📅 Tug‘ilgan kuningizni tanlang:",
+            "\n\n📅 Tug'ilgan kuningizni tanlang:",
             base_keyboard(DAYS)
         )
-
         return
 
-    elif user_state.get(user_id) == "birth_day":
-
+    # ── TUG'ILGAN KUN ──
+    elif state == "birth_day":
         if message.text not in DAYS:
             return
-
+        try: await message.delete()
+        except: pass
         day = message.text.zfill(2)
-
-        try:
-            birth_date = (
-                f"{day}."
-                f"{temp_user[user_id]['birth_month']}."
-                f"{temp_user[user_id]['birth_year']}"
-            )
-
-            datetime.strptime(
-                birth_date,
-                "%d.%m.%Y"
-            )
-
-        except:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
-                reg_status(temp_user[user_id]) +
-                "\n\n❌ Sana noto'g'ri"
-            )
-
-            return
-
-        birth = datetime.strptime(
-            birth_date,
-            "%d.%m.%Y"
+        birth_date = (
+            f"{day}.{temp_user[user_id]['birth_month']}."
+            f"{temp_user[user_id]['birth_year']}"
         )
-
-        today = datetime.now()
-
-        age = today.year - birth.year
-
-        if (today.month, today.day) < (birth.month, birth.day):
-            age -= 1
-
-        if age < 2 or age > 100:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
+        try:
+            birth = datetime.strptime(birth_date, "%d.%m.%Y")
+            today = datetime.now()
+            age   = today.year - birth.year
+            if (today.month, today.day) < (birth.month, birth.day):
+                age -= 1
+            if age < 2 or age > 100:
+                raise ValueError("yosh")
+        except Exception:
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Yosh noto‘g‘ri kiritilgan"
+                "\n\n❌ Sana noto'g'ri, qaytadan tanlang:",
+                base_keyboard(DAYS)
             )
-
             return
-
         temp_user[user_id]["birth_date"] = birth_date
         user_state[user_id] = "gender"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n👤 Jinsni tanlang:",
-            make_keyboard([
-                "👨 Erkak",
-                "👩 Ayol"
-            ])
+            make_keyboard(["👨 Erkak", "👩 Ayol"])
         )
-
         return
 
-    elif user_state.get(user_id) == "gender":
-
-        if message.text not in [
-            "👨 Erkak",
-            "👩 Ayol"
-        ]:
+    # ── JINS ──
+    elif state == "gender":
+        if message.text not in ["👨 Erkak", "👩 Ayol"]:
             return
-
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["gender"] = message.text
-
         user_state[user_id] = "region"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n🌍 Viloyatni tanlang:",
-            base_keyboard(REGIONS.keys())
+            base_keyboard(list(REGIONS.keys()))
         )
-
         return
 
-    elif user_state.get(user_id) == "region":
-
+    # ── VILOYAT ──
+    elif state == "region":
         if message.text not in REGIONS:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Viloyatni tugmadan tanlang"
+                "\n\n❌ Viloyatni tugmadan tanlang:",
+                base_keyboard(list(REGIONS.keys()))
             )
-
             return
-
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["region"] = message.text
-
-        districts = REGIONS.get(
-            message.text,
-            []
-        )
-
-        flat = []
-
-        for row in districts:
-            flat.extend(row)
-
+        flat = [d for row in REGIONS[message.text] for d in row]
         user_state[user_id] = "district"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n📍 Tumanni tanlang:",
             base_keyboard(flat)
         )
-
         return
 
-    elif user_state.get(user_id) == "district":
-
+    # ── TUMAN ──
+    elif state == "district":
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["district"] = message.text
-
         user_state[user_id] = "education_type"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n🎓 Ta'lim turini tanlang:",
             make_keyboard(EDUCATION_TYPES)
         )
-
         return
 
-    elif user_state.get(user_id) == "education_type":
-
+    # ── TA'LIM TURI ──
+    elif state == "education_type":
         if message.text not in EDUCATION_TYPES:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Ta'lim turini tugmadan tanlang"
+                "\n\n❌ Ta'lim turini tugmadan tanlang:",
+                make_keyboard(EDUCATION_TYPES)
             )
-
             return
-
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["education_type"] = message.text
-
-        try:
-            await message.delete()
-        except:
-            pass
-
         if message.text == "🏫 Maktab":
-
             user_state[user_id] = "school_type"
-
-            await update_reg_message(
-                message,
-                user_id,
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
                 "\n\n🏫 Maktab turini tanlang:",
                 make_keyboard(SCHOOL_TYPES)
             )
-
         else:
-
             user_state[user_id] = "kindergarten"
-
-            await update_reg_message(
-                message,
-                user_id,
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n🏡 Bog‘cha nomini kiriting:"
+                "\n\n🏡 Bog'cha nomini kiriting:"
             )
-
         return
 
-    elif user_state.get(user_id) == "kindergarten":
-
+    # ── BOG'CHA ──
+    elif state == "kindergarten":
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["kindergarten"] = message.text
-
         user_state[user_id] = "group"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n👶 Guruh nomini kiriting:"
         )
-
         return
 
-    elif user_state.get(user_id) == "group":
-
+    # ── GURUH ──
+    elif state == "group":
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["group"] = message.text
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
-            "🎉 Registratsiya yakunlandi!"
-        )
-
         user_state[user_id] = None
-
-        return
-
-    elif user_state.get(user_id) == "school_type":
-
-        if message.text not in SCHOOL_TYPES:
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
-                reg_status(temp_user[user_id]) +
-                "\n\n❌ Maktab turini tugmadan tanlang"
-            )
-
-            return
-
-        temp_user[user_id]["school_type"] = message.text
-
-        user_state[user_id] = "school"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
-            "\n\n🏫 Maktab raqamini kiriting:"
+            "\n\n🎉 Ro'yxatdan o'tish yakunlandi!"
         )
-
         return
-        
-    elif user_state.get(user_id) == "school":
 
-        if not message.text.isdigit():
-
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=registration_message[user_id]
-                )
-            except:
-                pass
-
-            await update_reg_message(
-                message,
-                user_id,
+    # ── MAKTAB TURI ──
+    elif state == "school_type":
+        if message.text not in SCHOOL_TYPES:
+            await _update_board(
+                bot, chat_id, user_id,
                 reg_status(temp_user[user_id]) +
-                "\n\n❌ Maktab raqamini kiriting\n\nMasalan:\n25"
+                "\n\n❌ Maktab turini tugmadan tanlang:",
+                make_keyboard(SCHOOL_TYPES)
             )
-
             return
+        try: await message.delete()
+        except: pass
+        temp_user[user_id]["school_type"] = message.text
+        user_state[user_id] = "school"
+        await _update_board(
+            bot, chat_id, user_id,
+            reg_status(temp_user[user_id]) +
+            "\n\n🏫 Maktab raqamini kiriting:\nMasalan: 25"
+        )
+        return
 
+    # ── MAKTAB RAQAMI ──
+    elif state == "school":
+        if not message.text.isdigit():
+            await _update_board(
+                bot, chat_id, user_id,
+                reg_status(temp_user[user_id]) +
+                "\n\n❌ Faqat raqam kiriting. Masalan: 25"
+            )
+            return
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["school"] = message.text
-
         user_state[user_id] = "class"
-
-        try:
-            await message.delete()
-        except:
-            pass
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
             "\n\n🎓 Sinfni tanlang:",
             make_keyboard(CLASS_LEVELS)
         )
-
         return
-        
-    elif user_state.get(user_id) == "class":
 
+    # ── SINF ──
+    elif state == "class":
         if message.text not in CLASS_LEVELS:
             return
-
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["class"] = message.text
-
         user_state[user_id] = "class_letter"
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
-            user_id,
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
-            "\n\n🔤 Harfni tanlang:",
+            "\n\n🔤 Sinf harfini tanlang:",
             make_keyboard(CLASS_LETTERS)
         )
-
         return
-        
-    elif user_state.get(user_id) == "class_letter":
 
+    # ── SINF HARFI — YAKUNIY SAQLASH ──
+    elif state == "class_letter":
         if message.text not in CLASS_LETTERS:
             return
-
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["class_letter"] = message.text
-        
-        try:
-            conn = psycopg2.connect(DATABASE_URL)
-            cur = conn.cursor()
-        
-            cur.execute("""
+
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        cur.execute("""
             INSERT INTO users(
-                user_id,
-                role,
-                full_name,
-                birth_date,
-                gender,
-                region,
-                district,
-                education_type,
-                school_type,
-                school,
-                class,
-                class_letter
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                user_id,
-                temp_user[user_id].get("role"),
-                temp_user[user_id].get("full_name"),
-                datetime.strptime(
-                    temp_user[user_id].get("birth_date"),
-                    "%d.%m.%Y"
-                ).date(),
-                temp_user[user_id].get("gender"),
-                temp_user[user_id].get("region"),
-                temp_user[user_id].get("district"),
-                temp_user[user_id].get("education_type"),
-                temp_user[user_id].get("school_type"),
-                temp_user[user_id].get("school"),
-                temp_user[user_id].get("class"),
-                temp_user[user_id].get("class_letter")
-            ))
-        
-            conn.commit()
-            conn.close()
-        
-        except Exception as e:
-            print("DATABASE ERROR:", e)
-        try:
-            await message.delete()
-        except:
-            pass
-
-        await update_reg_message(
-            message,
+                user_id, role, full_name, birth_date, gender,
+                region, district, education_type, school_type,
+                school, class, class_letter
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (user_id) DO NOTHING
+        """, (
             user_id,
+            temp_user[user_id].get("role"),
+            temp_user[user_id].get("full_name"),
+            datetime.strptime(temp_user[user_id].get("birth_date"), "%d.%m.%Y").date(),
+            temp_user[user_id].get("gender"),
+            temp_user[user_id].get("region"),
+            temp_user[user_id].get("district"),
+            temp_user[user_id].get("education_type"),
+            temp_user[user_id].get("school_type"),
+            temp_user[user_id].get("school"),
+            temp_user[user_id].get("class"),
+            temp_user[user_id].get("class_letter"),
+        ))
+        conn.commit(); conn.close()
+
+        await _update_board(
+            bot, chat_id, user_id,
             reg_status(temp_user[user_id]) +
-            "\n\n🎉 Registratsiya yakunlandi!"
+            "\n\n🎉 Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!"
+        )
+        await bot.send_message(
+            chat_id, "Xush kelibsiz! 👋",
+            reply_markup=get_main_keyboard(temp_user[user_id]["role"])
         )
 
-        await message.answer(
-            "Xush kelibsiz!",
-            reply_markup=get_main_keyboard(
-                temp_user[user_id]["role"]
-            )
-        )
-
-        # O'quvchi uchun avtomatik imtihonlar yaratish
         if temp_user[user_id].get("role") in ("🧒 O'quvchi", "O'quvchi"):
             try:
                 from progress import create_auto_exams
                 from datetime import date
-                create_auto_exams(
-                    user_id,
-                    temp_user[user_id].get("class", "5"),
-                    date.today()
-                )
+                create_auto_exams(user_id, temp_user[user_id].get("class","5"), date.today())
             except Exception:
                 pass
 
         registration_message.pop(user_id, None)
-
+        reg_kbd_message.pop(user_id, None)
         user_state[user_id] = None
-
         return
+
+
+# ─────────── Tug'ilgan yil inline callback handler ───────────
+async def reg_year_callback(call):
+    """
+    callback_data = "reg_yr:0" ... "reg_yr:9" | "reg_yr:back" | "reg_yr:ok"
+    """
+    user_id = call.from_user.id
+    bot     = call.bot
+    chat_id = call.message.chat.id
+
+    if user_state.get(user_id) != "birth_year":
+        await call.answer()
+        return
+
+    action = call.data.split(":")[1]
+    digits = temp_user[user_id].get("year_digits", "")
+
+    if action == "back":
+        digits = digits[:-1]
+    elif action == "ok":
+        if len(digits) == 4 and digits in BIRTH_YEARS:
+            temp_user[user_id]["birth_year"] = digits
+            temp_user[user_id].pop("year_digits", None)
+            user_state[user_id] = "birth_month"
+            # birth_date ko'rsatish uchun faqat yil hozircha
+            temp_user[user_id]["_yr_display"] = digits
+            text = (reg_status(temp_user[user_id]) +
+                    "\n\n📅 Tug'ilgan oyingizni tanlang:")
+            await _update_board_inline(
+                bot, chat_id, user_id, text, None
+            )
+            await _update_board(
+                bot, chat_id, user_id, text,
+                base_keyboard(MONTHS)
+            )
+            await call.answer()
+            return
+        else:
+            await call.answer("❌ Yil noto'g'ri", show_alert=False)
+            return
+    elif action.isdigit():
+        if len(digits) < 4:
+            digits += action
+    else:
+        await call.answer()
+        return
+
+    temp_user[user_id]["year_digits"] = digits
+    text = (reg_status(temp_user[user_id]) +
+            "\n\n🎂 Tug'ilgan yilingizni kiriting:")
+    try:
+        await bot.edit_message_text(
+            text=text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=year_inline_kb(digits)
+        )
+    except Exception:
+        pass
+    await call.answer()
