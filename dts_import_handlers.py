@@ -1743,7 +1743,7 @@ async def dts_bob(
 
     await call.message.edit_text(
 
-        f"📖 Bob [{bob_code}]",
+        f"📚 {grade}-sinf | {bob_name}",
 
         reply_markup=kb
 
@@ -1955,12 +1955,8 @@ async def dts_mavzu(
         buttons.append([
 
             InlineKeyboardButton(
-
-                text=f"🔹 {name} [{code}]",
-
-                callback_data=(
-                    f"dts_small_{topic_code}"
-                )
+                text=f"🔹 {name}",
+                callback_data=f"dts_small_{topic_code}"
 
             )
 
@@ -1993,7 +1989,7 @@ async def dts_mavzu(
 
     await call.message.edit_text(
 
-        f"📝 Mavzu [{mavzu_code}]",
+        f"📚 {grade}-sinf | {mavzu_name}",
 
         reply_markup=kb
 
