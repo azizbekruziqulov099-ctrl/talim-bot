@@ -1391,12 +1391,13 @@ async def handle_all(
         admin_state.get(user_id) == "dts_import"
         and message.document
     ):
-
+        from dts_import_handlers import DTSImportState
+        await state.set_state(DTSImportState.waiting_excel)
         await dts_excel_import(
             message,
             state
         )
-
+        admin_state[user_id] = None
         return
 
     # Shablon import
@@ -1421,6 +1422,10 @@ async def handle_all(
 
         await prepare_test_import(message, user_id)
 
+        return
+
+    if user_state.get(message.from_user.id) == "in_test":
+        # Test davomida faqat javob tugmalaridan foydalaniladi — matn yozish bloklanadi
         return
 
     if user_state.get(message.from_user.id) == "text_answer":
@@ -1705,7 +1710,10 @@ async def handle_all(
     elif message.text == "📥 Topik import":
         if user_id not in ADMINS:
             return
-        await dts_import_menu(message, admin_state, user_id)
+        from dts_import_handlers import DTSImportState
+        admin_state[user_id] = None
+        await state.set_state(DTSImportState.waiting_excel)
+        await message.answer("📄 DTS Excel faylini yuboring")
         return
 
     elif message.text == "📥 Test import":
