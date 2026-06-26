@@ -12,7 +12,7 @@ import edge_tts
 from aiogram.types import FSInputFile
 import tempfile
 from test_engine import speak_text
-from storage import user_state
+from storage import lesson_state, user_state
 
 # teacher_engine dan kerakli funksiyalarni import qilish
 try:
@@ -185,7 +185,7 @@ async def speak_mixed_text(user_id, message, text):
             try:
                 await message.bot.delete_message(
                     chat_id=message.chat.id,
-                    message_id=user_state[user_id]["voice_message_id"]
+                    message_id=lesson_state[user_id]["voice_message_id"]
                 )
             except Exception:
                 pass
@@ -197,7 +197,7 @@ async def speak_mixed_text(user_id, message, text):
         if user_id not in user_state:
             user_state[user_id] = {}
 
-        user_state[user_id]["voice_message_id"] = voice_msg.message_id
+        lesson_state[user_id]["voice_message_id"] = voice_msg.message_id
 
     except Exception as e:
         await message.answer(f"❌ Audio xatolik: {e}")
@@ -410,18 +410,19 @@ async def open_teacher_lesson(message, topic_code=None, _user_id=None):
         from datetime import date
         bugun = date.today().strftime("%d.%m.%Y")
 
-        if user_id not in user_state:
+        # user_state string bo'lsa (masalan "in_test") — dict ga o'tkazamiz
+        if not isinstance(lesson_state.get(user_id), dict):
             user_state[user_id] = {}
 
-        user_state[user_id]["lesson"]       = lesson
-        user_state[user_id]["parts"]        = parts
-        user_state[user_id]["current_step"] = 0
-        user_state[user_id]["topic_code"]   = topic_code
-        user_state[user_id]["full_name"]    = full_name
-        user_state[user_id]["sinf"]         = sinf
-        user_state[user_id]["fan"]          = fan
-        user_state[user_id]["mavzu"]        = mavzu
-        user_state[user_id]["bugun"]        = bugun
+        lesson_state[user_id]["lesson"]       = lesson
+        lesson_state[user_id]["parts"]        = parts
+        lesson_state[user_id]["current_step"] = 0
+        lesson_state[user_id]["topic_code"]   = topic_code
+        lesson_state[user_id]["full_name"]    = full_name
+        lesson_state[user_id]["sinf"]         = sinf
+        lesson_state[user_id]["fan"]          = fan
+        lesson_state[user_id]["mavzu"]        = mavzu
+        lesson_state[user_id]["bugun"]        = bugun
 
         cur.execute("""
             DELETE FROM lesson_progress WHERE user_id = %s
@@ -467,10 +468,10 @@ async def open_teacher_lesson(message, topic_code=None, _user_id=None):
 
             if review_qs:
                 # Takrorlash testini boshlaylik
-                user_state[user_id]["review_questions"] = review_qs
-                user_state[user_id]["review_index"]     = 0
-                user_state[user_id]["review_correct"]   = 0
-                user_state[user_id]["after_review"]     = "start_lesson"
+                lesson_state[user_id]["review_questions"] = review_qs
+                lesson_state[user_id]["review_index"]     = 0
+                lesson_state[user_id]["review_correct"]   = 0
+                lesson_state[user_id]["after_review"]     = "start_lesson"
 
                 await message.answer(
                     f"🔁 Avval kechagi mavzuni eslab olaylik!\n\n"
@@ -545,7 +546,7 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
         reply_markup=keyboard
     )
 
-    user_state[user_id]["board_message_id"] = msg.message_id
+    lesson_state[user_id]["board_message_id"] = msg.message_id
 
 
 async def lesson_review_start(user_id, message):
@@ -618,7 +619,7 @@ async def lesson_review_answer(user_id, message, answer):
     is_correct = answer.upper() == correct.upper()
 
     if is_correct:
-        user_state[user_id]["review_correct"] = (
+        lesson_state[user_id]["review_correct"] = (
             user_state[user_id].get("review_correct", 0) + 1
         )
         result = "✅ To'g'ri!"
@@ -629,7 +630,7 @@ async def lesson_review_answer(user_id, message, answer):
         result += f"\n💡 {explanation}"
 
     next_index = index + 1
-    user_state[user_id]["review_index"] = next_index
+    lesson_state[user_id]["review_index"] = next_index
 
     await message.answer(
         result,
@@ -997,7 +998,7 @@ async def lesson_help(
             simple_text = ""
         main_text = str(parts[current_step])
 
-        u    = user_state.get(user_id, {}) if isinstance(user_state.get(user_id), dict) else {}
+        u    = user_state.get(user_id, {}) if isinstance(lesson_state.get(user_id), dict) else {}
         fn   = u.get("full_name", "O'quvchi")
         sinf = u.get("sinf", "")
         fan  = u.get("fan", "")
@@ -1248,10 +1249,10 @@ async def lesson_consolidation_test(user_id, message):
         if user_id not in user_state:
             user_state[user_id] = {}
 
-        user_state[user_id]["test_questions"] = questions
-        user_state[user_id]["test_index"]     = 0
-        user_state[user_id]["test_correct"]   = 0
-        user_state[user_id]["test_mode"]      = "consolidation"
+        lesson_state[user_id]["test_questions"] = questions
+        lesson_state[user_id]["test_index"]     = 0
+        lesson_state[user_id]["test_correct"]   = 0
+        lesson_state[user_id]["test_mode"]      = "consolidation"
 
         await send_test_question(user_id, message, questions, 0)
 
@@ -1426,12 +1427,12 @@ async def lesson_test_answer(user_id, message, answer):
                 await message.answer("❌ Savollar topilmadi.")
                 return
 
-            if user_id not in user_state or not isinstance(user_state.get(user_id), dict):
+            if user_id not in user_state or not isinstance(lesson_state.get(user_id), dict):
                 user_state[user_id] = {}
 
-            user_state[user_id]["test_questions"] = questions
-            user_state[user_id]["test_index"]     = 0
-            user_state[user_id]["test_correct"]   = 0
+            lesson_state[user_id]["test_questions"] = questions
+            lesson_state[user_id]["test_index"]     = 0
+            lesson_state[user_id]["test_correct"]   = 0
             index = 0
         finally:
             cur.close(); conn.close()
@@ -1465,9 +1466,9 @@ async def lesson_test_answer(user_id, message, answer):
         is_correct = selected_text == correct_upper
 
     if is_correct:
-        if not isinstance(user_state.get(user_id), dict):
+        if not isinstance(lesson_state.get(user_id), dict):
             user_state[user_id] = {}
-        user_state[user_id]["test_correct"] = (
+        lesson_state[user_id]["test_correct"] = (
             user_state[user_id].get("test_correct", 0) + 1
         )
         result_text = "✅ To'g'ri!"
@@ -1478,10 +1479,10 @@ async def lesson_test_answer(user_id, message, answer):
         result_text += f"\n\n💡 {explanation}"
 
     next_index = index + 1
-    if not isinstance(user_state.get(user_id), dict):
+    if not isinstance(lesson_state.get(user_id), dict):
         user_state[user_id] = {}
-    user_state[user_id]["test_index"] = next_index
-    user_state[user_id]["last_result_text"] = result_text
+    lesson_state[user_id]["test_index"] = next_index
+    lesson_state[user_id]["last_result_text"] = result_text
 
     await message.answer(
         f"🧠 Mustahkamlash testi\n"
@@ -1513,8 +1514,8 @@ async def lesson_finish(
     try:
 
         # Mavzu topic_code ni oldindan saqlab olamiz
-        topic_code = user_state.get(user_id, {}).get("topic_code", "") if isinstance(user_state.get(user_id), dict) else ""
-        grade      = user_state.get(user_id, {}).get("sinf", "") if isinstance(user_state.get(user_id), dict) else ""
+        topic_code = user_state.get(user_id, {}).get("topic_code", "") if isinstance(lesson_state.get(user_id), dict) else ""
+        grade      = user_state.get(user_id, {}).get("sinf", "") if isinstance(lesson_state.get(user_id), dict) else ""
 
         if user_id in user_state:
             user_state.pop(user_id)
