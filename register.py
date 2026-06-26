@@ -194,7 +194,8 @@ async def register_handler(message):
     # ── F.I.Sh ──
     elif state == "full_name":
         name = message.text.strip()
-
+        try: await message.delete()
+        except: pass
         if not validate_name(name):
             await _update_board(
                 bot, chat_id, user_id,
@@ -339,6 +340,8 @@ async def register_handler(message):
 
     # ── BOG'CHA ──
     elif state == "kindergarten":
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["kindergarten"] = message.text
         user_state[user_id] = "group"
         await _update_board(
@@ -350,6 +353,8 @@ async def register_handler(message):
 
     # ── GURUH ──
     elif state == "group":
+        try: await message.delete()
+        except: pass
         temp_user[user_id]["group"] = message.text
         user_state[user_id] = None
         await _update_board(
@@ -380,6 +385,8 @@ async def register_handler(message):
 
     # ── MAKTAB RAQAMI ──
     elif state == "school":
+        try: await message.delete()
+        except: pass
         if not message.text.isdigit():
             await _update_board(
                 bot, chat_id, user_id,
@@ -417,30 +424,66 @@ async def register_handler(message):
             return
         temp_user[user_id]["class_letter"] = message.text
 
-        conn = psycopg2.connect(DATABASE_URL)
-        cur  = conn.cursor()
-        cur.execute("""
-            INSERT INTO users(
-                user_id, role, full_name, birth_date, gender,
-                region, district, education_type, school_type,
-                school, class, class_letter
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (user_id) DO NOTHING
-        """, (
-            user_id,
-            temp_user[user_id].get("role"),
-            temp_user[user_id].get("full_name"),
-            datetime.strptime(temp_user[user_id].get("birth_date"), "%d.%m.%Y").date(),
-            temp_user[user_id].get("gender"),
-            temp_user[user_id].get("region"),
-            temp_user[user_id].get("district"),
-            temp_user[user_id].get("education_type"),
-            temp_user[user_id].get("school_type"),
-            temp_user[user_id].get("school"),
-            temp_user[user_id].get("class"),
-            temp_user[user_id].get("class_letter"),
-        ))
-        conn.commit(); conn.close()
+        try:
+            bdate = datetime.strptime(
+                temp_user[user_id].get("birth_date","01.01.2000"), "%d.%m.%Y"
+            ).date()
+        except Exception:
+            bdate = None
+
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur  = conn.cursor()
+            # Avval mavjudligini tekshiramiz
+            cur.execute("SELECT user_id FROM users WHERE user_id=%s", (user_id,))
+            exists = cur.fetchone()
+            if exists:
+                cur.execute("""
+                    UPDATE users SET
+                        role=%s, full_name=%s, birth_date=%s, gender=%s,
+                        region=%s, district=%s, education_type=%s,
+                        school_type=%s, school=%s, class=%s, class_letter=%s
+                    WHERE user_id=%s
+                """, (
+                    temp_user[user_id].get("role"),
+                    temp_user[user_id].get("full_name"),
+                    bdate,
+                    temp_user[user_id].get("gender"),
+                    temp_user[user_id].get("region"),
+                    temp_user[user_id].get("district"),
+                    temp_user[user_id].get("education_type"),
+                    temp_user[user_id].get("school_type"),
+                    temp_user[user_id].get("school"),
+                    temp_user[user_id].get("class"),
+                    temp_user[user_id].get("class_letter"),
+                    user_id,
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO users(
+                        user_id, role, full_name, birth_date, gender,
+                        region, district, education_type, school_type,
+                        school, class, class_letter
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    user_id,
+                    temp_user[user_id].get("role"),
+                    temp_user[user_id].get("full_name"),
+                    bdate,
+                    temp_user[user_id].get("gender"),
+                    temp_user[user_id].get("region"),
+                    temp_user[user_id].get("district"),
+                    temp_user[user_id].get("education_type"),
+                    temp_user[user_id].get("school_type"),
+                    temp_user[user_id].get("school"),
+                    temp_user[user_id].get("class"),
+                    temp_user[user_id].get("class_letter"),
+                ))
+            conn.commit(); conn.close()
+        except Exception as _db_err:
+            await message.answer(f"❌ DB xatosi: {_db_err}\n\nAdmin bilan bog'laning.")
+            user_state[user_id] = None
+            return
 
         await _update_board(
             bot, chat_id, user_id,
