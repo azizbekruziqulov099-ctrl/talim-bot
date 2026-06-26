@@ -499,4 +499,3 @@ def latex_to_image(latex_text, filename):
         plt.savefig(filename,bbox_inches="tight",dpi=150)
         plt.close(fig)
     except: pass
-        
