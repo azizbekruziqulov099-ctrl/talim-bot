@@ -11,7 +11,7 @@ from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
 from ai_generatori import *
-from storage import user_state, temp_user
+from storage import user_state, temp_user, registration_message, reg_kbd_message
 from keyboards import get_main_keyboard
 from loader import dp, bot
 from test_generator import save_test
@@ -3206,6 +3206,11 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
+        return
+
+    if call.data.startswith("reg_yr:"):
+        from register import reg_year_callback
+        await reg_year_callback(call)
         return
 
     if call.data == "speak_question":
