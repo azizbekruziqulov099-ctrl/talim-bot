@@ -315,17 +315,58 @@ async def check_button_answer(user_id, answer, message):
     correct   = str(test[5] or "").strip()
     expl      = render_text(str(test[6] or ""))
     sel_map   = {"A":str(a),"B":str(b),"C":str(c),"D":str(d)}
+    lab_map   = {k: render_text(str(v or "")) for k,v in sel_map.items()}
     selected  = sel_map.get(answer.upper(),"")
     if correct.upper() in ("A","B","C","D"):
         is_ok = answer.upper() == correct.upper()
-        correct_show = render_text(sel_map.get(correct.upper(), correct))
+        correct_key = correct.upper()
     else:
         is_ok = render_text(selected).strip().lower() == render_text(correct).strip().lower()
-        correct_show = render_text(correct)
+        # to'g'ri kalit — qaysi javob to'g'ri ekanini topamiz
+        correct_key = None
+        for k,v in lab_map.items():
+            if v.strip().lower() == render_text(correct).strip().lower():
+                correct_key = k; break
+
+    # ── Tugmalarni natija bilan yangilaymiz ──
+    rows = []
+    for k, cb, spk in [("A","ans_A","speak_a"),("B","ans_B","speak_b"),
+                        ("C","ans_C","speak_c"),("D","ans_D","speak_d")]:
+        label = lab_map[k]
+        if k == answer.upper():
+            icon = "✅" if is_ok else "❌"
+            show_label = f"{icon} {label}"
+            rows.append([InlineKeyboardButton(text=show_label, callback_data="noop_result")])
+        elif not is_ok and k == correct_key:
+            show_label = f"🟢 {label}"
+            rows.append([InlineKeyboardButton(text=show_label, callback_data="noop_result")])
+        else:
+            if len(label) <= 22:
+                rows.append([
+                    InlineKeyboardButton(text="🔊",  callback_data=spk),
+                    InlineKeyboardButton(text=label, callback_data="noop_result"),
+                ])
+            else:
+                rows.append([InlineKeyboardButton(text=label, callback_data="noop_result")])
+    rows.append(HOME_BTN)
+    result_kb = InlineKeyboardMarkup(inline_keyboard=rows)
+
+    # Keyboard ni darhol yangilaymiz (foydalanuvchi ko'zi shu yerda)
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=s["board_chat_id"],
+            message_id=s["q_msg_id"],
+            reply_markup=result_kb
+        )
+    except Exception:
+        pass
+
     if is_ok:
         s["correct"] += 1; result = "✅ To'g'ri!"
     else:
-        s["wrong"] += 1;   result = f"❌ Xato!\n✅ To'g'ri: {correct_show}"
+        s["wrong"] += 1
+        correct_show = lab_map.get(correct_key, render_text(correct)) if correct_key else render_text(correct)
+        result = f"❌ Xato!\n✅ To'g'ri: {correct_show}"
     if expl: result += f"\n\n💡 {expl}"
     await _show_result(user_id, message, result)
 
@@ -458,3 +499,4 @@ def latex_to_image(latex_text, filename):
         plt.savefig(filename,bbox_inches="tight",dpi=150)
         plt.close(fig)
     except: pass
+        
