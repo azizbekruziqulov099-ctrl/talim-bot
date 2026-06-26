@@ -69,7 +69,6 @@ async def show_topics(call, user_id, subject):
         FROM dts_tree t
         WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
         ORDER BY topic_code
-        LIMIT 60
     """, (grade, subject))
     topics = cur.fetchall()
     cur.close(); conn.close()
