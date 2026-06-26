@@ -1416,7 +1416,19 @@ async def handle_all(
 
     # Shablon mavzu matni
     from shablon_yaratish import shablon_state as sh_state, handle_shablon_message
-    if sh_state.get(user_id, {}).get("step") in ("sinf_fan", "mavzular"):
+    # Tugma bosilgan bo'lsa shablon_state ni o'tkazib yuboramiz
+    _menu_btns = {
+        "📋 Shablonlar","🧪 Test shablon","📥 Test import",
+        "📋 Topik shablon","📥 Topik import",
+        "📚 Dars shablon","📥 Dars import",
+        "🔙 Admin menyu","📊 Test statistikasi",
+        "🤖 AI Generator","📚 Shablon yaratish",
+        "🔙 Ortga",
+    }
+    if (
+        message.text not in _menu_btns
+        and sh_state.get(user_id, {}).get("step") in ("sinf_fan", "mavzular")
+    ):
         await handle_shablon_message(message, user_id)
         return
 
