@@ -10,7 +10,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 test_sessions = {}
 HOME_BTN = [InlineKeyboardButton(text="🏠 Bosh ekran", callback_data="go_home_dashboard")]
 
-# ─────────────── text helpers ───────────────
 def render_text(text):
     if not text: return ""
     t = str(text)
@@ -27,142 +26,158 @@ def tts_clean(text):
     t = re.sub(r'[•\*\#\|\_\~\`━\-]{2,}', ' ', t)
     return re.sub(r'\s+', ' ', t).strip()
 
-# ─────────────── progress board ───────────────
-def _board(s, extra=""):
+# ── statistika (yuqori xabar) ──
+def _board_text(s, result=""):
     total = len(s["questions"])
     ok, err = s["correct"], s["wrong"]
     done = ok + err
-    bar = "🟩"*ok + "🟥"*err + "⬜"*max(0, min(20, total) - done)
-    h = f"📊 {done}/{total} | ✅ {ok} | ❌ {err}\n{bar}\n━━━━━━━━━━━━━━"
-    return h + "\n\n" + extra if extra else h
+    bar = "🟩"*ok + "🟥"*err + "⬜"*max(0, min(20,total)-done)
+    t = f"📊 {done}/{total} | ✅ {ok} | ❌ {err}\n{bar}"
+    if result:
+        t += f"\n━━━━━━━━━━━━━━\n{result}"
+    return t
 
-# ─────────────── smart answer keyboard ───────────────
-# Kalta javoblar (≤18 belgi) — 2 ustun chap tugma + 🔊 o'ng
-# Uzun javoblar          — bitta qator (to'liq kenglik)
+# ── javob tugmalari: [🔊][javob] ──
 def _build_kb(a, b, c, d, tl=0):
-    t = f"⏱ {tl}s" if tl > 0 else "∞"
-    ctrl = [
-        InlineKeyboardButton(text="🔊", callback_data="speak_question"),
-        InlineKeyboardButton(text=t,    callback_data="noop_timer"),
+    timer = f"⏱ {tl}s" if tl > 0 else "∞"
+    rows = [[
+        InlineKeyboardButton(text="🔊",      callback_data="speak_question"),
+        InlineKeyboardButton(text=timer,     callback_data="noop_timer"),
         InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
-    ]
-    rows = [ctrl]
+    ]]
     for ans, cb, spk in [
-        (a, "ans_A", "speak_a"),
-        (b, "ans_B", "speak_b"),
-        (c, "ans_C", "speak_c"),
-        (d, "ans_D", "speak_d"),
+        (a,"ans_A","speak_a"),(b,"ans_B","speak_b"),
+        (c,"ans_C","speak_c"),(d,"ans_D","speak_d"),
     ]:
         label = str(ans) if ans else "—"
-        if len(label) <= 18:
+        if len(label) <= 22:
             rows.append([
-                InlineKeyboardButton(text=label, callback_data=cb),
                 InlineKeyboardButton(text="🔊",  callback_data=spk),
+                InlineKeyboardButton(text=label, callback_data=cb),
             ])
         else:
             rows.append([InlineKeyboardButton(text=label, callback_data=cb)])
-            rows.append([InlineKeyboardButton(text="🔊",  callback_data=spk)])
+            rows.append([InlineKeyboardButton(text="🔊 eshitish", callback_data=spk)])
     rows.append(HOME_BTN)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-# ─────────────── rasmni cache'dan olish ───────────────
 async def _get_file_id(img_url):
-    """img_url bo'yicha images jadvalidan file_id qaytaradi."""
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur  = conn.cursor()
         cur.execute("SELECT file_id FROM images WHERE name=%s", (img_url.strip(),))
-        row = cur.fetchone(); cur.close(); conn.close()
+        row  = cur.fetchone(); cur.close(); conn.close()
         return row[0] if row else None
-    except:
-        return None
+    except: return None
 
-# ─────────────── bitta xabarni yangilash ───────────────
-async def _update_msg(s, text, kb, photo=None):
-    """
-    photo = file_id / FSInputFile yoki None.
-    Agar photo bo'lsa → send_photo (birinchi marta) yoki edit_message_media.
-    Bo'lmasa → edit_message_text.
-    Barcha narsa bitta board_msg_id ga yoziladi — xabar uchib-chiqmaydi.
-    """
+async def _photo_for(test, user_id):
+    (q,a,b,c,d,correct,expl,qtype,is_latex,img_url,audio,lang,tl) = test
+    if is_latex and str(is_latex).lower() not in ("false","0","none",""):
+        try:
+            from latex_utils import latex_to_image as l2i
+            p = l2i(q, user_id)
+            if p and os.path.exists(p): return FSInputFile(p)
+        except: pass
+    elif img_url and str(img_url).strip() not in ("","None","nan"):
+        return await _get_file_id(img_url)
+    return None
+
+# ══════════════════════════════════════════
+#  IKKI XABARLI TIZIM
+#  board_msg_id  — yuqori (statistika + natija)  — MATN
+#  q_msg_id      — pastki (rasm + savol + tugma) — PHOTO yoki MATN
+# ══════════════════════════════════════════
+
+async def _edit_board(s, text):
+    """Yuqori statistika xabarini edit qil."""
     chat = s["board_chat_id"]
     mid  = s.get("board_msg_id")
+    if mid:
+        try:
+            await bot.edit_message_text(text=text, chat_id=chat, message_id=mid)
+            return
+        except Exception: pass
+    nm = await bot.send_message(chat, text)
+    s["board_msg_id"] = nm.message_id
+
+async def _edit_question(s, q_text, kb, photo=None):
+    """Pastki savol xabarini edit qil (rasm yoki matn)."""
+    chat = s["board_chat_id"]
+    qmid = s.get("q_msg_id")
 
     if photo:
-        media = InputMediaPhoto(media=photo, caption=text)
-        if s.get("board_has_photo") and mid:
+        # Caption 1024 belgi limiti
+        cap = q_text[:1020] if len(q_text) > 1020 else q_text
+        if s.get("q_has_photo") and qmid:
             try:
                 await bot.edit_message_media(
-                    chat_id=chat, message_id=mid, media=media, reply_markup=kb
+                    chat_id=chat, message_id=qmid,
+                    media=InputMediaPhoto(media=photo, caption=cap),
+                    reply_markup=kb
                 )
                 return
-            except Exception:
-                pass
-        # Yangi rasm xabari yuboramiz (birinchi marta yoki xato bo'lsa)
-        if mid:
-            try: await bot.delete_message(chat, mid)
+            except Exception: pass
+        if qmid:
+            try: await bot.delete_message(chat, qmid)
             except: pass
-        nm = await bot.send_photo(chat, photo, caption=text, reply_markup=kb)
-        s["board_msg_id"]   = nm.message_id
-        s["board_has_photo"] = True
+        nm = await bot.send_photo(chat, photo, caption=cap, reply_markup=kb)
+        s["q_msg_id"]    = nm.message_id
+        s["q_has_photo"] = True
     else:
-        # Oldingi xabar rasm bo'lgan bo'lsa, uni o'chir
-        if s.get("board_has_photo") and mid:
-            try: await bot.delete_message(chat, mid)
+        if s.get("q_has_photo") and qmid:
+            try: await bot.delete_message(chat, qmid)
             except: pass
-            mid = None
-        if mid:
+            qmid = None
+        if qmid:
             try:
                 await bot.edit_message_text(
-                    text=text, chat_id=chat, message_id=mid, reply_markup=kb
+                    text=q_text, chat_id=chat, message_id=qmid,
+                    reply_markup=kb
                 )
-                s["board_has_photo"] = False
+                s["q_has_photo"] = False
                 return
-            except Exception:
-                pass
-        nm = await bot.send_message(chat, text, reply_markup=kb)
-        s["board_msg_id"]   = nm.message_id
-        s["board_has_photo"] = False
+            except Exception: pass
+        nm = await bot.send_message(chat, q_text, reply_markup=kb)
+        s["q_msg_id"]    = nm.message_id
+        s["q_has_photo"] = False
 
-# ─────────────── test boshlash ───────────────
+# ── test boshlash ──
 async def start_test(user_id, tests, message):
     if not tests:
-        await message.answer("❌ Test topilmadi")
-        return
+        await message.answer("❌ Test topilmadi"); return
     old = test_sessions.get(user_id, {})
     if old.get("timer_task"):
         try: old["timer_task"].cancel()
         except: pass
+    user_state[user_id] = "in_test"
 
-    # 25 xabar o'chirmaydi — faqat "yuklanmoqda" xabarini yuboramiz
-    user_state[user_id] = "in_test"          # yozishni bloklaydi
-    msg = await message.answer("⏳ Test yuklanmoqda...")
+    # 1-xabar: statistika (yuqori)
+    bm = await message.answer("⏳ Test yuklanmoqda...")
+    # 2-xabar: savol (pastki) — keyin to'ldiriladi
+    qm = await message.answer("...")
+
     test_sessions[user_id] = {
-        "questions":   tests,
-        "current":     0,
-        "correct":     0,
-        "wrong":       0,
+        "questions":   tests, "current": 0,
+        "correct":     0,     "wrong":   0,
         "timer_task":  None,
-        "board_msg_id":   msg.message_id,
-        "board_chat_id":  msg.chat.id,
-        "board_has_photo": False,
-        "voice_msgs":  [],
-        "answered":    False,
+        "board_chat_id": message.chat.id,
+        "board_msg_id":  bm.message_id,
+        "q_msg_id":      qm.message_id,
+        "q_has_photo":   False,
+        "voice_msgs":    [], "answered": False,
     }
     await show_question(user_id)
 
-# ─────────────── savolni ko'rsatish ───────────────
+# ── savolni ko'rsatish ──
 async def show_question(user_id, message=None):
     s = test_sessions.get(user_id)
     if not s: return
-
     if s.get("timer_task"):
         try: s["timer_task"].cancel()
         except: pass
         s["timer_task"] = None
     s["answered"] = False
 
-    # eski ovozlarni o'chir
     chat = s["board_chat_id"]
     for vid in s.get("voice_msgs", []):
         try: await bot.delete_message(chat, vid)
@@ -172,59 +187,44 @@ async def show_question(user_id, message=None):
     cur   = s["current"]
     total = len(s["questions"])
     test  = s["questions"][cur]
-    (q, a, b, c, d, correct, expl,
-     qtype, is_latex, img_url, audio, lang, tl) = test
-
+    (q,a,b,c,d,correct,expl,qtype,is_latex,img_url,audio,lang,tl) = test
     q_s = render_text(q)
     a_s = render_text(str(a or ""))
     b_s = render_text(str(b or ""))
     c_s = render_text(str(c or ""))
     d_s = render_text(str(d or ""))
-
     try: tl = int(tl) if tl and int(tl) > 0 else 0
     except: tl = 0
-    s["time_left"] = tl
 
-    header = _board(s)
+    photo = await _photo_for(test, user_id)
 
-    # ── Rasmni aniqlash ──
-    photo = None
-    if is_latex and str(is_latex).lower() not in ("false", "0", "none", ""):
-        try:
-            from latex_utils import latex_to_image as l2i
-            p = l2i(q, user_id)
-            if p and os.path.exists(p):
-                photo = FSInputFile(p)
-        except: pass
-    elif img_url and str(img_url).strip() not in ("", "None", "nan"):
-        photo = await _get_file_id(img_url)
+    # Yuqori xabar: faqat statistika (natija yo'q)
+    await _edit_board(s, _board_text(s))
 
-    # ── Yozma savol ──
+    # Yozma savol
     if qtype == "write_answer":
         user_state[user_id] = "text_answer"
         tmr = f"⏱ {tl}s" if tl > 0 else "∞"
-        text = (f"{header}\n\n✍️ Savol {cur+1}/{total}\n\n{q_s}"
-                f"\n\n📝 Javobingizni yozing:")
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔊", callback_data="speak_question"),
              InlineKeyboardButton(text=tmr,  callback_data="noop_timer"),
              InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop")],
             HOME_BTN,
         ])
-        await _update_msg(s, text, kb, photo)
+        q_text = f"✍️ Savol {cur+1}/{total}\n\n{q_s}\n\n📝 Javobingizni yozing:"
+        await _edit_question(s, q_text, kb, photo)
         if tl > 0:
             async def write_cd():
                 left = tl
                 while left > 0:
-                    await asyncio.sleep(5)
-                    left = max(0, left - 5)
+                    await asyncio.sleep(5); left = max(0, left-5)
                     sx = test_sessions.get(user_id)
                     if not sx or sx.get("answered"): return
                     if left > 0:
                         try:
                             await bot.edit_message_reply_markup(
                                 chat_id=sx["board_chat_id"],
-                                message_id=sx["board_msg_id"],
+                                message_id=sx["q_msg_id"],
                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                     [InlineKeyboardButton(text="🔊", callback_data="speak_question"),
                                      InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
@@ -235,43 +235,39 @@ async def show_question(user_id, message=None):
                         except: pass
                 sx = test_sessions.get(user_id)
                 if not sx or sx.get("answered"): return
-                sx["answered"] = True
-                sx["wrong"] += 1
+                sx["answered"] = True; sx["wrong"] += 1
                 user_state[user_id] = None
                 await _advance(user_id)
             s["timer_task"] = asyncio.create_task(write_cd())
         return
 
     user_state[user_id] = "in_test"
-    text = f"{header}\n\n🧪 Savol {cur+1}/{total}\n\n{q_s}"
-    kb   = _build_kb(a_s, b_s, c_s, d_s, tl)
-    await _update_msg(s, text, kb, photo)
+    kb     = _build_kb(a_s, b_s, c_s, d_s, tl)
+    q_text = f"🧪 Savol {cur+1}/{total}\n\n{q_s}"
+    await _edit_question(s, q_text, kb, photo)
 
     if tl <= 0: return
-
     async def cd():
         left = tl
         while left > 0:
-            await asyncio.sleep(5)
-            left = max(0, left - 5)
+            await asyncio.sleep(5); left = max(0, left-5)
             sx = test_sessions.get(user_id)
             if not sx or sx.get("answered"): return
             if left > 0:
                 try:
                     await bot.edit_message_reply_markup(
                         chat_id=sx["board_chat_id"],
-                        message_id=sx["board_msg_id"],
+                        message_id=sx["q_msg_id"],
                         reply_markup=_build_kb(a_s, b_s, c_s, d_s, left)
                     )
                 except: pass
         sx = test_sessions.get(user_id)
         if not sx or sx.get("answered"): return
-        sx["answered"] = True
-        sx["wrong"] += 1
+        sx["answered"] = True; sx["wrong"] += 1
         await _advance(user_id)
     s["timer_task"] = asyncio.create_task(cd())
 
-# ─────────────── natijani ko'rsatish ───────────────
+# ── natijani ko'rsatish ──
 async def _show_result(user_id, message, result_text):
     s = test_sessions.get(user_id)
     if not s: return
@@ -280,10 +276,21 @@ async def _show_result(user_id, message, result_text):
         try: s["timer_task"].cancel()
         except: pass
         s["timer_task"] = None
-    txt = _board(s, result_text)
-    # Natijada rasm shart emas — faqat tekst
-    await _update_msg(s, txt, None)
-    await asyncio.sleep(1.5)
+
+    cur   = s["current"]
+    total = len(s["questions"])
+    test  = s["questions"][cur]
+    q_s   = render_text(test[0])
+
+    # Yuqori: statistika + natija
+    await _edit_board(s, _board_text(s, result_text))
+
+    # Pastki: savol ko'rinib tursin, keyboard olib tashlanadi
+    q_text = f"🧪 Savol {cur+1}/{total}\n\n{q_s}"
+    photo  = await _photo_for(test, user_id)
+    await _edit_question(s, q_text, None, photo)
+
+    await asyncio.sleep(1.8)
     await _advance(user_id)
 
 async def _advance(user_id):
@@ -295,7 +302,7 @@ async def _advance(user_id):
     else:
         await show_question(user_id)
 
-# ─────────────── javob tekshirish ───────────────
+# ── javob tekshirish ──
 async def check_button_answer(user_id, answer, message):
     s = test_sessions.get(user_id)
     if not s or s.get("answered"): return
@@ -316,11 +323,9 @@ async def check_button_answer(user_id, answer, message):
         is_ok = render_text(selected).strip().lower() == render_text(correct).strip().lower()
         correct_show = render_text(correct)
     if is_ok:
-        s["correct"] += 1
-        result = "🎉 To'g'ri! ✅"
+        s["correct"] += 1; result = "✅ To'g'ri!"
     else:
-        s["wrong"] += 1
-        result = f"❌ Xato!\n✅ To'g'ri: {correct_show}"
+        s["wrong"] += 1;   result = f"❌ Xato!\n✅ To'g'ri: {correct_show}"
     if expl: result += f"\n\n💡 {expl}"
     await _show_result(user_id, message, result)
 
@@ -333,21 +338,17 @@ async def check_text_answer(user_id, user_answer, message):
         s["timer_task"] = None
     test    = s["questions"][s["current"]]
     correct = render_text(str(test[5] or "")).strip().lower()
-    user_answer = str(user_answer).strip().lower()
     expl    = render_text(str(test[6] or ""))
-    if user_answer == correct:
-        s["correct"] += 1
-        result = "🎉 To'g'ri! ✅"
+    if str(user_answer).strip().lower() == correct:
+        s["correct"] += 1; result = "✅ To'g'ri!"
     else:
-        s["wrong"] += 1
-        result = f"❌ Xato!\n✅ To'g'ri: {render_text(str(test[5]))}"
+        s["wrong"] += 1; result = f"❌ Xato!\n✅ To'g'ri: {render_text(str(test[5]))}"
     if expl: result += f"\n\n💡 {expl}"
     user_state[user_id] = None
     await _show_result(user_id, message, result)
 
-# ─────────────── test tugash / to'xtatish ───────────────
-async def next_question(user_id, message=None):
-    await _advance(user_id)
+# ── test tugash ──
+async def next_question(user_id, message=None): await _advance(user_id)
 
 async def finish_test(user_id, message=None):
     s = test_sessions.get(user_id)
@@ -358,101 +359,102 @@ async def finish_test(user_id, message=None):
     user_state[user_id] = None
     ok, err = s["correct"], s["wrong"]
     total   = ok + err
-    pct     = round(ok*100/total, 1) if total else 0
+    pct     = round(ok*100/total,1) if total else 0
     emoji   = "🏆" if pct>=80 else "👍" if pct>=60 else "💪"
-    txt = (f"{emoji} Test yakunlandi!\n\n"
-           f"✅ To'g'ri:   {ok}\n"
-           f"❌ Noto'g'ri: {err}\n"
-           f"📊 Natija:    {pct}%")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
+    result_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home_dashboard")
     ]])
-    await _update_msg(s, txt, kb)
+    await _edit_board(s,
+        f"{emoji} Test yakunlandi!\n\n"
+        f"✅ To'g'ri:   {ok}\n❌ Noto'g'ri: {err}\n📊 Natija: {pct}%"
+    )
+    # Pastki xabar — keyboard bilan yakuniy ko'rinish
+    chat = s["board_chat_id"]
+    qmid = s.get("q_msg_id")
+    if qmid:
+        try: await bot.edit_message_text(
+            text="🎯 Test yakunlandi!", chat_id=chat,
+            message_id=qmid, reply_markup=result_kb
+        )
+        except:
+            try: await bot.send_message(chat, "🎯 Test yakunlandi!", reply_markup=result_kb)
+            except: pass
     test_sessions.pop(user_id, None)
 
-async def stop_test(user_id, message):
-    await finish_test(user_id, message)
+async def stop_test(user_id, message): await finish_test(user_id, message)
 
-# ─────────────── TTS ───────────────
+# ── TTS ──
 async def speak_text(user_id, message, text):
-    s    = test_sessions.get(user_id)
+    s = test_sessions.get(user_id)
     lang = "uz"
     if s:
         try: lang = str(s["questions"][s["current"]][11]).lower()
         except: pass
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur  = conn.cursor()
-        cur.execute("SELECT gender FROM users WHERE user_id=%s", (user_id,))
-        row  = cur.fetchone(); cur.close(); conn.close()
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT gender FROM users WHERE user_id=%s",(user_id,))
+        row = cur.fetchone(); cur.close(); conn.close()
         gender = row[0] if row else ""
     except: gender = ""
     voices = {
-        "uz": "uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural",
-        "en": "en-US-GuyNeural",
-        "ru": "ru-RU-DmitryNeural",
+        "uz":"uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural",
+        "en":"en-US-GuyNeural","ru":"ru-RU-DmitryNeural",
     }
     import re as _re
     from pydub import AudioSegment as _AS
-    _pts  = _re.split(r'\[en\](.*?)\[/en\]', str(text), flags=_re.DOTALL)
+    _pts = _re.split(r'\[en\](.*?)\[/en\]', str(text), flags=_re.DOTALL)
     _segs = []
-    for _i, _p in enumerate(_pts):
-        _cl = tts_clean(_p) if _i % 2 == 0 else _p.strip()
-        _cl = _re.sub(r'\s+', ' ', _cl).strip()
+    for _i,_p in enumerate(_pts):
+        _cl = tts_clean(_p) if _i%2==0 else _p.strip()
+        _cl = _re.sub(r'\s+',' ',_cl).strip()
         if not _cl or not any(_c.isalnum() for _c in _cl): continue
-        _v  = voices["en"] if _i % 2 == 1 else voices.get(lang, voices["uz"])
-        _segs.append((_cl, _v))
+        _segs.append((_cl, voices["en"] if _i%2==1 else voices.get(lang,voices["uz"])))
     if not _segs: return
     _comb = _AS.silent(duration=0)
-    for _st, _sv in _segs:
+    for _st,_sv in _segs:
         _tmp = f"tts_tmp_{user_id}_{abs(hash(_st))}.mp3"
         try:
-            _comm = edge_tts.Communicate(text=_st, voice=_sv)
-            await _comm.save(_tmp)
-            if os.path.exists(_tmp) and os.path.getsize(_tmp) > 0:
+            await edge_tts.Communicate(text=_st,voice=_sv).save(_tmp)
+            if os.path.exists(_tmp) and os.path.getsize(_tmp)>0:
                 _comb += _AS.from_mp3(_tmp)
         except: pass
         finally:
             try: os.remove(_tmp)
             except: pass
-    if len(_comb) == 0: return
+    if len(_comb)==0: return
     fname = f"tts_{user_id}.mp3"
     try:
-        _comb.export(fname, format="mp3")
+        _comb.export(fname,format="mp3")
         vm = await message.answer_voice(FSInputFile(fname))
         sx = test_sessions.get(user_id)
-        if sx: sx.setdefault("voice_msgs", []).append(vm.message_id)
+        if sx: sx.setdefault("voice_msgs",[]).append(vm.message_id)
     except: pass
     finally:
         try: os.remove(fname)
         except: pass
 
-async def speak_question(user_id, message):
-    s = test_sessions.get(user_id)
-    if s: await speak_text(user_id, message, s["questions"][s["current"]][0])
-
-async def speak_a(user_id, message):
-    s = test_sessions.get(user_id)
-    if s: await speak_text(user_id, message, s["questions"][s["current"]][1])
-
-async def speak_b(user_id, message):
-    s = test_sessions.get(user_id)
-    if s: await speak_text(user_id, message, s["questions"][s["current"]][2])
-
-async def speak_c(user_id, message):
-    s = test_sessions.get(user_id)
-    if s: await speak_text(user_id, message, s["questions"][s["current"]][3])
-
-async def speak_d(user_id, message):
-    s = test_sessions.get(user_id)
-    if s: await speak_text(user_id, message, s["questions"][s["current"]][4])
+async def speak_question(u,m):
+    s=test_sessions.get(u)
+    if s: await speak_text(u,m,s["questions"][s["current"]][0])
+async def speak_a(u,m):
+    s=test_sessions.get(u)
+    if s: await speak_text(u,m,s["questions"][s["current"]][1])
+async def speak_b(u,m):
+    s=test_sessions.get(u)
+    if s: await speak_text(u,m,s["questions"][s["current"]][2])
+async def speak_c(u,m):
+    s=test_sessions.get(u)
+    if s: await speak_text(u,m,s["questions"][s["current"]][3])
+async def speak_d(u,m):
+    s=test_sessions.get(u)
+    if s: await speak_text(u,m,s["questions"][s["current"]][4])
 
 def latex_to_image(latex_text, filename):
     try:
         import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(6, 2))
-        plt.text(0.05, 0.5, f"${latex_text}$", fontsize=24)
+        fig = plt.figure(figsize=(6,2))
+        plt.text(0.05,0.5,f"${latex_text}$",fontsize=24)
         plt.axis("off")
-        plt.savefig(filename, bbox_inches="tight", dpi=150)
+        plt.savefig(filename,bbox_inches="tight",dpi=150)
         plt.close(fig)
     except: pass
