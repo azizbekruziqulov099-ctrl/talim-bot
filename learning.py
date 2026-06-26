@@ -539,7 +539,7 @@ async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu
         f"👤 {full_name} | {sinf}\n"
         f"📘 {fan} • {mavzu} • {bugun}\n"
         f"━━━━━━━━━━━━━━\n\n"
-        f"{build_board_text(parts[0]) or render_content(parts[0])}\n\n"
+        f"{render_text(str(build_board_text(parts[0]) or "")) or render_text(render_content(parts[0]))}\n\n"
         f"📄 1/{len(parts)} qadam",
         reply_markup=keyboard
     )
@@ -738,7 +738,7 @@ async def lesson_next(user_id, message):
                 ]
             ]
         )
-        u = user_state.get(user_id, {})
+        u = lesson_state.get(user_id) or {}
         fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
         sinf = u.get('sinf', '') if isinstance(u, dict) else ''
         fan  = u.get('fan', '') if isinstance(u, dict) else ''
@@ -749,7 +749,7 @@ async def lesson_next(user_id, message):
             f"👤 {fn} | {sinf}\n"
             f"📘 {fan} • {mav} • {bgun}\n"
             f"━━━━━━━━━━━━━━\n\n"
-            f"{build_board_text(parts[next_step]) or render_content(parts[next_step])}\n\n"
+            f"{render_text(str(build_board_text(parts[next_step]) or "")) or render_text(render_content(parts[next_step]))}\n\n"
             f"📄 {next_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
@@ -903,7 +903,7 @@ async def lesson_prev(user_id, message):
             ]
         )
 
-        u = user_state.get(user_id, {})
+        u = lesson_state.get(user_id) or {}
         fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
         sinf = u.get('sinf', '') if isinstance(u, dict) else ''
         fan  = u.get('fan', '') if isinstance(u, dict) else ''
@@ -914,7 +914,7 @@ async def lesson_prev(user_id, message):
             f"👤 {fn} | {sinf}\n"
             f"📘 {fan} • {mav} • {bgun}\n"
             f"━━━━━━━━━━━━━━\n\n"
-            f"{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}\n\n"
+            f"{render_text(str(build_board_text(parts[prev_step]) or "")) or render_text(render_content(parts[prev_step]))}\n\n"
             f"📄 {prev_step + 1}/{len(parts)} qadam",
             reply_markup=keyboard
         )
@@ -927,7 +927,7 @@ async def lesson_prev(user_id, message):
                 f"👤 {fn} | {sinf}\n"
                 f"📘 {fan} • {mav} • {bgun}\n"
                 f"━━━━━━━━━━━━━━\n\n"
-                f"{build_board_text(parts[prev_step]) or render_content(parts[prev_step])}\n\n"
+                f"{render_text(str(build_board_text(parts[prev_step]) or "")) or render_text(render_content(parts[prev_step]))}\n\n"
                 f"📄 {prev_step + 1}/{len(parts)} qadam",
                 reply_markup=keyboard
             )
@@ -1391,7 +1391,7 @@ async def send_test_question(user_id, message, questions, index):
 async def lesson_test_answer(user_id, message, answer):
     """Test javobini tekshiradi"""
 
-    u = user_state.get(user_id, {})
+    u = lesson_state.get(user_id) or {}
     if not isinstance(u, dict):
         u = {}
 
