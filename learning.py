@@ -178,14 +178,12 @@ async def speak_mixed_text(user_id, message, text):
         final_file = f"mixed_{user_id}.mp3"
         combined.export(final_file, format="mp3")
 
-        if (
-            user_id in user_state
-            and "voice_message_id" in user_state[user_id]
-        ):
+        vm_id = lesson_state.get(user_id, {}).get("voice_message_id") if isinstance(lesson_state.get(user_id), dict) else None
+        if vm_id:
             try:
                 await message.bot.delete_message(
                     chat_id=message.chat.id,
-                    message_id=lesson_state.setdefault(user_id, {})["voice_message_id"]
+                    message_id=vm_id
                 )
             except Exception:
                 pass
