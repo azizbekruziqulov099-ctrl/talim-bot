@@ -279,7 +279,11 @@ async def show_question(user_id, message=None):
         sx = test_sessions.get(user_id)
         if not sx or sx.get("answered"): return
         sx["answered"] = True; sx["wrong"] += 1
-        await _advance(user_id)
+        # Timer tugadi — natija ko'rsatib keyingisiga o'tish
+        try:
+            await _show_result(user_id, None, "⏱ Vaqt tugadi!")
+        except Exception:
+            await _advance(user_id)
     s["timer_task"] = asyncio.create_task(cd())
 
 # ── natijani ko'rsatish ──
