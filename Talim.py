@@ -966,7 +966,13 @@ async def start(message: types.Message):
 
             update_streak(message.from_user.id)
 
-            text, keyboard = await build_dashboard(message.from_user.id)
+            try:
+                text, keyboard = await build_dashboard(message.from_user.id)
+            except Exception as _de:
+                import traceback
+                print(f"build_dashboard ERROR: {traceback.format_exc()}")
+                text = "🏠 Bosh menyu"
+                keyboard = None
 
             # Majburiy imtihon bormi?
             from progress import get_pending_exams
