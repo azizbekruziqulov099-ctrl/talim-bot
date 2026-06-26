@@ -113,7 +113,8 @@ async def _update_board(bot, chat_id, user_id, text, reply_kb=None):
     if mid:
         try:
             await bot.edit_message_text(
-                text=text, chat_id=chat_id, message_id=mid
+                text=text, chat_id=chat_id, message_id=mid,
+                reply_markup=None
             )
         except Exception:
             # Edit bo'lmadi (inline klaviatura bor edi) — o'chir va qayta yubor
@@ -185,8 +186,6 @@ async def register_handler(message):
     if state == "role":
         temp_user[user_id] = {"role": message.text}
         user_state[user_id] = "full_name"
-        try: await message.delete()
-        except: pass
         text = reg_status(temp_user[user_id]) + "\n\n👤 F.I.Sh ni kiriting:\nMasalan: Toshmatov Alisher"
         nm = await bot.send_message(chat_id, text)
         registration_message[user_id] = nm.message_id
@@ -195,8 +194,6 @@ async def register_handler(message):
     # ── F.I.Sh ──
     elif state == "full_name":
         name = message.text.strip()
-        try: await message.delete()
-        except: pass
 
         if not validate_name(name):
             await _update_board(
@@ -220,8 +217,6 @@ async def register_handler(message):
     elif state == "birth_month":
         if message.text not in MONTHS:
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["birth_month"] = MONTH_MAP[message.text]
         user_state[user_id] = "birth_day"
         await _update_board(
@@ -236,8 +231,6 @@ async def register_handler(message):
     elif state == "birth_day":
         if message.text not in DAYS:
             return
-        try: await message.delete()
-        except: pass
         day = message.text.zfill(2)
         birth_date = (
             f"{day}.{temp_user[user_id]['birth_month']}."
@@ -273,8 +266,6 @@ async def register_handler(message):
     elif state == "gender":
         if message.text not in ["👨 Erkak", "👩 Ayol"]:
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["gender"] = message.text
         user_state[user_id] = "region"
         await _update_board(
@@ -295,8 +286,6 @@ async def register_handler(message):
                 base_keyboard(list(REGIONS.keys()))
             )
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["region"] = message.text
         flat = [d for row in REGIONS[message.text] for d in row]
         user_state[user_id] = "district"
@@ -310,8 +299,6 @@ async def register_handler(message):
 
     # ── TUMAN ──
     elif state == "district":
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["district"] = message.text
         user_state[user_id] = "education_type"
         await _update_board(
@@ -332,8 +319,6 @@ async def register_handler(message):
                 make_keyboard(EDUCATION_TYPES)
             )
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["education_type"] = message.text
         if message.text == "🏫 Maktab":
             user_state[user_id] = "school_type"
@@ -354,8 +339,6 @@ async def register_handler(message):
 
     # ── BOG'CHA ──
     elif state == "kindergarten":
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["kindergarten"] = message.text
         user_state[user_id] = "group"
         await _update_board(
@@ -367,8 +350,6 @@ async def register_handler(message):
 
     # ── GURUH ──
     elif state == "group":
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["group"] = message.text
         user_state[user_id] = None
         await _update_board(
@@ -388,8 +369,6 @@ async def register_handler(message):
                 make_keyboard(SCHOOL_TYPES)
             )
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["school_type"] = message.text
         user_state[user_id] = "school"
         await _update_board(
@@ -408,8 +387,6 @@ async def register_handler(message):
                 "\n\n❌ Faqat raqam kiriting. Masalan: 25"
             )
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["school"] = message.text
         user_state[user_id] = "class"
         await _update_board(
@@ -424,8 +401,6 @@ async def register_handler(message):
     elif state == "class":
         if message.text not in CLASS_LEVELS:
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["class"] = message.text
         user_state[user_id] = "class_letter"
         await _update_board(
@@ -440,8 +415,6 @@ async def register_handler(message):
     elif state == "class_letter":
         if message.text not in CLASS_LETTERS:
             return
-        try: await message.delete()
-        except: pass
         temp_user[user_id]["class_letter"] = message.text
 
         conn = psycopg2.connect(DATABASE_URL)
