@@ -96,9 +96,16 @@ async def _edit_board(s, text):
         try:
             await bot.edit_message_text(text=text, chat_id=chat, message_id=mid)
             return
-        except Exception: pass
-    nm = await bot.send_message(chat, text)
-    s["board_msg_id"] = nm.message_id
+        except Exception:
+            # Edit muvaffaqiyatsiz — o'chir va yangi yuborish
+            try: await bot.delete_message(chat, mid)
+            except: pass
+            s["board_msg_id"] = None
+    try:
+        nm = await bot.send_message(chat, text)
+        s["board_msg_id"] = nm.message_id
+    except Exception:
+        pass
 
 async def _edit_question(s, q_text, kb, photo=None):
     """Pastki savol xabarini edit qil (rasm yoki matn)."""
@@ -136,10 +143,17 @@ async def _edit_question(s, q_text, kb, photo=None):
                 )
                 s["q_has_photo"] = False
                 return
-            except Exception: pass
-        nm = await bot.send_message(chat, q_text, reply_markup=kb)
-        s["q_msg_id"]    = nm.message_id
-        s["q_has_photo"] = False
+            except Exception:
+                # Edit muvaffaqiyatsiz — eski xabarni o'chir
+                try: await bot.delete_message(chat, qmid)
+                except: pass
+                s["q_msg_id"] = None
+        try:
+            nm = await bot.send_message(chat, q_text, reply_markup=kb)
+            s["q_msg_id"]    = nm.message_id
+            s["q_has_photo"] = False
+        except Exception:
+            pass
 
 # ── test boshlash ──
 async def start_test(user_id, tests, message):
@@ -200,6 +214,7 @@ async def show_question(user_id, message=None):
 
     # Yuqori xabar: faqat statistika (natija yo'q)
     await _edit_board(s, _board_text(s))
+    await asyncio.sleep(0.3)  # Telegram rate limit uchun
 
     # Yozma savol
     if qtype == "write_answer":
@@ -290,7 +305,10 @@ async def _show_result(user_id, message, result_text):
     photo  = await _photo_for(test, user_id)
     await _edit_question(s, q_text, None, photo)
 
-    await asyncio.sleep(1.8)
+    await asyncio.sleep(3.0)
+    # Sleep paytida session o'chib ketmadimi tekshirish
+    if not test_sessions.get(user_id):
+        return
     await _advance(user_id)
 
 async def _advance(user_id):
@@ -362,12 +380,14 @@ async def check_button_answer(user_id, answer, message):
         pass
 
     if is_ok:
-        s["correct"] += 1; result = "✅ To'g'ri!"
+        s["correct"] += 1
+        result = "✅ To'g'ri!"
+        if expl: result += f"\n\n💡 {expl}"
     else:
         s["wrong"] += 1
         correct_show = lab_map.get(correct_key, render_text(correct)) if correct_key else render_text(correct)
-        result = f"❌ Xato!\n✅ To'g'ri: {correct_show}"
-    if expl: result += f"\n\n💡 {expl}"
+        result = f"❌ Xato!\n\n✅ To'g'ri javob:\n{correct_show}"
+        if expl: result += f"\n\n💡 Izoh: {expl}"
     await _show_result(user_id, message, result)
 
 async def check_text_answer(user_id, user_answer, message):
