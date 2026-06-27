@@ -446,10 +446,92 @@ async def la_lesson_detail(call: CallbackQuery):
         f"Nima qilmoqchisiz?",
         parse_mode="Markdown",
         reply_markup=kb([
+            [InlineKeyboardButton(text="👁 O'quvchi ko'rinishi", callback_data=f"la_preview|{topic_code}")],
             [InlineKeyboardButton(text="✏️ Tahrirlash (shablon)", callback_data=f"la_edit|{topic_code}")],
             [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"la_delete|{topic_code}")],
             [InlineKeyboardButton(text="⬅️ Ortga", callback_data="noop")]
         ])
+    )
+
+
+@dp.callback_query(F.data.startswith("la_preview|"))
+async def la_preview_lesson(call: CallbackQuery):
+    """Darsni o'quvchi ko'rinishida ko'rsatish"""
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+
+    topic_code = call.data.replace("la_preview|", "")
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT intro, part_1, part_2, part_3, part_4,
+               simple_1, simple_2, simple_3, simple_4,
+               example_1, example_2, exercise_1, exercise_2, summary
+        FROM teacher_lessons WHERE topic_code=%s
+    """, (topic_code,))
+    row = cur.fetchone()
+
+    # DTS daraxtidan sinf, fan, mavzu nomi
+    cur.execute("""
+        SELECT grade, subject_name, mavzu_name, kichik_name
+        FROM dts_tree WHERE topic_code=%s LIMIT 1
+    """, (topic_code,))
+    tree = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not row:
+        await call.message.answer("❌ Dars topilmadi")
+        return
+
+    grade   = tree[0] if tree else "?"
+    subj    = tree[1] if tree else ""
+    mavzu   = tree[2] if tree else ""
+    kichik  = tree[3] if tree else topic_code
+
+    parts_map = {
+        "📖 Kirish":          row[0],
+        "📘 1-qism":          row[1],
+        "📗 2-qism":          row[2],
+        "📙 3-qism":          row[3],
+        "📕 4-qism":          row[4],
+        "💡 Sodda 1":         row[5],
+        "💡 Sodda 2":         row[6],
+        "💡 Sodda 3":         row[7],
+        "💡 Sodda 4":         row[8],
+        "📌 Misol 1":         row[9],
+        "📌 Misol 2":         row[10],
+        "✏️ Mashq 1":         row[11],
+        "✏️ Mashq 2":         row[12],
+        "📝 Xulosa":          row[13],
+    }
+
+    header = (
+        f"👤 O'quvchi ko'rinishi (preview)\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🎓 {grade}-sinf | 📚 {subj}\n"
+        f"📍 {mavzu} → {kichik}\n"
+        f"━━━━━━━━━━━━━━"
+    )
+    await call.message.answer(header)
+
+    step = 1
+    total = sum(1 for v in parts_map.values() if v and str(v).strip())
+    for label, content in parts_map.items():
+        if not content or not str(content).strip():
+            continue
+        text = (
+            f"━━━━━━━━━━━━━━\n"
+            f"{label} | {step}/{total}\n\n"
+            f"{content}"
+        )
+        await call.message.answer(text[:4096])
+        step += 1
+
+    await call.message.answer(
+        "✅ Dars oxiri — o'quvchi shu ko'rinishda ko'radi.",
+        reply_markup=kb([[
+            InlineKeyboardButton(text="⬅️ Ortga", callback_data=f"la_lesson|{topic_code}")
+        ]])
     )
 
 
