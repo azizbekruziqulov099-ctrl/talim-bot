@@ -33,10 +33,6 @@ from learning import (
     lesson_consolidation_test,
     lesson_test_answer,
     send_test_question,
-    lesson_review_start,
-    lesson_review_answer,
-    send_review_question,
-    start_main_lesson,
     open_teacher_lesson,
     continue_learning
 )
@@ -3534,713 +3530,61 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "lesson_prev":
-
-        print(f"DEBUG: lesson_prev called by {call.from_user.id}")
-
-        await lesson_prev(
-            call.from_user.id,
-            call.message
-        )
-
+        from lesson_engine import lesson_prev
         await call.answer()
-
+        await lesson_prev(call.from_user.id, call.message.chat.id)
         return
 
     if call.data == "lesson_next":
-
-        await lesson_next(
-            call.from_user.id,
-            call.message
-        )
-
+        from lesson_engine import lesson_next
         await call.answer()
-
-        return
-
-    if call.data == "review_start":
-
-        await lesson_review_start(
-            call.from_user.id,
-            call.message
-        )
-        await call.answer()
-        return
-
-    if call.data == "review_skip":
-
-        user_id   = call.from_user.id
-        parts     = user_state.get(user_id, {}).get("parts", [])
-        full_name = user_state.get(user_id, {}).get("full_name", "O'quvchi")
-        sinf      = user_state.get(user_id, {}).get("sinf", "")
-        fan       = user_state.get(user_id, {}).get("fan", "")
-        mavzu     = user_state.get(user_id, {}).get("mavzu", "")
-        bugun     = user_state.get(user_id, {}).get("bugun", "")
-
-        await start_main_lesson(
-            call.message, user_id,
-            parts, full_name, sinf, fan, mavzu, bugun
-        )
-        await call.answer()
-        return
-
-    if call.data.startswith("review_answer_"):
-
-        answer = call.data.replace("review_answer_", "")
-        await lesson_review_answer(
-            call.from_user.id,
-            call.message,
-            answer
-        )
-        await call.answer()
-        return
-
-    if call.data == "review_next":
-
-        user_id   = call.from_user.id
-        questions = user_state.get(user_id, {}).get("review_questions", [])
-        index     = user_state.get(user_id, {}).get("review_index", 0)
-
-        await send_review_question(
-            user_id, call.message, questions, index
-        )
-        await call.answer()
-        return
-
-    if call.data == "lesson_consolidation_test":
-
-        await lesson_consolidation_test(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "test_result_tts":
-        u = user_state.get(call.from_user.id, {})
-        text = u.get("last_result_text", "") if isinstance(u, dict) else ""
-        if text:
-            from learning import speak_mixed_text
-            await speak_mixed_text(call.from_user.id, call.message, text)
-        await call.answer()
-        return
-
-    if call.data.startswith("test_speak_"):
-        what  = call.data.replace("test_speak_", "")
-        u     = user_state.get(call.from_user.id, {})
-        questions = u.get("test_questions", []) if isinstance(u, dict) else []
-        index     = u.get("test_index", 0) if isinstance(u, dict) else 0
-
-        if questions and index < len(questions):
-            q = questions[index]
-            opt_map = {"q": q[0], "A": q[1], "B": q[2], "C": q[3], "D": q[4]}
-            text = opt_map.get(what, "")
-            if text:
-                from learning import speak_mixed_text
-                await speak_mixed_text(call.from_user.id, call.message, str(text))
-        await call.answer()
-        return
-
-    if call.data.startswith("test_answer_"):
-
-        answer = call.data.replace("test_answer_", "")
-
-        await lesson_test_answer(
-            call.from_user.id,
-            call.message,
-            answer
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "test_next_question":
-
-        user_id   = call.from_user.id
-        questions = user_state.get(user_id, {}).get("test_questions", [])
-        index     = user_state.get(user_id, {}).get("test_index", 0)
-
-        await send_test_question(
-            user_id,
-            call.message,
-            questions,
-            index
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_tts":
-
-        await lesson_tts(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_tts_help":
-
-        await lesson_tts_help(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_back_main":
-
-        await lesson_back_main(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
-        return
-
-    if call.data == "lesson_help":
-
-        await lesson_help(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-
+        await lesson_next(call.from_user.id, call.message.chat.id)
         return
 
     if call.data == "lesson_speak":
-        from learning import lesson_speak
+        from lesson_engine import lesson_speak
         await call.answer()
-        await lesson_speak(call.from_user.id, call.message)
+        await lesson_speak(call.from_user.id, call.message.chat.id)
+        return
+
+    if call.data == "lesson_help":
+        from lesson_engine import lesson_help_open
+        await call.answer()
+        await lesson_help_open(call.from_user.id, call.message.chat.id)
+        return
+
+    if call.data == "lesson_help_next":
+        from lesson_engine import lesson_help_next
+        await call.answer()
+        await lesson_help_next(call.from_user.id, call.message.chat.id)
+        return
+
+    if call.data == "lesson_help_prev":
+        from lesson_engine import lesson_help_prev
+        await call.answer()
+        await lesson_help_prev(call.from_user.id, call.message.chat.id)
+        return
+
+    if call.data == "lesson_help_close":
+        from lesson_engine import lesson_help_close
+        await call.answer()
+        await lesson_help_close(call.from_user.id, call.message.chat.id)
         return
 
     if call.data == "lesson_exit":
-        from learning import lesson_exit
+        from lesson_engine import lesson_exit
         await call.answer()
-        await lesson_exit(call.from_user.id, call.message)
+        await lesson_exit(call.from_user.id, call.message.chat.id)
         return
 
     if call.data == "lesson_finish_confirm":
+        from lesson_engine import lesson_finish_and_test
+        from storage import lesson_state as _ls
         await call.answer()
-        from learning import lesson_finish
-        await lesson_finish(call.from_user.id, call.message)
+        tc = (_ls.get(call.from_user.id) or {}).get("topic_code", "")
+        await lesson_finish_and_test(call.from_user.id, call.message.chat.id, tc)
         return
 
-    if call.data == "lesson_finish":
-
-        await call.message.edit_text(
-            "⚠️ Darsni tugatmoqchimisiz?\n\n"
-            "Tugatmasangiz progress saqlanmaydi.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="✅ Ha, tugataman",
-                            callback_data="lesson_finish_yes"
-                        ),
-                        InlineKeyboardButton(
-                            text="↩️ Yo'q, davom",
-                            callback_data="lesson_finish_no"
-                        )
-                    ]
-                ]
-            )
-        )
-        await call.answer()
-        return
-
-    if call.data == "lesson_finish_yes":
-
-        await lesson_finish(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-        return
-
-    if call.data == "lesson_finish_no":
-
-        # Tugmalarni qaytarish
-        await lesson_back_main(
-            call.from_user.id,
-            call.message
-        )
-
-        await call.answer()
-        return
-
-    elif call.data == "dts_navigator":
-
-        await dts_navigator(call)
-
-        return   
-
-    elif call.data.startswith(
-        "dts_nav_"
-    ):
-
-        page = int(
-            call.data.split("_")[-1]
-        )
-
-        await dts_navigator(
-            call,
-            page
-        )
-
-        return
-
-    elif call.data.startswith(
-        "dts_grade_"
-    ):
-
-        await dts_grade(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_subject_"
-    ):
-
-        await dts_subject(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_quarter_"
-    ):
-
-        await dts_quarter(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_bob_"
-    ):
-
-        await dts_bob(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_bolim_"
-    ):
-
-        await dts_bolim(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_mavzu_"
-    ):
-
-        await dts_mavzu(call)
-
-        return
-
-    elif call.data.startswith(
-        "dts_small_"
-    ):
-
-        await dts_small(call)
-
-        return
-
-    elif call.data.startswith(
-        "test_grade_"
-    ):
-
-        grade = call.data.replace(
-            "test_grade_",
-            ""
-        )
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer,
-                explanation,
-                question_type,
-                is_latex,
-                image_url,
-                audio_text,
-                language,
-                time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (grade,))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_subject_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer,
-                explanation,
-                question_type,
-                is_latex,
-                image_url,
-                audio_text,
-                language,
-                time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_quarter_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter
-        ) = call.data.split("_")
-
-        print("CALL:", call.data)
-        print("PARAMS:", grade, subject_code, quarter)
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_bob_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_bolim_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-                AND bolim_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data.startswith("test_mavzu_"):
-
-        (
-            _,
-            _,
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code,
-            mavzu_code
-        ) = call.data.split("_")
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                question, option_a, option_b,
-                option_c, option_d,
-                correct_answer, explanation,
-                question_type, is_latex,
-                image_url, audio_text,
-                language, time_limit
-            FROM generated_tests
-            WHERE topic_code IN (
-                SELECT topic_code
-                FROM dts_tree
-                WHERE grade=%s
-                AND subject_code=%s
-                AND quarter=%s
-                AND bob_code=%s
-                AND bolim_code=%s
-                AND mavzu_code=%s
-            )
-            ORDER BY RANDOM()
-            LIMIT 20
-        """, (
-            grade,
-            subject_code,
-            quarter,
-            bob_code,
-            bolim_code,
-            mavzu_code
-        ))
-
-        tests = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        await start_test(
-            call.from_user.id,
-            tests,
-            call.message
-        )
-
-        return
-
-    elif call.data == "dts_menu":
-
-        await dts_menu(call.message)
-
-        return
-
-    elif call.data == "dts_confirm_import":
-
-        await dts_confirm_import(call)
-
-        return
-
-    elif call.data == "dts_problems":
-
-        await dts_problems(call)
-
-        return
-
-    elif call.data == "dts_download_errors":
-
-        await dts_download_errors(call)
-
-        return
-
-    elif call.data == "dts_cancel_import":
-
-        await dts_cancel_import(call)
-
-        return
-
-    # =========================
-    # test_buttons
-    # =========================
-
-    elif call.data == "dts_search":
-        await dts_search(call)
-        return
-
-    elif call.data == "dts_fast_search":
-        await dts_fast_search(
-            call,
-            state
-        )
-        return
-
-    elif call.data == "dts_adv_search":
-        await dts_adv_search(call)
-        return
-
-    elif call.data.startswith(
-        "dts_adv_grade_"
-    ):
-        await dts_adv_grade(call)
-        return
-
-    elif call.data == "dts_export":
-
-        await dts_export(call)
-
-        return
 
     if call.data in ("tset_start_quick", "tset_start_force"):
         from datetime import datetime
@@ -4478,9 +3822,49 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
         return
 
+async def notify_on_restart():
+    """Bot yangilanganda barcha faol foydalanuvchilarga xabar yuboradi."""
+    print("🔄 Foydalanuvchilarga xabar yuborilmoqda...")
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur  = conn.cursor()
+        cur.execute("SELECT user_id, role FROM users")
+        users = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print(f"DB xato (restart notify): {e}")
+        return
+
+    sent = 0
+    for uid, role in users:
+        try:
+            role_str = str(role or "🧒 O'quvchi")
+            if uid in ADMINS:
+                role_str = "Admin"
+            kb = get_main_keyboard(role_str)
+            await bot.send_message(
+                uid,
+                "🔄 Bot yangilandi!\n\nBosh menyuga qaytdingiz 🏠",
+                reply_markup=kb
+            )
+            sent += 1
+            await asyncio.sleep(0.05)  # Telegram flood limit
+        except Exception:
+            pass
+    print(f"✅ {sent}/{len(users)} foydalanuvchiga xabar yuborildi")
+
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
     init_db()
+    # Barcha state larni tozalash
+    user_state.clear()
+    from storage import lesson_state, temp_user, registration_message, reg_kbd_message
+    lesson_state.clear()
+    temp_user.clear()
+    registration_message.clear()
+    reg_kbd_message.clear()
+    # Foydalanuvchilarga xabar
+    asyncio.create_task(notify_on_restart())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
