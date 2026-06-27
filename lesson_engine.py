@@ -1,6 +1,12 @@
 """
-lesson_engine.py — Yangi dars ko'rsatish tizimi
-Rasm + matn, dinamik qismlar, to'g'ri TTS
+lesson_engine.py — To'liq qayta yozilgan dars tizimi
+
+Oqim:
+  intro → part_1..7 → example_1..5 → 5 ta oson test
+  [😕 Tushunmadim] → simple_1..7 → ✅ Tushundim → davom
+
+  Har qadam: avto ovoz, rasm (agar bo'lsa), matn
+  Bitta xabar (edit) — uchib-chiqmaydi
 """
 import asyncio, os, re, psycopg2
 from aiogram.types import (
@@ -12,285 +18,444 @@ from loader import bot
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ─────────────── Ustun nomlari (tartibda) ───────────────
 LESSON_COLS = [
-    "id","topic_code",
-    "intro","image_intro",
-    "part_1","image_1","part_2","image_2","part_3","image_3",
-    "part_4","image_4","part_5","image_5","part_6","image_6","part_7","image_7",
-    "simple_1","simple_2","simple_3","simple_4",
-    "simple_5","simple_6","simple_7",
-    "example_1","example_2","example_3","example_4","example_5",
+    "id", "topic_code",
+    "intro", "image_intro",
+    "part_1", "image_1", "part_2", "image_2", "part_3", "image_3",
+    "part_4", "image_4", "part_5", "image_5", "part_6", "image_6", "part_7", "image_7",
+    "simple_1", "simple_2", "simple_3", "simple_4",
+    "simple_5", "simple_6", "simple_7",
+    "example_1", "example_2", "example_3", "example_4", "example_5",
     "summary",
 ]
 
-PART_LABELS = {
-    "intro":   "📖 Kirish",
-    "part":    "📘 Qism",
-    "simple":  "💡 Sodda tushuntirish",
-    "example": "📌 Misol",
-    "summary": "📝 Xulosa",
-}
-
-# ─────────────── Matnni tozalash ───────────────
-def clean_text(text):
-    """Ko'rsatish uchun matnni tozalash — teglar saqlanadi."""
-    if not text: return ""
-    # [skip]...[/skip] olib tashlash
-    t = re.sub(r'\[skip\](.*?)\[/skip\]', "", text, flags=re.DOTALL)
-    # [img]...[/img] olib tashlash
-    t = re.sub(r'\[img\](.*?)\[/img\]', "", t, flags=re.DOTALL)
-    # [latex]...[/latex] ni ko'rsatish
-    t = re.sub(r'\[latex\](.*?)\[/latex\]', r"[\1]", t, flags=re.DOTALL)
+# ─── Matnni tozalash ───
+def clean_text(t):
+    if not t: return ""
+    t = re.sub(r'\[skip\](.*?)\[/skip\]', '', str(t), flags=re.DOTALL)
+    t = re.sub(r'\[img\](.*?)\[/img\]',  '', t, flags=re.DOTALL)
+    t = re.sub(r'\[latex\](.*?)\[/latex\]', r'[\1]', t, flags=re.DOTALL)
     return t.strip()
 
-def tts_text(text):
-    """TTS uchun matnni tozalash — teglar, emoji, maxsus belgilar olib tashlanadi."""
-    if not text: return []
-    # [en]...[/en] — ingliz tilida o'qish
-    # [ru]...[/ru] — rus tilida o'qish
-    # Qolgan matn — o'zbek tilida
-    # Avval bo'laklarga ajratamiz
-    segments = []
-    # [en] va [ru] teglarini topamiz
-    pattern = re.compile(r'(\[en\](.*?)\[/en\]|\[ru\](.*?)\[/ru\])', re.DOTALL)
+def _strip_for_tts(t):
+    t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r'\1', str(t), flags=re.DOTALL)
+    t = re.sub(r'\[/?\w+\]', '', t)
+    t = re.sub(r'[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+', ' ', t)
+    t = re.sub(r'[•*#|_~`━\-]{2,}', ' ', t)
+    return re.sub(r'\s+', ' ', t).strip()
+
+def tts_segments(text):
+    """Matnni (lang, text) bo'laklarga ajratadi."""
+    segs = []
+    pat = re.compile(r'(\[en\](.*?)\[/en\]|\[ru\](.*?)\[/ru\])', re.DOTALL)
     last = 0
-    for m in pattern.finditer(text):
-        # Tegdan oldingi matn (o'zbek)
-        before = text[last:m.start()]
-        before = _strip_for_tts(before)
+    for m in pat.finditer(text):
+        before = _strip_for_tts(text[last:m.start()])
         if before.strip():
-            segments.append(("uz", before.strip()))
-        # Tegli matn
-        if "[en]" in m.group(0):
-            en_txt = _strip_for_tts(m.group(2) or "")
-            if en_txt.strip():
-                segments.append(("en", en_txt.strip()))
+            segs.append(('uz', before.strip()))
+        if '[en]' in m.group(0):
+            t = _strip_for_tts(m.group(2) or '')
+            if t: segs.append(('en', t))
         else:
-            ru_txt = _strip_for_tts(m.group(3) or "")
-            if ru_txt.strip():
-                segments.append(("ru", ru_txt.strip()))
+            t = _strip_for_tts(m.group(3) or '')
+            if t: segs.append(('ru', t))
         last = m.end()
-    # Oxirgi qism
     after = _strip_for_tts(text[last:])
     if after.strip():
-        segments.append(("uz", after.strip()))
-    return segments
+        segs.append(('uz', after.strip()))
+    return segs
 
-def _strip_for_tts(text):
-    """TTS uchun barcha teglar, emoji, maxsus belgilarni olib tashlash."""
-    t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r"\1", text, flags=re.DOTALL)
-    t = re.sub(r'\[/?\w+\]', "", t)
-    # Emoji olib tashlash
-    t = re.sub(r'[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+', " ", t)
-    # Maxsus belgilar
-    t = re.sub(r'[•*#|_~`━\-]{2,}', " ", t)
-    # Ko'p bo'shliqlarni tozalash
-    t = re.sub(r'\s+', " ", t)
-    return t.strip()
-
-# ─────────────── Dars qismlarini dinamik qurish ───────────────
-def build_parts(row):
-    """
-    teacher_lessons qatoridan dinamik parts ro'yxati quradi.
-    Faqat to'ldirilgan qismlar kiritiladi.
-    """
-    d = dict(zip(LESSON_COLS, row))
-    parts = []
-    n_step = 0
-
-    # Kirish
-    if d.get("intro","") and str(d["intro"]).strip():
-        n_step += 1
-        parts.append({
-            "type": "intro", "label": "📖 Kirish",
-            "text": d["intro"], "image": d.get("image_intro",""),
-            "step": n_step
-        })
-
-    # Qismlar (part_1 ... part_7)
-    n_part = 0
-    for i in range(1, 8):
-        txt = d.get(f"part_{i}","") or ""
-        img = d.get(f"image_{i}","") or ""
-        if txt.strip():
-            n_step += 1; n_part += 1
-            parts.append({
-                "type": "part", "label": f"📘 {n_part}-qism",
-                "text": txt, "image": img,
-                "step": n_step
-            })
-
-    # Sodda tushuntirish (simple_1 ... simple_7)
-    n_simple = 0
-    for i in range(1, 8):
-        txt = d.get(f"simple_{i}","") or ""
-        if txt.strip():
-            n_step += 1; n_simple += 1
-            parts.append({
-                "type": "simple", "label": f"💡 {n_simple}-tushuntirish",
-                "text": txt, "image": "",
-                "step": n_step
-            })
-
-    # Misollar (example_1 ... example_5)
-    n_ex = 0
-    for i in range(1, 6):
-        txt = d.get(f"example_{i}","") or ""
-        if txt.strip():
-            n_step += 1; n_ex += 1
-            parts.append({
-                "type": "example", "label": f"📌 {n_ex}-misol",
-                "text": txt, "image": "",
-                "step": n_step
-            })
-
-    # Xulosa
-    if d.get("summary","") and str(d["summary"]).strip():
-        n_step += 1
-        parts.append({
-            "type": "summary", "label": "📝 Xulosa",
-            "text": d["summary"], "image": "",
-            "step": n_step
-        })
-
-    return parts
-
-# ─────────────── Rasimni olish ───────────────
-async def _get_image(img_name):
-    """images jadvalidan file_id oladi."""
-    if not img_name or not str(img_name).strip(): return None
+# ─── Rasm ───
+async def _get_image(name):
+    if not name or not str(name).strip() or str(name).strip() in ('', 'None', 'nan', 'rasm_nomi'):
+        return None
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur  = conn.cursor()
-        cur.execute("SELECT file_id FROM images WHERE name=%s", (str(img_name).strip(),))
-        row = cur.fetchone(); cur.close(); conn.close()
-        return row[0] if row else None
-    except Exception:
+        c = psycopg2.connect(DATABASE_URL).cursor()
+        c.execute("SELECT file_id FROM images WHERE name=%s", (str(name).strip(),))
+        r = c.fetchone(); c.close()
+        return r[0] if r else None
+    except:
         return None
 
-# ─────────────── Bitta qadamni ko'rsatish ───────────────
-async def show_lesson_step(uid, chat_id, step_index, total, part, full_name, fan, mavzu):
-    """Bitta dars qadamini ko'rsatadi. Rasm bo'lsa photo, bo'lmasa text."""
-    state = lesson_state.setdefault(uid, {})
-    old_mid   = state.get("lesson_msg_id")
-    old_photo = state.get("lesson_has_photo", False)
+# ─── Qismlarni qurish ───
+def build_lesson_data(row):
+    """lesson qatoridan main_parts va simple_parts ajratadi."""
+    d = dict(zip(LESSON_COLS, row))
+    def v(k): return str(d.get(k) or '').strip()
 
-    text  = clean_text(part["text"])
-    label = part["label"]
-    image = await _get_image(part.get("image",""))
+    main_parts = []
 
-    header = (
-        f"👤 {full_name}  |  📚 {fan}\n"
-        f"📍 {mavzu}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"{label}  •  {step_index+1}/{total}\n\n"
-    )
-    full_text = header + text
+    # Kirish
+    if v('intro'):
+        main_parts.append({'label': '📖 Kirish', 'text': v('intro'), 'image': v('image_intro')})
 
-    # Progress bar
-    filled = round((step_index+1)/total * 10)
-    progress = "🟩"*filled + "⬜"*(10-filled)
+    # Qismlar
+    for i in range(1, 8):
+        if v(f'part_{i}'):
+            main_parts.append({'label': f'📘 {i}-qism', 'text': v(f'part_{i}'), 'image': v(f'image_{i}')})
 
-    # Keyboard
+    # Misollar
+    for i in range(1, 6):
+        if v(f'example_{i}'):
+            main_parts.append({'label': f'📌 {i}-misol', 'text': v(f'example_{i}'), 'image': ''})
+
+    # Simple (tushuntirish) — alohida
+    simple_parts = []
+    for i in range(1, 8):
+        if v(f'simple_{i}'):
+            simple_parts.append({'label': f'💡 Tushuntirish', 'text': v(f'simple_{i}'), 'image': ''})
+
+    return main_parts, simple_parts
+
+# ─── Xabarni yangilash ───
+async def _send_or_edit(chat_id, uid, text, kb, photo=None):
+    """Bitta xabarni edit yoki qayta yaratadi."""
+    st = lesson_state.setdefault(uid, {})
+    mid = st.get('lesson_msg_id')
+    has_photo = st.get('lesson_has_photo', False)
+
+    if photo:
+        media = InputMediaPhoto(media=photo, caption=text[:1024])
+        if has_photo and mid:
+            try:
+                await bot.edit_message_media(chat_id=chat_id, message_id=mid, media=media, reply_markup=kb)
+                return
+            except: pass
+        if mid:
+            try: await bot.delete_message(chat_id, mid)
+            except: pass
+        msg = await bot.send_photo(chat_id, photo, caption=text[:1024], reply_markup=kb)
+        st['lesson_msg_id'] = msg.message_id
+        st['lesson_has_photo'] = True
+    else:
+        if has_photo and mid:
+            try: await bot.delete_message(chat_id, mid)
+            except: pass
+            mid = None
+            st['lesson_has_photo'] = False
+        if mid:
+            try:
+                await bot.edit_message_text(text=text[:4096], chat_id=chat_id, message_id=mid, reply_markup=kb)
+                return
+            except:
+                try: await bot.delete_message(chat_id, mid)
+                except: pass
+        msg = await bot.send_message(chat_id, text[:4096], reply_markup=kb)
+        st['lesson_msg_id'] = msg.message_id
+        st['lesson_has_photo'] = False
+
+# ─── Klaviatura ───
+def _main_kb(step, total, has_simple):
     rows = []
     nav = []
-    if step_index > 0:
-        nav.append(InlineKeyboardButton(text="◀️ Oldingi", callback_data="lesson_prev"))
-    if step_index < total - 1:
-        nav.append(InlineKeyboardButton(text="▶️ Keyingi", callback_data="lesson_next"))
+    if step > 0:
+        nav.append(InlineKeyboardButton(text='◀️ Oldingi', callback_data='lesson_prev'))
+    if step < total - 1:
+        nav.append(InlineKeyboardButton(text='▶️ Keyingi', callback_data='lesson_next'))
     else:
-        nav.append(InlineKeyboardButton(text="✅ Darsni tugatish", callback_data="lesson_finish_confirm"))
+        nav.append(InlineKeyboardButton(text='✅ Tugatish', callback_data='lesson_finish_confirm'))
     rows.append(nav)
-    rows.append([
-        InlineKeyboardButton(text="🔊", callback_data="lesson_speak"),
-        InlineKeyboardButton(text=progress, callback_data="noop"),
-        InlineKeyboardButton(text="🛑 Chiqish", callback_data="lesson_exit"),
-    ])
-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
-    # Xabarni yangilash yoki yaratish
-    if image:
-        media = InputMediaPhoto(media=image, caption=full_text[:1024])
-        if old_mid and old_photo:
-            try:
-                await bot.edit_message_media(
-                    chat_id=chat_id, message_id=old_mid,
-                    media=media, reply_markup=kb
-                )
-                state["lesson_msg_id"]   = old_mid
-                state["lesson_has_photo"] = True
-                return
-            except Exception:
-                pass
-        if old_mid:
-            try: await bot.delete_message(chat_id, old_mid)
-            except: pass
-        msg = await bot.send_photo(chat_id, image, caption=full_text[:1024], reply_markup=kb)
-        state["lesson_msg_id"]   = msg.message_id
-        state["lesson_has_photo"] = True
-    else:
-        if old_mid and old_photo:
-            try: await bot.delete_message(chat_id, old_mid)
-            except: pass
-            old_mid = None
-        if old_mid:
-            try:
-                await bot.edit_message_text(
-                    text=full_text[:4096], chat_id=chat_id,
-                    message_id=old_mid, reply_markup=kb
-                )
-                state["lesson_msg_id"]   = old_mid
-                state["lesson_has_photo"] = False
-                return
-            except Exception:
-                try: await bot.delete_message(chat_id, old_mid)
-                except: pass
-        msg = await bot.send_message(chat_id, full_text[:4096], reply_markup=kb)
-        state["lesson_msg_id"]   = msg.message_id
-        state["lesson_has_photo"] = False
+    row2 = [InlineKeyboardButton(text='🔊 Eshitish', callback_data='lesson_speak')]
+    if has_simple:
+        row2.append(InlineKeyboardButton(text='😕 Tushunmadim', callback_data='lesson_help'))
+    rows.append(row2)
+    rows.append([InlineKeyboardButton(text='🛑 Chiqish', callback_data='lesson_exit')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-# ─────────────── TTS ───────────────
-async def speak_lesson_step(uid, chat_id, text, gender=""):
-    """Bir dars qadamini ovozda o'qiydi."""
-    import edge_tts
-    from pydub import AudioSegment as AS
-    voices = {
-        "uz": "uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural",
-        "en": "en-US-GuyNeural",
-        "ru": "ru-RU-DmitryNeural",
-    }
-    segments = tts_text(text)
-    if not segments: return
+def _simple_kb(step, total):
+    rows = []
+    nav = []
+    if step > 0:
+        nav.append(InlineKeyboardButton(text='◀️ Oldingi izoh', callback_data='lesson_help_prev'))
+    if step < total - 1:
+        nav.append(InlineKeyboardButton(text='▶️ Keyingi izoh', callback_data='lesson_help_next'))
+    rows.append(nav) if nav else None
+    rows.append([InlineKeyboardButton(text='✅ Tushundim — davom', callback_data='lesson_help_close')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-    combined = AS.silent(0)
-    for lang, seg_text in segments:
-        voice = voices.get(lang, voices["uz"])
-        tmp = f"tts_les_{uid}_{abs(hash(seg_text))}.mp3"
-        try:
-            await edge_tts.Communicate(text=seg_text, voice=voice).save(tmp)
-            if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
-                combined += AS.from_mp3(tmp)
-        except Exception:
-            pass
-        finally:
-            try: os.remove(tmp)
-            except: pass
+# ─── Progress bar ───
+def _progress(step, total):
+    filled = round((step + 1) / total * 8) if total else 0
+    return '🟩' * filled + '⬜' * (8 - filled)
 
-    if len(combined) == 0: return
-    fname = f"tts_lesson_{uid}.mp3"
+# ─── Header ───
+def _header(full_name, fan, mavzu, step, total, label):
+    pr = _progress(step, total)
+    return (
+        f'👤 {full_name}  |  📚 {fan}\n'
+        f'📍 {mavzu}\n'
+        f'━━━━━━━━━━━━━━\n'
+        f'{label}  •  {step+1}/{total}  {pr}\n\n'
+    )
+
+# ─── TTS yubor ───
+async def _auto_speak(uid, chat_id, text, gender=''):
+    """Avto ovoz — fon da ishlaydi, xatoda jim qoladi."""
     try:
-        combined.export(fname, format="mp3")
-        vm = await bot.send_voice(chat_id, FSInputFile(fname))
-        # Eski ovoz xabarini o'chir
-        state = lesson_state.setdefault(uid, {})
-        old_vm = state.get("lesson_voice_id")
-        if old_vm:
-            try: await bot.delete_message(chat_id, old_vm)
+        import edge_tts
+        from pydub import AudioSegment as AS
+        voices = {
+            'uz': 'uz-UZ-MadinaNeural' if 'Ayol' in str(gender) else 'uz-UZ-SardorNeural',
+            'en': 'en-US-GuyNeural',
+            'ru': 'ru-RU-DmitryNeural',
+        }
+        segs = tts_segments(text)
+        if not segs: return
+        combined = AS.silent(0)
+        for lang, seg in segs:
+            voice = voices.get(lang, voices['uz'])
+            tmp = f'tts_{uid}_{abs(hash(seg)%99999)}.mp3'
+            try:
+                await edge_tts.Communicate(text=seg, voice=voice).save(tmp)
+                if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+                    combined += AS.from_mp3(tmp)
             except: pass
-        state["lesson_voice_id"] = vm.message_id
+            finally:
+                try: os.remove(tmp)
+                except: pass
+        if len(combined) == 0: return
+        fname = f'tts_les_{uid}.mp3'
+        combined.export(fname, format='mp3')
+        vm = await bot.send_voice(chat_id, FSInputFile(fname))
+        # Eski ovozni o'chirish
+        st = lesson_state.get(uid, {})
+        old = st.get('voice_msg_id') if isinstance(st, dict) else None
+        if old:
+            try: await bot.delete_message(chat_id, old)
+            except: pass
+        if isinstance(st, dict):
+            st['voice_msg_id'] = vm.message_id
     except Exception:
         pass
     finally:
         try: os.remove(fname)
         except: pass
+
+# ═══════════════════════════════════════════
+#  ASOSIY FUNKSIYALAR
+# ═══════════════════════════════════════════
+
+async def show_main_step(uid, chat_id):
+    """Joriy asosiy qadamni ko'rsatadi + avto ovoz."""
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    parts       = st.get('main_parts', [])
+    simples     = st.get('simple_parts', [])
+    step        = st.get('main_step', 0)
+    full_name   = st.get('full_name', "O'quvchi")
+    fan         = st.get('fan', '')
+    mavzu       = st.get('mavzu', '')
+    gender      = st.get('gender', '')
+
+    if not parts or step >= len(parts): return
+    part  = parts[step]
+    total = len(parts)
+    text  = clean_text(part['text'])
+    label = part['label']
+    photo = await _get_image(part.get('image', ''))
+
+    header  = _header(full_name, fan, mavzu, step, total, label)
+    full    = header + text
+    kb      = _main_kb(step, total, bool(simples))
+
+    await _send_or_edit(chat_id, uid, full, kb, photo)
+
+    # Avto ovoz (fon da)
+    asyncio.create_task(_auto_speak(uid, chat_id, text, gender))
+
+
+async def show_simple_step(uid, chat_id):
+    """Tushunmadim — joriy simple qadamni ko'rsatadi."""
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    simples   = st.get('simple_parts', [])
+    step      = st.get('simple_step', 0)
+    full_name = st.get('full_name', "O'quvchi")
+    fan       = st.get('fan', '')
+    mavzu     = st.get('mavzu', '')
+    gender    = st.get('gender', '')
+
+    if not simples or step >= len(simples): return
+    part  = simples[step]
+    total = len(simples)
+    text  = clean_text(part['text'])
+    label = part['label']
+
+    header = (
+        f'👤 {full_name}  |  📚 {fan}\n'
+        f'📍 {mavzu}\n'
+        f'━━━━━━━━━━━━━━\n'
+        f'{label}  •  {step+1}/{total}  {_progress(step, total)}\n\n'
+    )
+    kb = _simple_kb(step, total)
+    await _send_or_edit(chat_id, uid, header + text, kb, None)
+    asyncio.create_task(_auto_speak(uid, chat_id, text, gender))
+
+
+async def lesson_next(uid, chat_id):
+    st = lesson_state.setdefault(uid, {})
+    if not isinstance(st, dict): return
+    parts = st.get('main_parts', [])
+    step  = st.get('main_step', 0)
+    if step + 1 >= len(parts): return
+    st['main_step'] = step + 1
+    _save_progress(uid, step + 1)
+    await show_main_step(uid, chat_id)
+
+
+async def lesson_prev(uid, chat_id):
+    st = lesson_state.setdefault(uid, {})
+    if not isinstance(st, dict): return
+    step = st.get('main_step', 0)
+    if step <= 0: return
+    st['main_step'] = step - 1
+    _save_progress(uid, step - 1)
+    await show_main_step(uid, chat_id)
+
+
+async def lesson_help_open(uid, chat_id):
+    st = lesson_state.setdefault(uid, {})
+    if not isinstance(st, dict): return
+    if not st.get('simple_parts'):
+        await bot.send_message(chat_id, "ℹ️ Bu mavzu uchun qo'shimcha tushuntirish yo'q.")
+        return
+    st['simple_step'] = 0
+    st['mode'] = 'tushunmadim'
+    await show_simple_step(uid, chat_id)
+
+
+async def lesson_help_next(uid, chat_id):
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    simples = st.get('simple_parts', [])
+    step    = st.get('simple_step', 0)
+    if step + 1 >= len(simples):
+        # Oxirgi — asosiy darsga qayt
+        st['mode'] = 'main'
+        await show_main_step(uid, chat_id)
+        return
+    st['simple_step'] = step + 1
+    await show_simple_step(uid, chat_id)
+
+
+async def lesson_help_prev(uid, chat_id):
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    step = st.get('simple_step', 0)
+    if step <= 0: return
+    st['simple_step'] = step - 1
+    await show_simple_step(uid, chat_id)
+
+
+async def lesson_help_close(uid, chat_id):
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    st['mode'] = 'main'
+    await show_main_step(uid, chat_id)
+
+
+async def lesson_speak(uid, chat_id):
+    st = lesson_state.get(uid) or {}
+    if not isinstance(st, dict): return
+    mode   = st.get('mode', 'main')
+    gender = st.get('gender', '')
+    if mode == 'tushunmadim':
+        simples = st.get('simple_parts', [])
+        step    = st.get('simple_step', 0)
+        text = clean_text(simples[step]['text']) if simples and step < len(simples) else ''
+    else:
+        parts = st.get('main_parts', [])
+        step  = st.get('main_step', 0)
+        text = clean_text(parts[step]['text']) if parts and step < len(parts) else ''
+    if text:
+        await _auto_speak(uid, chat_id, text, gender)
+
+
+async def lesson_exit(uid, chat_id):
+    from keyboards import get_main_keyboard
+    lesson_state.pop(uid, None)
+    user_state.pop(uid, None)
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("DELETE FROM lesson_progress WHERE user_id=%s", (uid,))
+        conn.commit(); cur.close(); conn.close()
+    except: pass
+    role = "🧒 O'quvchi"
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT role FROM users WHERE user_id=%s", (uid,))
+        r = cur.fetchone(); cur.close(); conn.close()
+        if r: role = r[0]
+    except: pass
+    await bot.send_message(chat_id, "🏠 Bosh menyu", reply_markup=get_main_keyboard(role))
+
+
+async def lesson_finish_and_test(uid, chat_id, topic_code):
+    """Dars tugadi → 5 ta oson test boshlash."""
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("""
+            SELECT question, option_a, option_b, option_c, option_d,
+                   correct_answer, explanation, question_type,
+                   is_latex, image_url, audio_text, language, time_limit
+            FROM generated_tests
+            WHERE topic_code=%s AND difficulty IN ('easy','Easy','oson','Oson')
+            ORDER BY RANDOM() LIMIT 5
+        """, (topic_code,))
+        tests = cur.fetchall()
+        if not tests:
+            # difficulty bo'lsa ham bo'lmasa oling
+            cur.execute("""
+                SELECT question, option_a, option_b, option_c, option_d,
+                       correct_answer, explanation, question_type,
+                       is_latex, image_url, audio_text, language, time_limit
+                FROM generated_tests
+                WHERE topic_code=%s
+                ORDER BY RANDOM() LIMIT 5
+            """, (topic_code,))
+            tests = cur.fetchall()
+        cur.execute("DELETE FROM lesson_progress WHERE user_id=%s", (uid,))
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        await bot.send_message(chat_id, f"❌ Test yuklanmadi: {e}")
+        await lesson_exit(uid, chat_id)
+        return
+
+    lesson_state.pop(uid, None)
+    user_state[uid] = None
+
+    if not tests:
+        await bot.send_message(chat_id, "✅ Dars tugadi! Bu mavzu uchun test hali yo'q.")
+        await lesson_exit(uid, chat_id)
+        return
+
+    await bot.send_message(
+        chat_id,
+        f"🎉 Dars tugadi! Endi 5 ta savol — bilimingizni tekshiramiz! 🧠"
+    )
+    from test_engine import start_test
+    class FakeMsg:
+        def __init__(self, cid, bot_):
+            self.chat = type('C', (), {'id': cid})()
+            self.bot = bot_
+        async def answer(self, *a, **kw):
+            return await bot.send_message(self.chat.id, *a, **kw)
+    await start_test(uid, tests, FakeMsg(chat_id, bot))
+
+
+def _save_progress(uid, step):
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute(
+            "UPDATE lesson_progress SET current_step=%s WHERE user_id=%s",
+            (step, uid)
+        )
+        conn.commit(); cur.close(); conn.close()
+    except: pass
+
+
+# ─── build_parts (lesson_admin.py uchun qoldirilgan) ───
+def build_parts(row):
+    main_parts, _ = build_lesson_data(row)
+    return main_parts
