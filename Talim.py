@@ -503,12 +503,35 @@ def init_db():
     CREATE TABLE IF NOT EXISTS teacher_lessons (
         id SERIAL PRIMARY KEY,
         topic_code TEXT UNIQUE,
-        intro TEXT, part_1 TEXT, part_2 TEXT, part_3 TEXT, part_4 TEXT,
-        simple_1 TEXT, simple_2 TEXT, simple_3 TEXT, simple_4 TEXT,
-        example_1 TEXT, example_2 TEXT, exercise_1 TEXT, exercise_2 TEXT,
-        summary TEXT
+        intro      TEXT, image_intro TEXT,
+        part_1     TEXT, image_1 TEXT,
+        part_2     TEXT, image_2 TEXT,
+        part_3     TEXT, image_3 TEXT,
+        part_4     TEXT, image_4 TEXT,
+        part_5     TEXT, image_5 TEXT,
+        part_6     TEXT, image_6 TEXT,
+        part_7     TEXT, image_7 TEXT,
+        simple_1   TEXT, simple_2 TEXT, simple_3 TEXT, simple_4 TEXT,
+        simple_5   TEXT, simple_6 TEXT, simple_7 TEXT,
+        example_1  TEXT, example_2 TEXT, example_3 TEXT,
+        example_4  TEXT, example_5 TEXT,
+        summary    TEXT
     )
     """)
+
+    # Eski jadvalga yangi ustunlar qo'shish (mavjud ma'lumotlarga tegmaydi)
+    for _col in [
+        "image_intro TEXT", "image_1 TEXT", "image_2 TEXT", "image_3 TEXT",
+        "image_4 TEXT",     "image_5 TEXT", "image_6 TEXT", "image_7 TEXT",
+        "part_5 TEXT",  "part_6 TEXT",  "part_7 TEXT",
+        "simple_5 TEXT","simple_6 TEXT","simple_7 TEXT",
+        "example_3 TEXT","example_4 TEXT","example_5 TEXT",
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE teacher_lessons ADD COLUMN IF NOT EXISTS {_col}")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS learned_topics (
@@ -3692,6 +3715,24 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         await call.answer()
 
+        return
+
+    if call.data == "lesson_speak":
+        from learning import lesson_speak
+        await call.answer()
+        await lesson_speak(call.from_user.id, call.message)
+        return
+
+    if call.data == "lesson_exit":
+        from learning import lesson_exit
+        await call.answer()
+        await lesson_exit(call.from_user.id, call.message)
+        return
+
+    if call.data == "lesson_finish_confirm":
+        await call.answer()
+        from learning import lesson_finish
+        await lesson_finish(call.from_user.id, call.message)
         return
 
     if call.data == "lesson_finish":
