@@ -330,96 +330,76 @@ async def continue_learning(message: Message):
 
 
 async def open_teacher_lesson(message, topic_code=None, _user_id=None):
-    """Darsni boshlash — yangi lesson_engine.py orqali."""
-    from lesson_engine import build_parts, show_lesson_step, LESSON_COLS
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur  = conn.cursor()
+    from lesson_engine import build_lesson_data, show_main_step, LESSON_COLS
+    conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
     try:
-        user_id   = _user_id or message.from_user.id
-        chat_id   = message.chat.id
+        uid     = _user_id or message.from_user.id
+        chat_id = message.chat.id
 
-        # Foydalanuvchi ma'lumotlari
-        cur.execute("SELECT full_name, class, subject FROM users WHERE user_id=%s", (user_id,))
-        urow      = cur.fetchone()
+        cur.execute("SELECT full_name, class, subject, gender FROM users WHERE user_id=%s", (uid,))
+        urow = cur.fetchone()
         full_name = urow[0] if urow else "O'quvchi"
         sinf      = urow[1] if urow else "1"
-        fan       = urow[2] if urow else ""
+        fan_user  = urow[2] if urow else ""
+        gender    = urow[3] if urow else ""
 
-        # topic_code berilmagan bo'lsa — keyingisi
         if not topic_code:
             from progress import get_next_topic
-            nxt = get_next_topic(user_id, sinf)
-            if nxt:
-                topic_code = nxt[0]
+            nxt = get_next_topic(uid, sinf)
+            if nxt: topic_code = nxt[0]
             else:
                 await message.answer("🎉 Barcha mavzularni o'rgandingiz!")
                 return
 
-        # Dars matni
         cur.execute("SELECT * FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
         lesson = cur.fetchone()
         if not lesson:
-            await message.answer(
-                f"📝 Bu mavzu uchun dars hali yozilmagan.\n🔑 {topic_code}\n\nAdmin tez orada qo'shadi! ⏳"
-            )
+            await message.answer(f"📝 Bu mavzu uchun dars hali yozilmagan.\n🔑 {topic_code}")
             return
 
-        # DTS daraxtdan sinf, fan, mavzu nomi
-        cur.execute(
-            "SELECT grade, subject_name, mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1",
-            (topic_code,)
-        )
+        cur.execute("SELECT grade, subject_name, mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1", (topic_code,))
         trow = cur.fetchone()
-        if trow:
-            sinf = trow[0] or sinf
-            fan  = trow[1] or fan
-            mavzu = trow[2] or topic_code
-        else:
-            mavzu = topic_code
+        sinf  = trow[0] if trow else sinf
+        fan   = trow[1] if trow else fan_user
+        mavzu = trow[2] if trow else topic_code
 
-        # Dars qismlarini qurish
-        parts = build_parts(lesson)
-        if not parts:
-            await message.answer("📭 Dars qismlari bo'sh.")
+        main_parts, simple_parts = build_lesson_data(lesson)
+        if not main_parts:
+            await message.answer("📭 Dars qismlari to'ldirilmagan.")
             return
 
-        # lesson_state ni saqlash (fish yo'qolmasin)
-        lesson_state[user_id] = {
-            "topic_code":   topic_code,
-            "parts":        parts,
-            "current_step": 0,
-            "total":        len(parts),
-            "full_name":    full_name,
-            "sinf":         sinf,
-            "fan":          fan,
-            "mavzu":        mavzu,
+        lesson_state[uid] = {
+            "topic_code":    topic_code,
+            "main_parts":    main_parts,
+            "simple_parts":  simple_parts,
+            "main_step":     0,
+            "simple_step":   0,
+            "mode":          "main",
+            "total":         len(main_parts),
+            "full_name":     full_name,
+            "sinf":          sinf,
+            "fan":           fan,
+            "mavzu":         mavzu,
+            "gender":        gender,
             "lesson_msg_id":   None,
             "lesson_has_photo": False,
-            "lesson_voice_id": None,
+            "voice_msg_id":    None,
         }
-        user_state[user_id] = "in_lesson"
+        user_state[uid] = "in_lesson"
 
-        # lesson_progress ga yozish
         cur.execute("""
             INSERT INTO lesson_progress(user_id, topic_code, current_step)
             VALUES(%s,%s,0)
-            ON CONFLICT(user_id) DO UPDATE
-              SET topic_code=EXCLUDED.topic_code, current_step=0
-        """, (user_id, topic_code))
+            ON CONFLICT(user_id) DO UPDATE SET topic_code=EXCLUDED.topic_code, current_step=0
+        """, (uid, topic_code))
         conn.commit()
 
         await message.answer("📖 Dars boshlanmoqda...")
-
-        # Birinchi qadamni ko'rsatish
-        await show_lesson_step(
-            user_id, chat_id, 0, len(parts), parts[0],
-            full_name, fan, mavzu
-        )
+        await show_main_step(uid, chat_id)
 
     except Exception as e:
         import traceback; traceback.print_exc()
-        await message.answer(f"❌ Dars ochishda xato: {e}")
+        await message.answer(f"❌ Xato: {e}")
     finally:
         cur.close(); conn.close()
 
