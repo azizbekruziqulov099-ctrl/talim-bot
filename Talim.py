@@ -454,6 +454,17 @@ def init_db():
         ON lesson_history(user_id, learned_at DESC)
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS error_log (
+        id         SERIAL PRIMARY KEY,
+        user_id    BIGINT,
+        username   TEXT,
+        error_text TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        is_read    BOOLEAN DEFAULT FALSE
+    )
+    """)
+
     # ===== Yetishmayotgan 10 ta jadval (auto-create, idempotent) =====
     cur.execute("""
     ALTER TABLE users ADD COLUMN IF NOT EXISTS gender     TEXT
@@ -928,6 +939,97 @@ async def save_image(message: types.Message):
     await message.answer(f"✅ Saqlandi: {name}")
 
 # ====== START ======
+def _save_error_log(user_id, username, error_text):
+    """Xatoni bazaga yozadi (sinxron)."""
+    try:
+        conn_ = psycopg2.connect(DATABASE_URL)
+        cur_  = conn_.cursor()
+        cur_.execute(
+            "INSERT INTO error_log(user_id, username, error_text) VALUES(%s,%s,%s)",
+            (user_id, username, error_text[:1000])
+        )
+        conn_.commit(); cur_.close(); conn_.close()
+    except Exception:
+        pass
+
+def _get_unread_errors():
+    """O'qilmagan xatolar sonini qaytaradi."""
+    try:
+        conn_ = psycopg2.connect(DATABASE_URL)
+        cur_  = conn_.cursor()
+        cur_.execute("SELECT COUNT(*) FROM error_log WHERE is_read=FALSE")
+        n = cur_.fetchone()[0]
+        cur_.close(); conn_.close()
+        return n
+    except Exception:
+        return 0
+
+async def _notify_admins(error_text, user_id, username):
+    """Adminlarga yangi xato haqida xabar yuboradi."""
+    try:
+        n = _get_unread_errors()
+        txt = (
+            f"🆘 Yangi xato #{n}\n"
+            f"👤 User: {username} ({user_id})\n"
+            f"❌ {error_text[:300]}"
+        )
+        for admin_id in ADMINS:
+            try:
+                await bot.send_message(admin_id, txt)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+async def _error_and_home(source, user_id, err, label="Xato"):
+    """Xato xabarini ko'rsatib, 2 soniyada bosh menyuga qaytaradi."""
+    import traceback, asyncio
+    tb = traceback.format_exc()
+    short = str(err)[:200]
+
+    # Username olish
+    try:
+        uname = source.from_user.username or str(user_id) if hasattr(source, "from_user") else str(user_id)
+    except Exception:
+        uname = str(user_id)
+
+    # Bazaga saqlash
+    _save_error_log(user_id, uname, f"{label}: {short}\n{tb[:500]}")
+
+    # Foydalanuvchiga xabar
+    try:
+        msg_fn = source.answer if hasattr(source, "answer") else source.message.answer
+        await msg_fn(f"⚠️ Xatolik yuz berdi.\n\nBosh menyuga qaytilmoqda...")
+    except Exception:
+        pass
+
+    await asyncio.sleep(2)
+
+    # Bosh menyuga qaytarish
+    try:
+        conn_ = psycopg2.connect(DATABASE_URL)
+        cur_  = conn_.cursor()
+        cur_.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
+        row_  = cur_.fetchone()
+        cur_.close(); conn_.close()
+        role_ = row_[0] if row_ else "🧒 O'quvchi"
+        if user_id in ADMINS: role_ = "Admin"
+    except Exception:
+        role_ = "🧒 O'quvchi"
+
+    n_err = _get_unread_errors() if user_id in ADMINS else 0
+    kb_ = get_main_keyboard(role_, unread_errors=n_err)
+    try:
+        msg_fn = source.answer if hasattr(source, "answer") else source.message.answer
+        await msg_fn("🏠 Bosh menyu", reply_markup=kb_)
+    except Exception:
+        pass
+
+    # Adminlarga xabardorlik
+    await _notify_admins(f"{label}: {short}", user_id, uname)
+    print(f"[ERROR] user={user_id} | {label}: {short}\n{tb}")
+
+
 @dp.message(CommandStart())
 async def start(message: types.Message):
 
@@ -952,9 +1054,11 @@ async def start(message: types.Message):
             role = "Admin"
 
         if role == "Admin":
+            _n_err = _get_unread_errors()
             await message.answer(
-                f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
-                reply_markup=get_main_keyboard(role)
+                f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}"
+                + (f"\n🆘 {_n_err} ta o'qilmagan xato bor!" if _n_err else ""),
+                reply_markup=get_main_keyboard(role, unread_errors=_n_err)
             )
             return
 
@@ -1225,8 +1329,14 @@ async def handle_all(
     message: Message,
     state: FSMContext
 ):
-    
     user_id = message.from_user.id
+    try:
+        await _handle_all_inner(message, state, user_id)
+    except Exception as _e:
+        await _error_and_home(message, user_id, _e, "Xatolik")
+
+
+async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # Test paytida yozilgan xabarni o'chirish
     from test_engine import test_sessions
@@ -1559,6 +1669,47 @@ async def handle_all(
             )
         )
 
+        return
+
+    elif message.text in ("🆘 Xatolar", ) or message.text.startswith("🆘 Xatolar"):
+        if user_id not in ADMINS:
+            return
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("""
+            SELECT id, user_id, username, error_text, created_at
+            FROM error_log
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        errors = cur2.fetchall()
+        # O'qilgan deb belgilash
+        cur2.execute("UPDATE error_log SET is_read=TRUE WHERE is_read=FALSE")
+        conn2.commit(); cur2.close(); conn2.close()
+
+        if not errors:
+            await message.answer(
+                "✅ Xatolar yo'q!",
+                reply_markup=get_main_keyboard("Admin", unread_errors=0)
+            )
+            return
+
+        lines = [f"🆘 So'nggi xatolar ({len(errors)} ta):\n"]
+        for i, (eid, uid, uname, etxt, eat) in enumerate(errors, 1):
+            t = eat.strftime("%d.%m %H:%M") if eat else "?"
+            short = (etxt or "")[:150].replace("\n", " ")
+            lines.append(f"{i}. [{t}] {uname}({uid})\n   {short}\n")
+
+        # Uzun bo'lsa bo'lib yuborish
+        text = "\n".join(lines)
+        while text:
+            await message.answer(text[:4096])
+            text = text[4096:]
+
+        await message.answer(
+            "✅ Hammasi o'qilgan deb belgilandi.",
+            reply_markup=get_main_keyboard("Admin", unread_errors=0)
+        )
         return
 
     elif message.text == "📖 Darslar holati":
@@ -2906,8 +3057,14 @@ async def handle_all(
 
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
-
     user_id = call.from_user.id
+    try:
+        await _test_buttons_inner(call, state, user_id)
+    except Exception as _e:
+        await _error_and_home(call, user_id, _e, "Xatolik")
+
+
+async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: int):
 
     if call.data.startswith("next_lesson_"):
         topic_code = call.data.replace("next_lesson_", "")
