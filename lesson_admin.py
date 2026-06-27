@@ -389,30 +389,34 @@ async def la_import_excel(message: Message, state: FSMContext):
             skipped += 1
             continue
 
-        fields = (intro, v(row,"part_1"), v(row,"part_2"), v(row,"part_3"), v(row,"part_4"),
-                  v(row,"simple_1"), v(row,"simple_2"), v(row,"example_1"), v(row,"example_2"),
-                  v(row,"exercise_1"), v(row,"exercise_2"), v(row,"summary"),
-                  v(row,"simple_3"), v(row,"simple_4"))
+        # Barcha ustunlarni o'qiymiz (yangi tuzilma)
+        def _v(col): return v(row, col)
+        fields_cols = [
+            "intro","image_intro",
+            "part_1","image_1","part_2","image_2","part_3","image_3",
+            "part_4","image_4","part_5","image_5","part_6","image_6","part_7","image_7",
+            "simple_1","simple_2","simple_3","simple_4",
+            "simple_5","simple_6","simple_7",
+            "example_1","example_2","example_3","example_4","example_5",
+            "summary",
+        ]
+        fields = tuple(_v(c) for c in fields_cols)
+        set_clause = ", ".join(f"{c}=%s" for c in fields_cols)
+        col_list   = ", ".join(fields_cols)
+        placeholders = ", ".join(["%s"] * len(fields_cols))
 
         cur.execute("SELECT id FROM teacher_lessons WHERE topic_code=%s", (tc,))
         if cur.fetchone():
-            cur.execute("""
-                UPDATE teacher_lessons SET
-                    intro=%s,part_1=%s,part_2=%s,part_3=%s,part_4=%s,
-                    simple_1=%s,simple_2=%s,example_1=%s,example_2=%s,
-                    exercise_1=%s,exercise_2=%s,summary=%s,
-                    simple_3=%s,simple_4=%s
-                WHERE topic_code=%s
-            """, (*fields, tc))
+            cur.execute(
+                f"UPDATE teacher_lessons SET {set_clause} WHERE topic_code=%s",
+                (*fields, tc)
+            )
             updated += 1
         else:
-            cur.execute("""
-                INSERT INTO teacher_lessons
-                (topic_code,intro,part_1,part_2,part_3,part_4,
-                 simple_1,simple_2,example_1,example_2,exercise_1,exercise_2,summary,
-                 simple_3,simple_4)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (tc, *fields))
+            cur.execute(
+                f"INSERT INTO teacher_lessons (topic_code,{col_list}) VALUES (%s,{placeholders})",
+                (tc, *fields)
+            )
             added += 1
 
     conn.commit(); cur.close(); conn.close()
@@ -640,17 +644,37 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     thin = Side(style="thin", color="CCCCCC")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     HEADER = "1F4E79"; EXISTS = "E2EFDA"; EMPTY = "FFFFFF"; FIXED = "D6E4F0"
+    IMG_BG = "FFF2CC"  # Rasm ustunlari sariq
 
+    # Ustunlar: (nom, kenglik, rang)
     columns = [
-        ("topic_code",16),("grade",8),("subject",18),("mavzu",22),
-        ("intro",45),("part_1",45),("part_2",45),("part_3",45),("part_4",45),
-        ("simple_1",38),("simple_2",38),("simple_3",38),("simple_4",38),
-        ("example_1",38),("example_2",38),
-        ("exercise_1",38),("exercise_2",38),("summary",45),
+        ("topic_code",16,FIXED),("grade",8,FIXED),("subject",18,FIXED),("mavzu",22,FIXED),
+        # Kirish
+        ("intro",45,None),("image_intro",18,IMG_BG),
+        # Qismlar (7 ta) + rasmlar
+        ("part_1",45,None),("image_1",18,IMG_BG),
+        ("part_2",45,None),("image_2",18,IMG_BG),
+        ("part_3",45,None),("image_3",18,IMG_BG),
+        ("part_4",45,None),("image_4",18,IMG_BG),
+        ("part_5",45,None),("image_5",18,IMG_BG),
+        ("part_6",45,None),("image_6",18,IMG_BG),
+        ("part_7",45,None),("image_7",18,IMG_BG),
+        # Sodda (7 ta)
+        ("simple_1",38,None),("simple_2",38,None),("simple_3",38,None),("simple_4",38,None),
+        ("simple_5",38,None),("simple_6",38,None),("simple_7",38,None),
+        # Misollar (5 ta)
+        ("example_1",38,None),("example_2",38,None),("example_3",38,None),
+        ("example_4",38,None),("example_5",38,None),
+        # Xulosa
+        ("summary",45,None),
     ]
-    editable = {"intro","part_1","part_2","part_3","part_4",
-                "simple_1","simple_2","simple_3","simple_4",
-                "example_1","example_2","exercise_1","exercise_2","summary"}
+    text_cols = {"intro","part_1","part_2","part_3","part_4","part_5","part_6","part_7",
+                 "simple_1","simple_2","simple_3","simple_4","simple_5","simple_6","simple_7",
+                 "example_1","example_2","example_3","example_4","example_5","summary"}
+    img_cols  = {"image_intro","image_1","image_2","image_3","image_4",
+                 "image_5","image_6","image_7"}
+    editable  = text_cols | img_cols
+    col_names = [c[0] for c in columns]
 
     ws = wb.active; ws.title = "DARSLAR"
     ws.merge_cells(f"A1:{get_column_letter(len(columns))}1")
@@ -661,31 +685,34 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     t.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
-    for col, (name, width) in enumerate(columns, 1):
+    for col, (name, width, *bg_) in enumerate(columns, 1):
         c = ws.cell(row=2, column=col, value=name)
+        hdr_bg = "B8860B" if name in img_cols else HEADER
         c.font = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-        c.fill = PatternFill("solid", start_color=HEADER)
+        c.fill = PatternFill("solid", start_color=hdr_bg)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         c.border = border
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.row_dimensions[2].height = 25
 
-    col_map = {name: i+1 for i, (name, _) in enumerate(columns)}
+    col_map = {name: i+1 for i, (name, _, *__) in enumerate(columns)}
 
     for row_idx, (kcode, kname, topic_code, *_) in enumerate(rows, 3):
         lesson = lessons.get(topic_code)
         lm = {}
         if lesson:
-            keys = ["topic_code","intro","part_1","part_2","part_3","part_4",
-                    "simple_1","simple_2","example_1","example_2","exercise_1","exercise_2","summary"]
-            lm = {k: (lesson[i] or "") for i, k in enumerate(keys)}
+            from lesson_engine import LESSON_COLS
+            lm = {k: (lesson[i] if i < len(lesson) else "") or ""
+                  for i, k in enumerate(LESSON_COLS)}
 
         fixed = {"topic_code": topic_code, "grade": grade, "subject": subject_name, "mavzu": kname}
 
         for cname, cidx in col_map.items():
             if cname in fixed:
                 val = fixed[cname]; bg = FIXED
-            elif cname in editable:
+            elif cname in img_cols:
+                val = lm.get(cname, ""); bg = IMG_BG
+            elif cname in text_cols:
                 val = lm.get(cname, ""); bg = EXISTS if lesson else EMPTY
             else:
                 val = ""; bg = EMPTY
@@ -694,6 +721,10 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
             c.fill = PatternFill("solid", start_color=bg)
             c.alignment = Alignment(vertical="top", wrap_text=True)
             c.border = border
+            # Rasm ustunlariga izoh
+            if cname in img_cols and not val:
+                c.font = Font(name="Arial", size=8, italic=True, color="999999")
+                c.value = "rasm_nomi"
         ws.row_dimensions[row_idx].height = 80
 
     # Namuna sheet
@@ -709,14 +740,24 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
         c.fill = PatternFill("solid", start_color=HEADER)
         c.border = border
         ws2.column_dimensions[get_column_letter(col)].width = width
-    sample = ["TEST_001",grade,subject_name,"Namuna mavzu",
-              "🌟 Kirish matni...","📖 1-qism...","📌 2-qism...","","",
-              "💡 Sodda izoh...","","🎬 Misol...","","","",
-              "✅ Xulosa: 1)... 2)..."]
+    sample_map = {
+        "topic_code":"TEST_001","grade":grade,"subject":subject_name,"mavzu":"Namuna mavzu",
+        "intro":"🌟 Salom! Bugun [en]Hello[/en] so'zini o'rganamiz!",
+        "image_intro":"salom_rasm",
+        "part_1":"📖 [en]Hello[/en] — Salom! (rasmiy)\n[en]Hi[/en] — Salom! (do'stona)",
+        "image_1":"hello_rasm",
+        "part_2":"📌 Qachon ishlatamiz?\n• Kattalar bilan — Hello!\n• Do'stlar bilan — Hi!",
+        "simple_1":"💡 Sodda: Kattalar = Hello, Do'stlar = Hi",
+        "example_1":"📌 [en]Hello, teacher![/en] — Salom, ustoz!",
+        "example_2":"📌 [en]Hi, friend![/en] — Salom, do'st!",
+        "summary":"✅ Xulosa:\n1) Hello — rasmiy salom\n2) Hi — do'stona salom",
+    }
+    sample = [sample_map.get(n, "") for n in col_names]
     for col, val in enumerate(sample, 1):
         c = ws2.cell(row=3, column=col, value=val)
-        c.font = Font(name="Arial", size=10)
-        c.fill = PatternFill("solid", start_color="FFFFFF")
+        cname = col_names[col-1]
+        c.font = Font(name="Arial", size=10, italic=(cname in img_cols))
+        c.fill = PatternFill("solid", start_color=IMG_BG if cname in img_cols else "FFFFFF")
         c.alignment = Alignment(vertical="top", wrap_text=True)
         c.border = border
     ws2.row_dimensions[3].height = 100
