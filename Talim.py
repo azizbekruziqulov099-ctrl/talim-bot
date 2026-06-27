@@ -1561,32 +1561,106 @@ async def handle_all(
 
         return
 
-    elif message.text == "📚 Mavzular statistikasi":
+    elif message.text == "📖 Darslar holati":
+        if user_id not in ADMINS:
+            return
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("""
+            SELECT
+                d.grade,
+                d.subject_name,
+                COUNT(DISTINCT d.topic_code)           AS jami,
+                COUNT(DISTINCT l.topic_code)           AS bor,
+                COUNT(DISTINCT d.topic_code) -
+                COUNT(DISTINCT l.topic_code)           AS yoq
+            FROM dts_tree d
+            LEFT JOIN teacher_lessons l ON l.topic_code = d.topic_code
+            WHERE d.is_deleted = FALSE
+            GROUP BY d.grade, d.subject_name
+            ORDER BY
+                CASE WHEN d.grade ~ '^[0-9]+$' THEN d.grade::int ELSE 99 END,
+                d.subject_name
+        """)
+        rows2 = cur2.fetchall()
+        cur2.close(); conn2.close()
 
-        grades = get_grades()
+        if not rows2:
+            await message.answer("📭 DTS daraxt bo'sh.")
+            return
 
-        keyboard = []
-
-        for grade in grades:
-
-            keyboard.append([
-                KeyboardButton(
-                    text=f"{grade}-sinf"
-                )
-            ])
-
-        keyboard.append([
-            KeyboardButton(text="🔙 Ortga")
-        ])
-
-        await message.answer(
-            "📚 Sinfni tanlang",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=keyboard,
-                resize_keyboard=True
+        lines = ["📖 Darslar holati\n"]
+        cur_grade = None
+        t_jami = t_bor = t_yoq = 0
+        for grade, subj, jami, bor, yoq in rows2:
+            if grade != cur_grade:
+                cur_grade = grade
+                lines.append(f"\n🎓 {grade}-sinf:")
+            pct = round(bor*100/jami) if jami else 0
+            bar = "🟩" if pct==100 else ("🟨" if pct>=50 else "🟥")
+            lines.append(
+                f"  {bar} {subj}\n"
+                f"     ✅ {bor} dars bor  |  ❌ {yoq} yo'q  |  📚 {jami} jami ({pct}%)"
             )
-        )
+            t_jami += jami; t_bor += bor; t_yoq += yoq
 
+        pct_t = round(t_bor*100/t_jami) if t_jami else 0
+        lines.append(
+            f"\n━━━━━━━━━━━━━━\n"
+            f"📊 Jami: ✅ {t_bor} | ❌ {t_yoq} | 📚 {t_jami} ({pct_t}%)"
+        )
+        await message.answer("\n".join(lines))
+        return
+
+    elif message.text == "📚 Mavzular statistikasi":
+        if user_id not in ADMINS:
+            return
+        conn2 = psycopg2.connect(DATABASE_URL)
+        cur2  = conn2.cursor()
+        cur2.execute("""
+            SELECT
+                t.grade,
+                t.subject_name,
+                COUNT(DISTINCT t.topic_code)                              AS mavzu_soni,
+                COUNT(g.id)                                               AS test_soni,
+                COUNT(DISTINCT CASE WHEN g.id IS NULL THEN t.topic_code END) AS bosh_mavzu
+            FROM dts_tree t
+            LEFT JOIN generated_tests g ON g.topic_code = t.topic_code
+            WHERE t.is_deleted = FALSE
+            GROUP BY t.grade, t.subject_name
+            ORDER BY t.grade, t.subject_name
+        """)
+        rows = cur2.fetchall()
+        cur2.close(); conn2.close()
+
+        if not rows:
+            await message.answer("📭 Hozircha mavzu ma'lumoti yo'q.")
+            return
+
+        # Sinf bo'yicha guruhlash
+        from collections import defaultdict
+        by_grade = defaultdict(list)
+        for grade, subj, mavzu, test, bosh in rows:
+            by_grade[grade].append((subj, mavzu, test, bosh))
+
+        lines = ["📊 Mavzular statistikasi\n"]
+        total_m = total_t = total_b = 0
+        for grade in sorted(by_grade.keys(), key=lambda x: int(x) if str(x).isdigit() else 99):
+            lines.append(f"\n🎓 {grade}-sinf:")
+            for subj, mavzu, test, bosh in by_grade[grade]:
+                avg = round(test/mavzu, 1) if mavzu else 0
+                bar = "🟩" if avg >= 5 else ("🟨" if avg >= 2 else "🟥")
+                lines.append(
+                    f"  {bar} {subj}\n"
+                    f"     📚 {mavzu} mavzu | 🧪 {test} test | ⚠️ {bosh} bo'sh"
+                )
+                total_m += mavzu; total_t += test; total_b += bosh
+
+        lines.append(
+            f"\n━━━━━━━━━━━━━━\n"
+            f"📊 Jami: {total_m} mavzu | {total_t} test | {total_b} bo'sh mavzu"
+        )
+        await message.answer("\n".join(lines))
         return
 
     elif message.text.endswith("-sinf"):
