@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-def get_main_keyboard(role=None):
+def get_main_keyboard(role=None, unread_errors=0):
 
     if "🧒 O'quvchi" in str(role):
         keyboard = [
@@ -34,6 +34,8 @@ def get_main_keyboard(role=None):
         ]
 
     elif role == "Admin":
+        # Xatolar hisoblagichi
+        err_label = f"🆘 Xatolar ({unread_errors})" if unread_errors > 0 else "🆘 Xatolar"
         keyboard = [
             [
                 KeyboardButton(text="📋 Shablonlar"),
@@ -49,6 +51,9 @@ def get_main_keyboard(role=None):
                 KeyboardButton(text="🧭 DTS topik boshqaruvi"),
                 KeyboardButton(text="📖 Darslar holati"),
                 KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
+            ],
+            [
+                KeyboardButton(text=err_label),
             ],
         ]
 
