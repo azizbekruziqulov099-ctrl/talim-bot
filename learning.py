@@ -330,442 +330,128 @@ async def continue_learning(message: Message):
 
 
 async def open_teacher_lesson(message, topic_code=None, _user_id=None):
+    """Darsni boshlash — yangi lesson_engine.py orqali."""
+    from lesson_engine import build_parts, show_lesson_step, LESSON_COLS
 
     conn = psycopg2.connect(DATABASE_URL)
     cur  = conn.cursor()
-
     try:
+        user_id   = _user_id or message.from_user.id
+        chat_id   = message.chat.id
 
-        user_id = _user_id or message.from_user.id
+        # Foydalanuvchi ma'lumotlari
+        cur.execute("SELECT full_name, class, subject FROM users WHERE user_id=%s", (user_id,))
+        urow      = cur.fetchone()
+        full_name = urow[0] if urow else "O'quvchi"
+        sinf      = urow[1] if urow else "1"
+        fan       = urow[2] if urow else ""
 
-        # O'quvchi ma'lumotlari
-        cur.execute("""
-            SELECT full_name, class, subject
-            FROM users WHERE user_id = %s
-        """, (user_id,))
-        user_info = cur.fetchone()
-
-        full_name = user_info[0] if user_info else "O'quvchi"
-        sinf      = user_info[1] if user_info else "1"
-        fan       = user_info[2] if user_info else ""
-
-        # topic_code berilmagan bo'lsa — keyingi o'rganilmagan mavzuni top
+        # topic_code berilmagan bo'lsa — keyingisi
         if not topic_code:
             from progress import get_next_topic
-            next_row = get_next_topic(user_id, sinf)
-            if next_row:
-                topic_code = next_row[0]
+            nxt = get_next_topic(user_id, sinf)
+            if nxt:
+                topic_code = nxt[0]
             else:
-                await message.answer(
-                    "🎉 Barcha mavzularni o'rgandingiz!\n"
-                    "Takrorlash uchun navigator dan foydalaning."
-                )
+                await message.answer("🎉 Barcha mavzularni o'rgandingiz!")
                 return
 
         # Dars matni
-        cur.execute("""
-            SELECT *
-            FROM teacher_lessons
-            WHERE topic_code = %s
-        """, (topic_code,))
-
+        cur.execute("SELECT * FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
         lesson = cur.fetchone()
-
         if not lesson:
             await message.answer(
-                f"📝 Bu mavzu uchun dars hali yozilmagan\n\n"
-                f"🔑 {topic_code}\n\n"
-                f"Admin tez orada qo'shadi! ⏳"
+                f"📝 Bu mavzu uchun dars hali yozilmagan.\n🔑 {topic_code}\n\nAdmin tez orada qo'shadi! ⏳"
             )
             return
 
-        # Mavzu nomi dts_tree dan
-        cur.execute("""
-            SELECT grade, subject_name, mavzu_name, kichik_name
-            FROM dts_tree
-            WHERE topic_code = %s
-            LIMIT 1
-        """, (topic_code,))
-        topic_row = cur.fetchone()
-        if topic_row:
-            sinf_db = topic_row[0] or sinf
-            fan_db  = topic_row[1] or fan
-            mavzu   = topic_row[2] or topic_code
-            sinf    = sinf_db
-            fan     = fan_db
+        # DTS daraxtdan sinf, fan, mavzu nomi
+        cur.execute(
+            "SELECT grade, subject_name, mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1",
+            (topic_code,)
+        )
+        trow = cur.fetchone()
+        if trow:
+            sinf = trow[0] or sinf
+            fan  = trow[1] or fan
+            mavzu = trow[2] or topic_code
         else:
             mavzu = topic_code
 
-        parts = [p for p in [
-            lesson[2] or "",
-            lesson[3] or "",
-            lesson[4] or "",
-            lesson[5] or "",
-            lesson[6] or "",
-            lesson[13] or ""
-        ] if p.strip()]
+        # Dars qismlarini qurish
+        parts = build_parts(lesson)
+        if not parts:
+            await message.answer("📭 Dars qismlari bo'sh.")
+            return
 
-        from datetime import date
-        bugun = date.today().strftime("%d.%m.%Y")
+        # lesson_state ni saqlash (fish yo'qolmasin)
+        lesson_state[user_id] = {
+            "topic_code":   topic_code,
+            "parts":        parts,
+            "current_step": 0,
+            "total":        len(parts),
+            "full_name":    full_name,
+            "sinf":         sinf,
+            "fan":          fan,
+            "mavzu":        mavzu,
+            "lesson_msg_id":   None,
+            "lesson_has_photo": False,
+            "lesson_voice_id": None,
+        }
+        user_state[user_id] = "in_lesson"
 
-        # user_state string bo'lsa (masalan "in_test") — dict ga o'tkazamiz
-        if not isinstance(lesson_state.get(user_id), dict):
-            lesson_state[user_id] = {}
-
-        lesson_state.setdefault(user_id, {})["lesson"]       = lesson
-        lesson_state.setdefault(user_id, {})["parts"]        = parts
-        lesson_state.setdefault(user_id, {})["current_step"] = 0
-        lesson_state.setdefault(user_id, {})["topic_code"]   = topic_code
-        lesson_state.setdefault(user_id, {})["full_name"]    = full_name
-        lesson_state.setdefault(user_id, {})["sinf"]         = sinf
-        lesson_state.setdefault(user_id, {})["fan"]          = fan
-        lesson_state.setdefault(user_id, {})["mavzu"]        = mavzu
-        lesson_state.setdefault(user_id, {})["bugun"]        = bugun
-
+        # lesson_progress ga yozish
         cur.execute("""
-            DELETE FROM lesson_progress WHERE user_id = %s
-        """, (user_id,))
-
-        cur.execute("""
-            INSERT INTO lesson_progress
-            (user_id, topic_code, current_step, completed)
-            VALUES (%s, %s, %s, %s)
-        """, (user_id, topic_code, 0, False))
-
+            INSERT INTO lesson_progress(user_id, topic_code, current_step)
+            VALUES(%s,%s,0)
+            ON CONFLICT(user_id) DO UPDATE
+              SET topic_code=EXCLUDED.topic_code, current_step=0
+        """, (user_id, topic_code))
         conn.commit()
 
-        # ── BOSHIDA TAKRORLASH ──
-        # Oxirgi o'rganilgan mavzudan savol bormi?
-        cur.execute("""
-            SELECT topic_code, mavzu
-            FROM lesson_history
-            WHERE user_id = %s
-            ORDER BY learned_at DESC
-            LIMIT 1
-        """, (user_id,))
+        await message.answer("📖 Dars boshlanmoqda...")
 
-        last = cur.fetchone()
-
-        if last:
-            last_topic_code = last[0]
-            last_mavzu      = last[1]
-
-            cur.execute("""
-                SELECT question, option_a, option_b,
-                       option_c, option_d, correct_answer,
-                       explanation
-                FROM generated_tests
-                WHERE topic_code = %s
-                  AND question IS NOT NULL
-                  AND option_a IS NOT NULL
-                ORDER BY RANDOM()
-                LIMIT 3
-            """, (last_topic_code,))
-
-            review_qs = cur.fetchall()
-
-            if review_qs:
-                # Takrorlash testini boshlaylik
-                lesson_state.setdefault(user_id, {})["review_questions"] = review_qs
-                lesson_state.setdefault(user_id, {})["review_index"]     = 0
-                lesson_state.setdefault(user_id, {})["review_correct"]   = 0
-                lesson_state.setdefault(user_id, {})["after_review"]     = "start_lesson"
-
-                await message.answer(
-                    f"🔁 Avval kechagi mavzuni eslab olaylik!\n\n"
-                    f"📘 {last_mavzu}\n\n"
-                    f"3 ta savol — tez javob bering! 💨",
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[[
-                            InlineKeyboardButton(
-                                text="▶️ Boshlash",
-                                callback_data="review_start"
-                            ),
-                            InlineKeyboardButton(
-                                text="⏭ O'tkazish",
-                                callback_data="review_skip"
-                            )
-                        ]]
-                    )
-                )
-                return
-
-        # Takrorlash yo'q — darsni boshlash
-        await start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun)
+        # Birinchi qadamni ko'rsatish
+        await show_lesson_step(
+            user_id, chat_id, 0, len(parts), parts[0],
+            full_name, fan, mavzu
+        )
 
     except Exception as e:
-        await message.answer(f"❌ Xatolik:\n{e}")
-
+        import traceback; traceback.print_exc()
+        await message.answer(f"❌ Dars ochishda xato: {e}")
     finally:
-        cur.close()
-        conn.close()
-
-
-async def start_main_lesson(message, user_id, parts, full_name, sinf, fan, mavzu, bugun):
-    """Asosiy darsni ko'rsatadi"""
-
-    from aiogram.types import ReplyKeyboardRemove
-    from loader import bot as _bot
-
-    # Yuqoridagi xabarlarni o'chirish
-    try:
-        for i in range(message.message_id, message.message_id - 25, -1):
-            try:
-                await _bot.delete_message(message.chat.id, i)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    await message.answer("📖 Dars boshlanmoqda...", reply_markup=ReplyKeyboardRemove())
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
-                InlineKeyboardButton(text="➡️", callback_data="lesson_next")
-            ],
-            [
-                InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
-                InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
-            ],
-            [
-                InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
-            ]
-        ]
-    )
-
-    msg = await message.answer(
-        f"👤 {full_name} | {sinf}\n"
-        f"📘 {fan} • {mavzu} • {bugun}\n"
-        f"━━━━━━━━━━━━━━\n\n"
-        f"{render_text(build_board_text(parts[0]) or '') or render_text(render_content(parts[0]))}\n\n"
-        f"📄 1/{len(parts)} qadam",
-        reply_markup=keyboard
-    )
-
-    lesson_state.setdefault(user_id, {})["board_message_id"] = msg.message_id
-
-
-async def lesson_review_start(user_id, message):
-    """Takrorlash testini boshlaydi"""
-
-    questions = lesson_state.get(user_id, {}).get("review_questions", [])
-    await send_review_question(user_id, message, questions, 0)
-
-
-async def send_review_question(user_id, message, questions, index):
-    """Takrorlash savolini yuboradi"""
-
-    if index >= len(questions):
-        # Takrorlash tugadi — darsni boshlash
-        correct = lesson_state.get(user_id, {}).get("review_correct", 0)
-        total   = len(questions)
-
-        emoji = "🔥" if correct == total else "👍" if correct >= total // 2 else "💪"
-
-        parts     = lesson_state.get(user_id, {}).get("parts", [])
-        full_name = lesson_state.get(user_id, {}).get("full_name", "O'quvchi")
-        sinf      = lesson_state.get(user_id, {}).get("sinf", "")
-        fan       = lesson_state.get(user_id, {}).get("fan", "")
-        mavzu     = lesson_state.get(user_id, {}).get("mavzu", "")
-        bugun     = lesson_state.get(user_id, {}).get("bugun", "")
-
-        await message.answer(
-            f"{emoji} Takrorlash: {correct}/{total}\n\n"
-            f"Endi yangi darsni boshlaymiz! 📖"
-        )
-
-        await start_main_lesson(
-            message, user_id, parts,
-            full_name, sinf, fan, mavzu, bugun
-        )
-        return
-
-    q = questions[index]
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"A) {q[1]}", callback_data="review_answer_A")],
-            [InlineKeyboardButton(text=f"B) {q[2]}", callback_data="review_answer_B")],
-            [InlineKeyboardButton(text=f"C) {q[3]}", callback_data="review_answer_C")],
-            [InlineKeyboardButton(text=f"D) {q[4]}", callback_data="review_answer_D")]
-        ]
-    )
-
-    await message.answer(
-        f"🔁 Takrorlash | {index + 1}/{len(questions)}\n"
-        f"━━━━━━━━━━━━━━\n\n"
-        f"❓ {q[0]}",
-        reply_markup=keyboard
-    )
-
-
-async def lesson_review_answer(user_id, message, answer):
-    """Takrorlash javobini tekshiradi"""
-
-    questions = lesson_state.get(user_id, {}).get("review_questions", [])
-    index     = lesson_state.get(user_id, {}).get("review_index", 0)
-
-    if not questions or index >= len(questions):
-        return
-
-    q          = questions[index]
-    correct    = q[5]
-    explanation = q[6] or ""
-
-    is_correct = answer.upper() == correct.upper()
-
-    if is_correct:
-        lesson_state.setdefault(user_id, {})["review_correct"] = (
-            user_state[user_id].get("review_correct", 0) + 1
-        )
-        result = "✅ To'g'ri!"
-    else:
-        result = f"❌ Noto'g'ri! To'g'ri: {correct}"
-
-    if explanation:
-        result += f"\n💡 {explanation}"
-
-    next_index = index + 1
-    lesson_state.setdefault(user_id, {})["review_index"] = next_index
-
-    await message.answer(
-        result,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="➡️ Keyingi",
-                    callback_data="review_next"
-                )
-            ]]
-        )
-    )
+        cur.close(); conn.close()
 
 
 async def lesson_next(user_id, message):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
+    """Keyingi qadamga o'tish."""
+    from lesson_engine import show_lesson_step
+    st = lesson_state.get(user_id) or {}
+    if not isinstance(st, dict):
+        await message.answer("❌ Dars holati topilmadi.")
+        return
+    parts   = st.get("parts", [])
+    cur_idx = st.get("current_step", 0)
+    total   = st.get("total", len(parts))
+    if cur_idx + 1 >= total:
+        return  # finish_confirm handle qiladi
+    new_idx = cur_idx + 1
+    lesson_state[user_id]["current_step"] = new_idx
+    # DB yangilanish
     try:
-
-        if not isinstance(lesson_state.get(user_id), dict):
-            lesson_state[user_id] = {}
-
-        cur.execute("""
-            SELECT topic_code, current_step
-            FROM lesson_progress
-            WHERE user_id = %s
-        """, (user_id,))
-
-        progress = cur.fetchone()
-
-        if not progress:
-            return
-
-        topic_code = progress[0]
-        current_step = progress[1]
-
-        cur.execute("""
-            SELECT *
-            FROM teacher_lessons
-            WHERE topic_code = %s
-        """, (topic_code,))
-
-        lesson = cur.fetchone()
-
-        if not lesson:
-            return
-
-        parts = [p for p in [
-            lesson[2] or "",
-            lesson[3] or "",
-            lesson[4] or "",
-            lesson[5] or "",
-            lesson[6] or "",
-            lesson[13] or ""
-        ] if p.strip()]
-
-        next_step = current_step + 1
-
-        if next_step >= len(parts):
-
-            # Dars tugadi — mustahkamlash testiga o'tish
-            await message.edit_text(
-                f"🎉 Dars tugadi!\n\n"
-                f"📘 {lesson_state.get(user_id, {}).get('mavzu', topic_code)}\n\n"
-                f"Bilimingizni mustahkamlash uchun\n"
-                f"5 ta savol javob bering! 🧠",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[
-                        InlineKeyboardButton(
-                            text="▶️ Testni boshlash",
-                            callback_data="lesson_consolidation_test"
-                        ),
-                        InlineKeyboardButton(
-                            text="⏭ O'tkazib yuborish",
-                            callback_data="lesson_finish"
-                        )
-                    ]]
-                )
-            )
-            return
-
-        cur.execute("""
-            UPDATE lesson_progress
-            SET current_step = %s
-            WHERE user_id = %s
-        """, (
-            next_step,
-            user_id
-        ))
-
-        conn.commit()
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
-                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
-                ],
-                [
-                    InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
-                    InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
-                ],
-                [
-                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
-                ]
-            ]
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute(
+            "UPDATE lesson_progress SET current_step=%s WHERE user_id=%s",
+            (new_idx, user_id)
         )
-        u = lesson_state.get(user_id) or {}
-        fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
-        sinf = u.get('sinf', '') if isinstance(u, dict) else ''
-        fan  = u.get('fan', '') if isinstance(u, dict) else ''
-        mav  = u.get('mavzu', topic_code) if isinstance(u, dict) else topic_code
-        bgun = u.get('bugun', '') if isinstance(u, dict) else ''
+        conn.commit(); cur.close(); conn.close()
+    except Exception: pass
+    await show_lesson_step(
+        user_id, message.chat.id, new_idx, total, parts[new_idx],
+        st.get("full_name","O'quvchi"), st.get("fan",""), st.get("mavzu","")
+    )
 
-        await message.edit_text(
-            f"👤 {fn} | {sinf}\n"
-            f"📘 {fan} • {mav} • {bgun}\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"{render_text(build_board_text(parts[next_step]) or '') or render_text(render_content(parts[next_step]))}\n\n"
-            f"📄 {next_step + 1}/{len(parts)} qadam",
-            reply_markup=keyboard
-        )
-
-    except Exception as e:
-        import traceback
-        print(f"lesson_next ERROR: {traceback.format_exc()}")
-        try:
-            await message.answer(f"❌ Xatolik: {e}")
-        except Exception:
-            pass
-
-    finally:
-
-        cur.close()
-        conn.close()
 
 async def lesson_tts(user_id, message):
 
@@ -831,113 +517,31 @@ async def lesson_tts(user_id, message):
         conn.close()
 
 async def lesson_prev(user_id, message):
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-
+    """Oldingi qadamga qaytish."""
+    from lesson_engine import show_lesson_step
+    st = lesson_state.get(user_id) or {}
+    if not isinstance(st, dict):
+        return
+    parts   = st.get("parts", [])
+    cur_idx = st.get("current_step", 0)
+    total   = st.get("total", len(parts))
+    if cur_idx <= 0:
+        return
+    new_idx = cur_idx - 1
+    lesson_state[user_id]["current_step"] = new_idx
     try:
-
-        cur.execute("""
-            SELECT topic_code, current_step
-            FROM lesson_progress
-            WHERE user_id = %s
-        """, (user_id,))
-
-        progress = cur.fetchone()
-
-        if not progress:
-            return
-
-        topic_code = progress[0]
-        current_step = progress[1]
-
-        cur.execute("""
-            SELECT *
-            FROM teacher_lessons
-            WHERE topic_code = %s
-        """, (topic_code,))
-
-        lesson = cur.fetchone()
-
-        if not lesson:
-            return
-
-        parts = [
-            lesson[2] or "",
-            lesson[3] or "",
-            lesson[4] or "",
-            lesson[5] or "",
-            lesson[6] or "",
-            lesson[13] or ""
-        ]
-
-        prev_step = current_step - 1
-
-        if prev_step < 0:
-            prev_step = 0
-
-        cur.execute("""
-            UPDATE lesson_progress
-            SET current_step = %s
-            WHERE user_id = %s
-        """, (
-            prev_step,
-            user_id
-        ))
-
-        conn.commit()
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="⬅️", callback_data="lesson_prev"),
-                    InlineKeyboardButton(text="➡️", callback_data="lesson_next")
-                ],
-                [
-                    InlineKeyboardButton(text="🔊 O'qib ber", callback_data="lesson_tts"),
-                    InlineKeyboardButton(text="😕 Tushunmadim", callback_data="lesson_help")
-                ],
-                [
-                    InlineKeyboardButton(text="❌ Darsni tugatish", callback_data="lesson_finish")
-                ]
-            ]
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute(
+            "UPDATE lesson_progress SET current_step=%s WHERE user_id=%s",
+            (new_idx, user_id)
         )
+        conn.commit(); cur.close(); conn.close()
+    except Exception: pass
+    await show_lesson_step(
+        user_id, message.chat.id, new_idx, total, parts[new_idx],
+        st.get("full_name","O'quvchi"), st.get("fan",""), st.get("mavzu","")
+    )
 
-        u = lesson_state.get(user_id) or {}
-        fn   = u.get('full_name', "O'quvchi") if isinstance(u, dict) else "O'quvchi"
-        sinf = u.get('sinf', '') if isinstance(u, dict) else ''
-        fan  = u.get('fan', '') if isinstance(u, dict) else ''
-        mav  = u.get('mavzu', topic_code) if isinstance(u, dict) else topic_code
-        bgun = u.get('bugun', '') if isinstance(u, dict) else ''
-
-        await message.edit_text(
-            f"👤 {fn} | {sinf}\n"
-            f"📘 {fan} • {mav} • {bgun}\n"
-            f"━━━━━━━━━━━━━━\n\n"
-            f"{render_text(build_board_text(parts[prev_step]) or '') or render_text(render_content(parts[prev_step]))}\n\n"
-            f"📄 {prev_step + 1}/{len(parts)} qadam",
-            reply_markup=keyboard
-        )
-
-    except Exception as e:
-        import traceback
-        print(f"lesson_prev ERROR: {traceback.format_exc()}")
-        try:
-            await message.answer(
-                f"👤 {fn} | {sinf}\n"
-                f"📘 {fan} • {mav} • {bgun}\n"
-                f"━━━━━━━━━━━━━━\n\n"
-                f"{render_text(build_board_text(parts[prev_step]) or '') or render_text(render_content(parts[prev_step]))}\n\n"
-                f"📄 {prev_step + 1}/{len(parts)} qadam",
-                reply_markup=keyboard
-            )
-        except Exception as e2:
-            print(f"lesson_prev answer ERROR: {e2}")
-
-    finally:
-
-        cur.close()
-        conn.close()
 
 async def lesson_help(
     user_id,
@@ -1499,6 +1103,49 @@ async def lesson_test_answer(user_id, message, answer):
             ]
         )
     )
+
+
+async def lesson_speak(user_id, message):
+    """Joriy dars qadamini ovozda o'qiydi."""
+    from lesson_engine import speak_lesson_step
+    st = lesson_state.get(user_id) or {}
+    if not isinstance(st, dict): return
+    parts   = st.get("parts", [])
+    cur_idx = st.get("current_step", 0)
+    if not parts or cur_idx >= len(parts): return
+    # O'quvchi jinsi
+    gender = ""
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT gender FROM users WHERE user_id=%s", (user_id,))
+        row = cur.fetchone(); cur.close(); conn.close()
+        gender = row[0] if row else ""
+    except Exception: pass
+    await speak_lesson_step(user_id, message.chat.id, parts[cur_idx]["text"], gender)
+
+
+async def lesson_exit(user_id, message):
+    """Darsdan chiqish."""
+    from keyboards import get_main_keyboard
+    st = lesson_state.pop(user_id, {})
+    user_state.pop(user_id, None)
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("DELETE FROM lesson_progress WHERE user_id=%s", (user_id,))
+        conn.commit(); cur.close(); conn.close()
+    except Exception: pass
+    # Rol olish
+    role = "🧒 O'quvchi"
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
+        row = cur.fetchone(); cur.close(); conn.close()
+        if row: role = row[0]
+    except Exception: pass
+    try:
+        await message.edit_reply_markup(reply_markup=None)
+    except Exception: pass
+    await message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard(role))
 
 
 async def lesson_finish(
