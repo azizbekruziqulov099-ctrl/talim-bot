@@ -47,6 +47,7 @@ def get_main_keyboard(role=None):
             ],
             [
                 KeyboardButton(text="🧭 DTS topik boshqaruvi"),
+                KeyboardButton(text="📖 Darslar holati"),
                 KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             ],
         ]
