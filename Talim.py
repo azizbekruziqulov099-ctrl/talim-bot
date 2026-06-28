@@ -492,6 +492,18 @@ def init_db():
         language TEXT, life_level TEXT, age_group TEXT, time_limit INTEGER
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS test_corrections (
+        id SERIAL PRIMARY KEY,
+        test_id INTEGER,
+        topic_code TEXT,
+        question TEXT,
+        user_id BIGINT,
+        comment TEXT,
+        status TEXT DEFAULT 'new',
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_gen_tests_topic ON generated_tests (topic_code)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_gen_tests_topic_diff ON generated_tests (topic_code, difficulty)")
 
@@ -1805,6 +1817,54 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
         )
 
+        return
+
+    elif message.text == "🧪 Bilimni sinash":
+        # Admin uchun test
+        if user_id not in ADMINS:
+            pass  # o'quvchi uchun allaqachon handled
+        else:
+            # Admin uchun ham xuddi o'quvchi kabi
+            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            cur2.execute("""
+                SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
+                ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade
+            """)
+            _grades = [r[0] for r in cur2.fetchall()]
+            cur2.close(); conn2.close()
+            rows = [[InlineKeyboardButton(
+                text=f"{g}-sinf" if str(g).isdigit() else str(g),
+                callback_data=f"stnav_grade:{g}"
+            )] for g in _grades]
+            rows.append([InlineKeyboardButton(text="⚡ Tezkor 20ta", callback_data="tset_start_quick")])
+            await message.answer(
+                "🧪 Test — sinf tanlang:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+            )
+            return
+
+    elif message.text == "🔧 Test tuzatmalar":
+        if user_id not in ADMINS: return
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT id, test_id, topic_code, question, comment, created_at
+            FROM test_corrections WHERE status='new'
+            ORDER BY created_at DESC LIMIT 15
+        """)
+        rows2 = cur2.fetchall(); cur2.close(); conn2.close()
+        if not rows2:
+            await message.answer("✅ Tuzatish so'rovlari yo'q!"); return
+        lines = [f"🔧 Tuzatish so'rovlari ({len(rows2)} ta):\n"]
+        kbs = []
+        for cid, tid, tc, q, comm, cat in rows2:
+            lines.append(f"📝 {q[:60]}...")
+            if tid:
+                kbs.append([InlineKeyboardButton(
+                    text=f"✏️ #{tid} — ko'rish",
+                    callback_data=f"admin_fix_test:{tid}"
+                )])
+        await message.answer("\n".join(lines[:10]),
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=kbs[:10]))
         return
 
     elif message.text in ("🆘 Xatolar", ) or message.text.startswith("🆘 Xatolar"):
@@ -3330,18 +3390,163 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
+        # Test sonini tekshirish
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
-        cur2.execute("""
-            SELECT question, option_a, option_b, option_c, option_d,
-                   correct_answer, explanation, question_type,
-                   is_latex, image_url, audio_text, language, time_limit
-            FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20
-        """, (topic_code,))
-        tests = cur2.fetchall(); cur2.close(); conn2.close()
-        if not tests:
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (topic_code,))
+        cnt = cur2.fetchone()[0]; cur2.close(); conn2.close()
+        if cnt == 0:
             await call.message.answer("❌ Bu mavzu uchun test yo'q!")
             return
-        await start_test(call.from_user.id, tests, call.message)
+        # Sozlamalar ekrani
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+        _us[user_id]["ts_topic"] = topic_code
+        await call.message.answer(
+            f"🧪 Test: {topic_code}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📝 20 ta", callback_data="ts_cnt_20"),
+                 InlineKeyboardButton(text="📝 40 ta", callback_data="ts_cnt_40"),
+                 InlineKeyboardButton(text="📝 barchasi", callback_data=f"ts_cnt_{cnt}")],
+                [InlineKeyboardButton(text="🟢 Oson", callback_data="ts_dif_oson"),
+                 InlineKeyboardButton(text="🟡 O'rta", callback_data="ts_dif_orta"),
+                 InlineKeyboardButton(text="🔴 Qiyin", callback_data="ts_dif_qiyin"),
+                 InlineKeyboardButton(text="🌈 Aralash", callback_data="ts_dif_all")],
+                [InlineKeyboardButton(text="✍️ Yozuvli ham", callback_data="ts_wr_1"),
+                 InlineKeyboardButton(text="🔘 Faqat tugmali", callback_data="ts_wr_0")],
+                [InlineKeyboardButton(text="✅ Boshlash", callback_data="ts_go")],
+            ])
+        )
+        return
+
+    if call.data.startswith("ts_cnt_") or call.data.startswith("ts_dif_") or call.data.startswith("ts_wr_"):
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+        st2 = _us[user_id]
+        if call.data.startswith("ts_cnt_"): st2["ts_count"] = int(call.data.split("_")[-1])
+        elif call.data.startswith("ts_dif_"): st2["ts_diff"] = call.data.replace("ts_dif_","")
+        elif call.data == "ts_wr_1": st2["ts_write"] = True
+        elif call.data == "ts_wr_0": st2["ts_write"] = False
+        await call.answer("✅")
+        return
+
+    if call.data.startswith("report_test:"):
+        from test_engine import test_sessions
+        st2 = test_sessions.get(user_id) or {}
+        cur_idx = int(call.data.split(":")[1])
+        tests = st2.get("questions", [])
+        if cur_idx < len(tests):
+            test = tests[cur_idx]
+            tc = st2.get("topic_code","")
+            q  = test[0][:200]
+            # Bazaga saqlash
+            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            # test_id ni topish
+            cur2.execute("""
+                SELECT id FROM generated_tests
+                WHERE question=%s
+                LIMIT 1
+            """, (test[0],))
+            row2 = cur2.fetchone()
+            tid = row2[0] if row2 else None
+            cur2.execute("""
+                INSERT INTO test_corrections(test_id, topic_code, question, user_id, comment, status)
+                VALUES(%s,%s,%s,%s,'O''quvchi tomonidan xato deb belgilandi','new')
+            """, (tid, tc, q, user_id))
+            conn2.commit(); cur2.close(); conn2.close()
+            await call.answer("✅ Xabar yuborildi. Admin ko'rib chiqadi!", show_alert=True)
+            # Adminlarga xabar
+            for aid in ADMINS:
+                try:
+                    await bot.send_message(aid,
+                        f"✏️ Xato test #tuzatma\n"
+                        f"👤 User: {user_id}\n"
+                        f"📝 {q[:100]}\n"
+                        f"🔑 test_id={tid}"
+                    )
+                except: pass
+        return
+
+    if call.data.startswith("admin_fix_test:"):
+        # Admin tuzatish paneli
+        tid = int(call.data.split(":")[1])
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT g.id, g.topic_code, g.question, g.option_a, g.option_b, g.option_c, g.option_d,
+                   g.correct_answer, g.explanation, g.image_url, g.question_type,
+                   c.comment
+            FROM generated_tests g
+            LEFT JOIN test_corrections c ON c.test_id=g.id
+            WHERE g.id=%s LIMIT 1
+        """, (tid,))
+        row2 = cur2.fetchone(); cur2.close(); conn2.close()
+        if not row2:
+            await call.message.answer("❌ Test topilmadi"); return
+        text2 = (
+            f"✏️ Test #{tid} tuzatish\n\n"
+            f"📝 Savol:\n{row2[2]}\n\n"
+            f"A) {row2[3]}\nB) {row2[4]}\nC) {row2[5]}\nD) {row2[6]}\n\n"
+            f"✅ To'g'ri: {row2[7]}\n"
+            f"💡 Izoh: {row2[8] or '-'}\n"
+            f"🖼 Rasm: {row2[9] or '-'}\n"
+            f"🔑 Tur: {row2[10]}\n\n"
+            f"👤 Izoh: {row2[11] or '-'}"
+        )
+        await call.message.answer(
+            text2,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✏️ Savolni o'zgartir", callback_data=f"edit_q:{tid}"),
+                 InlineKeyboardButton(text="✅ To'g'rini o'zgartir", callback_data=f"edit_ans:{tid}")],
+                [InlineKeyboardButton(text="💡 Izohni o'zgartir", callback_data=f"edit_expl:{tid}"),
+                 InlineKeyboardButton(text="🖼 Rasmni o'zgartir", callback_data=f"edit_img:{tid}")],
+                [InlineKeyboardButton(text="🗑 O'chir", callback_data=f"del_test:{tid}"),
+                 InlineKeyboardButton(text="✅ OK (saqla)", callback_data=f"fix_ok:{tid}")],
+            ])
+        )
+        return
+
+    if call.data.startswith("fix_ok:"):
+        tid = int(call.data.split(":")[1])
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("UPDATE test_corrections SET status='resolved' WHERE test_id=%s", (tid,))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.answer("✅ Belgilandi")
+        await call.message.edit_reply_markup(reply_markup=None)
+        return
+
+    if call.data.startswith("del_test:"):
+        if user_id not in ADMINS: return
+        tid = int(call.data.split(":")[1])
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("DELETE FROM generated_tests WHERE id=%s", (tid,))
+        cur2.execute("UPDATE test_corrections SET status='deleted' WHERE test_id=%s", (tid,))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.answer("🗑 O'chirildi", show_alert=True)
+        await call.message.edit_text("🗑 Test o'chirildi")
+        return
+
+    if call.data == "ts_go":
+        from storage import user_state as _us
+        st2 = _us.get(user_id) if isinstance(_us.get(user_id), dict) else {}
+        tc  = st2.get("ts_topic","")
+        cnt2 = st2.get("ts_count", 20)
+        diff = st2.get("ts_diff", "all")
+        write= st2.get("ts_write", False)
+        if not tc:
+            await call.message.answer("❌ Mavzu tanlanmagan"); return
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        diff_f = "" if diff=="all" else f"AND difficulty='{diff}'"
+        type_f = "" if write else "AND question_type != 'write_answer'"
+        cur2.execute(f"""
+            SELECT question,option_a,option_b,option_c,option_d,
+                   correct_answer,explanation,question_type,is_latex,
+                   image_url,audio_text,language,time_limit
+            FROM generated_tests WHERE topic_code=%s {diff_f} {type_f}
+            ORDER BY RANDOM() LIMIT %s
+        """, (tc, cnt2))
+        tests = cur2.fetchall(); cur2.close(); conn2.close()
+        if not tests:
+            await call.message.answer("❌ Bu filtr bo'yicha test topilmadi!"); return
+        await start_test(user_id, tests, call.message)
         return
 
     # ═══════════════════════
