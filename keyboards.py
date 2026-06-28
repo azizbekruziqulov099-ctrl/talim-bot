@@ -1,8 +1,10 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 def get_main_keyboard(role=None, unread_errors=0):
+    r = str(role or "").strip().lower()
 
-    if "🧒 O'quvchi" in str(role):
+    # O'quvchi (barcha variantlar)
+    if any(x in r for x in ("quvchi", "student", "ota", "parent")):
         keyboard = [
             [
                 KeyboardButton(text="🎯 Bugungi reja"),
@@ -16,7 +18,8 @@ def get_main_keyboard(role=None, unread_errors=0):
             ],
         ]
 
-    elif "👨‍🏫 O'qituvchi" in str(role):
+    # O'qituvchi
+    elif any(x in r for x in ("qituvchi", "teacher")):
         keyboard = [
             [
                 KeyboardButton(text="🧠 Bilimni sinash"),
@@ -28,13 +31,11 @@ def get_main_keyboard(role=None, unread_errors=0):
                 KeyboardButton(text="🌍 Viloyat statistikasi"),
                 KeyboardButton(text="📊 So'rovnoma"),
             ],
-            [
-                KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
-            ],
+            [KeyboardButton(text="⚙️ Akkaunt sozlamalari")],
         ]
 
-    elif role == "Admin":
-        # Xatolar hisoblagichi
+    # Admin
+    elif "admin" in r:
         err_label = f"🆘 Xatolar ({unread_errors})" if unread_errors > 0 else "🆘 Xatolar"
         keyboard = [
             [
@@ -53,6 +54,7 @@ def get_main_keyboard(role=None, unread_errors=0):
                 KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             ],
             [
+                KeyboardButton(text="🧪 Bilimni sinash"),
                 KeyboardButton(text=err_label),
             ],
         ]
