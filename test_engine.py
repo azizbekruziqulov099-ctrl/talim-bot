@@ -34,7 +34,8 @@ def _board_text(s, result=""):
     bar = "🟩"*ok + "🟥"*err + "⬜"*max(0, min(20,total)-done)
     t = f"📊 {done}/{total} | ✅ {ok} | ❌ {err}\n{bar}"
     if result:
-        t += f"\n━━━━━━━━━━━━━━\n{result}"
+        # Natija aniq ko'rinsin
+        t += f"\n{'━'*18}\n{result}\n{'━'*18}"
     return t
 
 # ── javob tugmalari: [🔊][javob] ──
@@ -473,12 +474,10 @@ async def check_button_answer(user_id, answer, message):
                         ("C","ans_C","speak_c"),("D","ans_D","speak_d")]:
         label = lab_map[k]
         if k == answer.upper():
-            icon = "✅" if is_ok else "❌"
-            show_label = f"{icon} {label}"
-            rows.append([InlineKeyboardButton(text=show_label, callback_data="noop_result")])
+            icon = "✅✅" if is_ok else "❌"
+            rows.append([InlineKeyboardButton(text=f"{icon} {label}", callback_data="noop_result")])
         elif not is_ok and k == correct_key:
-            show_label = f"🟢 {label}"
-            rows.append([InlineKeyboardButton(text=show_label, callback_data="noop_result")])
+            rows.append([InlineKeyboardButton(text=f"🟢✅ TO'G'RI: {label}", callback_data="noop_result")])
         else:
             if len(label) <= 22:
                 rows.append([
@@ -509,7 +508,9 @@ async def check_button_answer(user_id, answer, message):
         correct_show = lab_map.get(correct_key, render_text(correct)) if correct_key else render_text(correct)
         result = f"❌ Xato!\n\n✅ To'g'ri javob:\n{correct_show}"
         if expl: result += f"\n\n💡 Izoh: {expl}"
-    asyncio.create_task(_auto_speak_result(user_id, q_s, correct_show if not is_ok else ""))
+    _q_s = render_text(test[0])
+    _correct_show = correct_show if not is_ok else ""
+    asyncio.create_task(_auto_speak_result(user_id, _q_s, _correct_show))
     await _show_result(user_id, message, result)
 
 async def check_text_answer(user_id, user_answer, message):
