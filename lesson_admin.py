@@ -207,7 +207,9 @@ async def la_download_selected(call: CallbackQuery):
 
 
 
+@dp.callback_query(F.data.startswith("la_gs|p|"))
 async def la_grades_page(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
     page = int(call.data.split("|")[2])
     await call.answer()
     await la_show_grades(call, page)
@@ -532,15 +534,29 @@ async def la_import_excel(message: Message, state: FSMContext):
             skipped += 1
             continue
 
-        # Barcha ustunlarni o'qiymiz (yangi tuzilma)
-        def _v(col): return v(row, col)
+        def _v(col):
+            val = v(row, col)
+            # Formula bo'lsa (=IF...) — topic_code dan hisoblaymiz
+            if val.startswith("=") or not val:
+                if col == "image_intro":
+                    return f"{tc}-intro" if v(row,"intro") else ""
+                import re
+                m = re.match(r'image_(?:e_)?(\d+)', col)
+                if m:
+                    n = m.group(1)
+                    prefix = "e" if "image_e_" in col else "p"
+                    src_col = f"example_{n}" if prefix=="e" else f"part_{n}"
+                    return f"{tc}-{prefix}-{n}" if v(row, src_col) else ""
+                return ""
+            return val
         fields_cols = [
             "intro","image_intro",
             "part_1","image_1","part_2","image_2","part_3","image_3",
             "part_4","image_4","part_5","image_5","part_6","image_6","part_7","image_7",
             "simple_1","simple_2","simple_3","simple_4",
             "simple_5","simple_6","simple_7",
-            "example_1","example_2","example_3","example_4","example_5",
+            "example_1","image_e_1","example_2","image_e_2",
+            "example_3","image_e_3","example_4","image_e_4","example_5","image_e_5",
             "summary",
         ]
         fields = tuple(_v(c) for c in fields_cols)
