@@ -3360,6 +3360,36 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # ═══ DTS NAVIGATOR ═══
 
 
+    # ═══ BARCHA LA_ CALLBACKLAR (lesson_admin) ═══
+    if call.data.startswith("la_") or call.data in (
+        "la_sel_all","la_dl_sel","la_tmpl","la_imp",
+        "la_back_grades","la_home"
+    ):
+        import lesson_admin as _la
+        d = call.data
+        if d.startswith("la_gs|p|"):      await _la.la_grades_page(call); return
+        if d.startswith("la_g|"):         await _la.la_grade(call); return
+        if d.startswith("la_s|"):         await _la.la_subject(call); return
+        if d.startswith("la_q|"):         await _la.la_quarter(call); return
+        if d.startswith("la_b|"):         await _la.la_bob(call); return
+        if d.startswith("la_bl|"):        await _la.la_bolim(call); return
+        if d.startswith("la_m|"):         await _la.la_mavzu(call); return
+        if d.startswith("la_sel|"):       await _la.la_toggle_select(call); return
+        if d.startswith("la_tp|"):        await _la.la_topics_page(call); return
+        if d == "la_sel_all":             await _la.la_select_all(call); return
+        if d == "la_dl_sel":              await _la.la_download_selected(call); return
+        if d == "la_tmpl":                await _la.la_template(call); return
+        if d == "la_imp":                 await _la.la_import_prompt(call); return
+        if d == "la_back_grades":         await _la.la_back_grades(call); return
+        if d == "la_home":                await _la.la_home(call); return
+        if d.startswith("la_ld|"):        await _la.la_lesson_detail(call); return
+        if d.startswith("la_prev|"):      await _la.la_preview_lesson(call); return
+        if d.startswith("la_edit|"):      await _la.la_edit_lesson(call); return
+        if d.startswith("la_delc|"):      await _la.la_delete_confirm(call); return
+        if d.startswith("la_dely|"):      await _la.la_delete_yes(call); return
+        return
+    # ════════════════════════════
+
     # ═══ BARCHA DTS_ CALLBACKLAR (to'liq) ═══
     if call.data.startswith("dts_"):
         import dts_import_handlers as _dts
