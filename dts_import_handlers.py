@@ -1743,7 +1743,7 @@ async def dts_bob(
 
     await call.message.edit_text(
 
-        f"📚 {grade}-sinf | {bob_name}",
+        f"📚 {grade}-sinf | Bob: {bob_code}",
 
         reply_markup=kb
 
@@ -1906,6 +1906,11 @@ async def dts_mavzu(
     )
 
     cur = conn.cursor()
+
+    # mavzu_name ni olish
+    cur.execute("SELECT DISTINCT mavzu_name FROM dts_tree WHERE grade=%s AND mavzu_code=%s AND is_deleted=FALSE LIMIT 1", (grade, mavzu_code))
+    _mn = cur.fetchone()
+    mavzu_name = _mn[0] if _mn else mavzu_code
 
     cur.execute("""
     SELECT DISTINCT
