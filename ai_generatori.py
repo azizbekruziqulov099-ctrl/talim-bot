@@ -216,6 +216,11 @@ async def run_generator(call, user_id):
     total_saved = 0
     errors = []
 
+    # Status xabari
+    status_msg = await call.message.answer(
+        f"🤖 AI ishlamoqda...\n📚 {len(selected)} ta mavzu\n\n⏳ Tayyorlanmoqda..."
+    )
+
     for idx, code in enumerate(selected):
         info = topics_list.get(code, {})
         kichik = info.get("kichik", code)
