@@ -1463,6 +1463,58 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await show_settings(message, user_id)
         return
 
+    if message.text == "📚 Bilimni mustahkamlash":
+        # O'qilgan mavzularni ko'rsatamiz
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        _gr = cur2.fetchone()
+        _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
+
+        # O'rganilgan mavzular (lesson_progress bor yoki dars tugagan)
+        cur2.execute("""
+            SELECT DISTINCT lp.topic_code, d.kichik_name, d.subject_name, d.mavzu_name
+            FROM lesson_progress lp
+            JOIN dts_tree d ON d.topic_code = lp.topic_code
+            WHERE lp.user_id = %s
+            ORDER BY d.subject_name, d.mavzu_name
+        """, (user_id,))
+        studied = cur2.fetchall()
+
+        # O'z sinfi + CEFR dan testlar mavjud mavzular
+        cur2.execute("""
+            SELECT DISTINCT d.topic_code, d.kichik_name, d.subject_name, d.mavzu_name
+            FROM dts_tree d
+            WHERE d.grade IN (%s, %s) AND d.is_deleted=FALSE
+              AND EXISTS (SELECT 1 FROM generated_tests g WHERE g.topic_code=d.topic_code)
+            ORDER BY d.subject_name, d.mavzu_name
+        """, (_my_grade, "CEFR"))
+        all_with_tests = cur2.fetchall()
+        cur2.close(); conn2.close()
+
+        rows = []
+        # O'rganilgan mavzular
+        if studied:
+            for tc, kname, subj, mavzu in studied[:15]:
+                rows.append([InlineKeyboardButton(
+                    text=f"✅ {kname[:35]}",
+                    callback_data=f"ts_start:{tc}"
+                )])
+
+        rows.append([InlineKeyboardButton(
+            text=f"📖 Barcha mavzularni ko'rish ({len(all_with_tests)} ta)",
+            callback_data=f"mustah_all:{_my_grade}"
+        )])
+        rows.append([InlineKeyboardButton(text="⚡ Tezkor (aralash 20ta)", callback_data="tset_start_quick")])
+
+        title = f"📚 Bilimni mustahkamlash\n\n"
+        if studied:
+            title += f"✅ {len(studied)} ta mavzu o'tilgan:"
+        else:
+            title += "Hali mavzu o'tilmagan. Darsdan boshlang!"
+
+        await message.answer(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
     if message.text == "🧪 Bilimni sinash":
         # O'quvchi sinifini topamiz
         try:
@@ -3332,6 +3384,39 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # ════════════════════════════
 
     # ═══ O'QUVCHI TEST NAVIGATOR ═══
+    if call.data.startswith("mustah_all:"):
+        grade = call.data.split(":")[1]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        # O'z sinfi + CEFR kabi boshqalar
+        cur2.execute("""
+            SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
+            ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade
+        """)
+        all_grades = [r[0] for r in cur2.fetchall()]
+        cur2.close(); conn2.close()
+
+        # O'z sinfi + raqamsiz sinflar
+        rows = []
+        if grade in all_grades:
+            rows.append([InlineKeyboardButton(
+                text=f"⭐ {grade}-sinf" if str(grade).isdigit() else f"⭐ {grade}",
+                callback_data=f"stnav_grade:{grade}"
+            )])
+        for g in all_grades:
+            if str(g) == str(grade): continue
+            if str(g).isdigit(): continue
+            rows.append([InlineKeyboardButton(
+                text=str(g),
+                callback_data=f"stnav_grade:{g}"
+            )])
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="mustah_back")])
+        await call.message.edit_text("📖 Sinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    if call.data == "mustah_back":
+        await call.message.delete()
+        return
+
     if call.data.startswith("stnav_grade:"):
         grade = call.data.split(":")[1]
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
