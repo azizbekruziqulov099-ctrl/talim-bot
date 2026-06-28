@@ -264,7 +264,6 @@ async def continue_learning(message: Message):
             tc, step, subj, mavzu = prog
             subj  = subj  or tc
             mavzu = mavzu or tc
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             await message.answer(
                 f"📖 Siz oldingi darsni o'rtada qoldirgansiz:\n"
                 f"📚 {subj} — {mavzu}\n"
