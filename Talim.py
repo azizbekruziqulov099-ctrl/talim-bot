@@ -1190,10 +1190,14 @@ async def start(message: types.Message, state: FSMContext):
                         ]
                     )
                 )
+                await message.answer("👇", reply_markup=get_main_keyboard("🧒 O'quvchi"))
             else:
                 # Dashboard inline keyboard bilan
-                await message.answer(text, reply_markup=keyboard)
-                # O'quvchi reply keyboard — "quvchi" bo'lsa majburan student keyboard
+                if keyboard:
+                    await message.answer(text, reply_markup=keyboard)
+                else:
+                    await message.answer(text)
+                # O'quvchi reply keyboard — har doim yuboriladi
                 _student_kb = get_main_keyboard("🧒 O'quvchi")
                 await message.answer("👇", reply_markup=_student_kb)
         else:
