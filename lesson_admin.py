@@ -12,6 +12,7 @@ _LESSON_COLS = [
     "part_4","image_4","part_5","image_5","part_6","image_6","part_7","image_7",
     "simple_1","simple_2","simple_3","simple_4","simple_5","simple_6","simple_7",
     "example_1","example_2","example_3","example_4","example_5",
+    "image_e_1","image_e_2","image_e_3","image_e_4","image_e_5",
     "summary",
 ]
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -676,6 +677,9 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
         # Misollar (5 ta)
         ("example_1",38,None),("example_2",38,None),("example_3",38,None),
         ("example_4",38,None),("example_5",38,None),
+        # Example rasmlari (5 ta)
+        ("image_e_1",18,IMG_BG),("image_e_2",18,IMG_BG),("image_e_3",18,IMG_BG),
+        ("image_e_4",18,IMG_BG),("image_e_5",18,IMG_BG),
         # Xulosa
         ("summary",45,None),
     ]
@@ -683,7 +687,8 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
                  "simple_1","simple_2","simple_3","simple_4","simple_5","simple_6","simple_7",
                  "example_1","example_2","example_3","example_4","example_5","summary"}
     img_cols  = {"image_intro","image_1","image_2","image_3","image_4",
-                 "image_5","image_6","image_7"}
+                 "image_5","image_6","image_7",
+                 "image_e_1","image_e_2","image_e_3","image_e_4","image_e_5"}
     editable  = text_cols | img_cols
     col_names = [c[0] for c in columns]
 
@@ -726,15 +731,28 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
                 val = lm.get(cname, ""); bg = EXISTS if lesson else EMPTY
             else:
                 val = ""; bg = EMPTY
+            # Rasm ustunlari uchun avtomatik formula
+            if cname in img_cols and not val:
+                tc_col = get_column_letter(col_map["topic_code"])
+                if cname == "image_intro":
+                    formula = f'=IF({tc_col}{row_idx}<>"",{tc_col}{row_idx}&"-intro","")'
+                elif cname.startswith("image_e_"):
+                    num = cname.split("_")[-1]
+                    formula = f'=IF({tc_col}{row_idx}<>"",{tc_col}{row_idx}&"-e-{num}","")'
+                elif cname.startswith("image_"):
+                    num = cname.split("_")[-1]
+                    formula = f'=IF({tc_col}{row_idx}<>"",{tc_col}{row_idx}&"-p-{num}","")'
+                else:
+                    formula = None
+                val = formula or ""
+
             c = ws.cell(row=row_idx, column=cidx, value=val)
-            c.font = Font(name="Arial", size=10)
+            c.font = Font(name="Arial", size=10,
+                          italic=(cname in img_cols and not lm.get(cname)),
+                          color=("1F7A4A" if cname in img_cols else "000000"))
             c.fill = PatternFill("solid", start_color=bg)
             c.alignment = Alignment(vertical="top", wrap_text=True)
             c.border = border
-            # Rasm ustunlariga izoh
-            if cname in img_cols and not val:
-                c.font = Font(name="Arial", size=8, italic=True, color="999999")
-                c.value = "rasm_nomi"
         ws.row_dimensions[row_idx].height = 80
 
     # Namuna sheet
