@@ -1452,24 +1452,52 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "🧪 Bilimni sinash":
+        # O'quvchi sinifini topamiz
+        try:
+            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cc.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+            _ur = _cc.fetchone()
+            _my_grade = str(_ur[0]) if _ur and _ur[0] else ""
+            _cc.close(); _cn.close()
+        except Exception: _my_grade = ""
+
+        # Barcha sinflar
+        try:
+            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cc.execute("""
+                SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
+                ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade
+            """)
+            _grades = [r[0] for r in _cc.fetchall()]
+            _cc.close(); _cn.close()
+        except Exception: _grades = []
+
+        def _glabel(g):
+            if str(g).isdigit():
+                lbl = f"{g}-sinf"
+                return f"⭐ {lbl} (Mening sinfim)" if str(g) == str(_my_grade) else f"🏫 {lbl}"
+            return f"⭐ {g} (Mening sinfim)" if str(g) == str(_my_grade) else f"📚 {g}"
+
+        rows = []
+        # Avval o'z sinfi
+        if _my_grade and _my_grade in _grades:
+            rows.append([InlineKeyboardButton(
+                text=_glabel(_my_grade),
+                callback_data=f"stnav_grade:{_my_grade}"
+            )])
+        # Faqat raqamsiz sinflar (CEFR, A1 va h.k.) — boshqa raqamli sinflar chiqmaydi
+        for _g in _grades:
+            if str(_g) == str(_my_grade): continue
+            if str(_g).isdigit(): continue  # boshqa raqamli sinflar chiqmaydi
+            rows.append([InlineKeyboardButton(
+                text=_glabel(_g),
+                callback_data=f"stnav_grade:{_g}"
+            )])
+        rows.append([InlineKeyboardButton(text="⚡ Tezkor (aralash 20ta)", callback_data="tset_start_quick")])
+
         await message.answer(
-            "🧪 Bilimni sinash\n\nQanday test ishlaysiz?",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(
-                        text="⚡ Tezkor test (20 ta, aralash)",
-                        callback_data="tset_start_quick"
-                    )],
-                    [InlineKeyboardButton(
-                        text="⚙️ Sozlamalar bilan boshlash",
-                        callback_data="test_settings"
-                    )],
-                    [InlineKeyboardButton(
-                        text="📚 Navigator (fan/mavzu tanlash)",
-                        callback_data="dts_navigator"
-                    )],
-                ]
-            )
+            "🧪 Bilimni sinash\n\nSinf tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
 
@@ -2063,7 +2091,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if user_id not in ADMINS:
             return
         from dts_import_handlers import DTSImportState
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         admin_state[user_id] = None
         await state.set_state(DTSImportState.waiting_excel)
         await message.answer(
@@ -3219,6 +3246,86 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if d.startswith("dts_small_"):   await _dts.dts_small(call); return
         if d.startswith("dts_adv_"):     await _dts.dts_adv_grade(call); return
         return  # Noma'lum dts_ callback — jimgina o'tkazib yubor
+    # ════════════════════════════
+
+    # ═══ O'QUVCHI TEST NAVIGATOR ═══
+    if call.data.startswith("stnav_grade:"):
+        grade = call.data.split(":")[1]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT DISTINCT subject_name FROM dts_tree
+            WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name
+        """, (grade,))
+        subjects = [r[0] for r in cur2.fetchall()]
+        cur2.close(); conn2.close()
+        rows = [[InlineKeyboardButton(text=f"📘 {s}", callback_data=f"stnav_subj:{grade}:{s}")]
+                for s in subjects]
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="stnav_back_grade")])
+        await call.message.edit_text(
+            f"🏫 {grade + '-sinf' if str(grade).isdigit() else grade}\nFan tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
+    if call.data.startswith("stnav_subj:"):
+        parts2 = call.data.split(":")
+        grade, subj = parts2[1], ":".join(parts2[2:])
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT DISTINCT mavzu_name, mavzu_code FROM dts_tree
+            WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
+            ORDER BY mavzu_code
+        """, (grade, subj))
+        mavzular = cur2.fetchall()
+        cur2.close(); conn2.close()
+        rows = []
+        for mavzu_name, mavzu_code in mavzular[:20]:
+            # Test soni
+            rows.append([InlineKeyboardButton(
+                text=f"📝 {mavzu_name}",
+                callback_data=f"stnav_topic:{grade}:{subj}:{mavzu_code}"
+            )])
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"stnav_grade:{grade}")])
+        await call.message.edit_text(
+            f"📘 {subj}\nMavzu tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
+    if call.data.startswith("stnav_topic:"):
+        parts2 = call.data.split(":")
+        grade, subj, mavzu_code = parts2[1], parts2[2], parts2[3]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        # Kichik mavzular
+        cur2.execute("""
+            SELECT DISTINCT kichik_name, topic_code FROM dts_tree
+            WHERE grade=%s AND subject_name=%s AND mavzu_code=%s AND is_deleted=FALSE
+            ORDER BY kichik_name
+        """, (grade, subj, mavzu_code))
+        kichiklar = cur2.fetchall()
+        # Test sonlari
+        rows = []
+        for kichik_name, topic_code in kichiklar:
+            cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (topic_code,))
+            cnt = cur2.fetchone()[0]
+            rows.append([InlineKeyboardButton(
+                text=f"{'✅' if cnt>0 else '❌'} {kichik_name} ({cnt} ta)",
+                callback_data=f"ts_start:{topic_code}"
+            )])
+        cur2.close(); conn2.close()
+        rows.append([InlineKeyboardButton(
+            text="⬅️ Orqaga", callback_data=f"stnav_subj:{grade}:{subj}"
+        )])
+        await call.message.edit_text(
+            f"📝 Mavzu tanlang:\n(✅=test bor, ❌=hali yo'q)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
+    if call.data == "stnav_back_grade":
+        # Bilimni sinash ga qaytish
+        await call.message.delete()
+        return
     # ════════════════════════════
 
     if call.data.startswith("ts_start:"):
