@@ -1193,11 +1193,9 @@ async def start(message: types.Message, state: FSMContext):
             else:
                 # Dashboard inline keyboard bilan
                 await message.answer(text, reply_markup=keyboard)
-                # O'quvchi reply keyboard (minimal xabar)
-                await message.answer(
-                    "👇",
-                    reply_markup=get_main_keyboard(role)
-                )
+                # O'quvchi reply keyboard — "quvchi" bo'lsa majburan student keyboard
+                _student_kb = get_main_keyboard("🧒 O'quvchi")
+                await message.answer("👇", reply_markup=_student_kb)
         else:
             await message.answer(
                 f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
