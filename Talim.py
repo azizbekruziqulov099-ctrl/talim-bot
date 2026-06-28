@@ -624,7 +624,9 @@ def get_grades():
     cur.execute("""
         SELECT DISTINCT grade
         FROM dts_tree
-        ORDER BY grade
+        ORDER BY
+            CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END,
+            grade
     """)
 
     rows = cur.fetchall()
@@ -1188,13 +1190,17 @@ async def start(message: types.Message, state: FSMContext):
                     )
                 )
             else:
-                # Dashboard (inline keyboard)
-                await message.answer(text, reply_markup=keyboard)
-                # O'quvchi reply klaviaturasini yangilash
-                await message.answer(
-                    "📚",
-                    reply_markup=get_main_keyboard(role)
-                )
+                # Dashboard inline keyboard bilan + reply keyboard alohida (Telegram cheklovi)
+                if keyboard:
+                    await message.answer(text, reply_markup=keyboard)
+                    # Reply keyboard uchun minimal xabar
+                    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+                    await message.answer(
+                        "─────────────────",
+                        reply_markup=get_main_keyboard(role)
+                    )
+                else:
+                    await message.answer(text, reply_markup=get_main_keyboard(role))
         else:
             await message.answer(
                 f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
