@@ -332,13 +332,13 @@ async def la_template(call: CallbackQuery):
     rows = cur.fetchall()
 
     topic_codes = [r[2] for r in rows]
-    cur.execute("""
-        SELECT topic_code, intro, part_1, part_2, part_3, part_4,
-               simple_1, simple_2, example_1, example_2,
-               exercise_1, exercise_2, summary
-        FROM teacher_lessons WHERE topic_code = ANY(%s)
-    """, (topic_codes,))
-    lessons = {r[0]: r for r in cur.fetchall()}
+    # _LESSON_COLS tartibida barcha ustunlarni olish
+    col_sel = ", ".join(c for c in _LESSON_COLS if c != "id")
+    cur.execute(
+        f"SELECT {col_sel} FROM teacher_lessons WHERE topic_code = ANY(%s)",
+        (topic_codes,)
+    )
+    lessons = {r[0]: r for r in cur.fetchall()}  # r[0] = topic_code
     cur.close(); conn.close()
 
     sname = rows[0][3] if rows else ""
@@ -740,14 +740,15 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     # Namuna sheet
     ws2 = wb.create_sheet("NAMUNA")
     ws2.merge_cells(f"A1:{get_column_letter(len(columns))}1")
-    n = ws2["A1"]
-    n.value = "✅ NAMUNA"; n.font = Font(bold=True, color="FFFFFF", name="Arial", size=12)
-    n.fill = PatternFill("solid", start_color="375623")
-    n.alignment = Alignment(horizontal="center", vertical="center")
-    for col, (name, width) in enumerate(columns, 1):
+    title_cell = ws2["A1"]
+    title_cell.value = "✅ NAMUNA"; title_cell.font = Font(bold=True, color="FFFFFF", name="Arial", size=12)
+    title_cell.fill = PatternFill("solid", start_color="375623")
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    for col, (name, width, *__) in enumerate(columns, 1):
         c = ws2.cell(row=2, column=col, value=name)
+        hdr_bg2 = "B8860B" if name in img_cols else HEADER
         c.font = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-        c.fill = PatternFill("solid", start_color=HEADER)
+        c.fill = PatternFill("solid", start_color=hdr_bg2)
         c.border = border
         ws2.column_dimensions[get_column_letter(col)].width = width
     sample_map = {
