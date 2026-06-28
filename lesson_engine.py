@@ -26,6 +26,7 @@ LESSON_COLS = [
     "simple_1", "simple_2", "simple_3", "simple_4",
     "simple_5", "simple_6", "simple_7",
     "example_1", "example_2", "example_3", "example_4", "example_5",
+    "image_e_1", "image_e_2", "image_e_3", "image_e_4", "image_e_5",
     "summary",
 ]
 
@@ -97,7 +98,7 @@ def build_lesson_data(row):
     # Misollar
     for i in range(1, 6):
         if v(f'example_{i}'):
-            main_parts.append({'label': f'📌 {i}-misol', 'text': v(f'example_{i}'), 'image': ''})
+            main_parts.append({'label': f'📌 {i}-misol', 'text': v(f'example_{i}'), 'image': v(f'image_e_{i}')})
 
     # Simple (tushuntirish) — alohida
     simple_parts = []
