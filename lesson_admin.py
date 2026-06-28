@@ -3,6 +3,17 @@ import io
 import pandas as pd
 import psycopg2
 from openpyxl import Workbook
+
+# lesson_engine.py dan nusxa (import qilmasdan)
+_LESSON_COLS = [
+    "id","topic_code",
+    "intro","image_intro",
+    "part_1","image_1","part_2","image_2","part_3","image_3",
+    "part_4","image_4","part_5","image_5","part_6","image_6","part_7","image_7",
+    "simple_1","simple_2","simple_3","simple_4","simple_5","simple_6","simple_7",
+    "example_1","example_2","example_3","example_4","example_5",
+    "summary",
+]
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -701,9 +712,8 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
         lesson = lessons.get(topic_code)
         lm = {}
         if lesson:
-            from lesson_engine import LESSON_COLS
             lm = {k: (lesson[i] if i < len(lesson) else "") or ""
-                  for i, k in enumerate(LESSON_COLS)}
+                  for i, k in enumerate(_LESSON_COLS)}
 
         fixed = {"topic_code": topic_code, "grade": grade, "subject": subject_name, "mavzu": kname}
 
