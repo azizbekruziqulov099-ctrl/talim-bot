@@ -870,16 +870,19 @@ async def save_image(message: types.Message):
 
     caption = (message.caption or "").strip()
 
-    # Agar caption "split:TOPIC_CODE" formatida bo'lsa — 40 ga bo'lish
+    # Agar caption "split:TOPIC_CODE:rows:cols:prefix" formatida bo'lsa
+    # Misol: split:1-01-1-01-01-01-001:1:6:p  → -p-1..-p-6
+    #        split:1-01-1-01-01-01-001:1:5:e  → -e-1..-e-5
     if caption.lower().startswith("split:"):
         parts = caption[6:].strip().split(":")
         topic_code = parts[0].strip()
-        rows = int(parts[1]) if len(parts) > 1 else 5
-        cols = int(parts[2]) if len(parts) > 2 else 8
-        total = rows * cols
+        rows   = int(parts[1]) if len(parts) > 1 else 1
+        cols   = int(parts[2]) if len(parts) > 2 else 6
+        prefix = parts[3].strip() if len(parts) > 3 else "p"
+        total  = rows * cols
         await message.answer(
             f"⏳ Rasm {rows}×{cols}={total} ga bo'linmoqda...\n"
-            f"📌 Kod: {topic_code}"
+            f"📌 Kod: {topic_code}-{prefix}-1 ... -{prefix}-{total}"
         )
 
         # Rasmni yuklab olish
@@ -920,14 +923,15 @@ async def save_image(message: types.Message):
                 piece_buf.seek(0)
 
                 from aiogram.types import BufferedInputFile
+                name_preview = f"{topic_code}-{prefix}-{n}"
                 sent = await message.answer_photo(
-                    BufferedInputFile(piece_buf.read(), filename=f"{topic_code}-{n}.jpg"),
-                    caption=f"{topic_code}-{n}"
+                    BufferedInputFile(piece_buf.read(), filename=f"{name_preview}.jpg"),
+                    caption=name_preview
                 )
                 file_id = sent.photo[-1].file_id
 
                 # DBga saqlash
-                name = f"{topic_code}-{n}"
+                name = f"{topic_code}-{prefix}-{n}"
                 cur.execute("""
                     INSERT INTO images(name, file_id)
                     VALUES(%s,%s)
@@ -937,7 +941,10 @@ async def save_image(message: types.Message):
 
         conn.commit()
         cur.close(); conn.close()
-        await message.answer(f"✅ {saved} ta rasm saqlandi!\n📁 {topic_code}-1 ... {topic_code}-{total}")
+        await message.answer(
+            f"✅ {saved} ta rasm saqlandi!\n"
+            f"📁 {topic_code}-{prefix}-1 ... {topic_code}-{prefix}-{total}"
+        )
         return
 
     # Oddiy rasm saqlash
