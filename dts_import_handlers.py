@@ -1997,6 +1997,46 @@ async def dts_mavzu(
 
     cur.close()
     conn.close()
+async def dts_small(call: CallbackQuery):
+    """Kichik mavzu bosilganda — test boshlash yoki ma'lumot ko'rsatish."""
+    topic_code = call.data.replace("dts_small_", "")
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT grade, subject_name, mavzu_name, kichik_name
+        FROM dts_tree WHERE topic_code=%s LIMIT 1
+    """, (topic_code,))
+    row = cur.fetchone()
+
+    cur.execute("""
+        SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s
+    """, (topic_code,))
+    test_cnt = cur.fetchone()[0]
+    cur.close(); conn.close()
+
+    if not row:
+        await call.message.edit_text("❌ Mavzu topilmadi")
+        return
+
+    grade, subj, mavzu, kichik = row
+    kichik = kichik or topic_code
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"⚡ Test boshlash ({test_cnt} ta savol)",
+            callback_data=f"ts_start:{topic_code}"
+        )],
+        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="dts_navigator")],
+    ])
+    await call.message.edit_text(
+        f"📍 {grade}-sinf | {subj}\n"
+        f"📖 {mavzu} → {kichik}\n\n"
+        f"🧪 Testlar: {test_cnt} ta",
+        reply_markup=kb
+    )
+
+
 async def dts_menu(
 
     message
