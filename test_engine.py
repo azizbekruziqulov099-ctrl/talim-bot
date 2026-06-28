@@ -42,7 +42,6 @@ def _board_text(s, result=""):
 def _build_kb(a, b, c, d, tl=0):
     timer = f"⏱ {tl}s" if tl > 0 else "∞"
     rows = [[
-        InlineKeyboardButton(text="🔊",      callback_data="speak_question"),
         InlineKeyboardButton(text=timer,     callback_data="noop_timer"),
         InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
     ]]
@@ -50,8 +49,7 @@ def _build_kb(a, b, c, d, tl=0):
         label = str(ans) if ans else "—"
         rows.append([InlineKeyboardButton(text=f"{num}) {label}", callback_data=cb)])
     rows.append([
-        InlineKeyboardButton(text="🔊 O'qib berish", callback_data="speak_all"),
-        InlineKeyboardButton(text="⏭ O'tkazish", callback_data="test_skip"),
+        InlineKeyboardButton(text="⏭ O'tkazib yuborish", callback_data="test_skip"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -215,8 +213,7 @@ async def show_question(user_id, message=None):
         user_state[user_id] = "text_answer"
         tmr = f"⏱ {tl}s" if tl > 0 else "∞"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔊", callback_data="speak_question"),
-             InlineKeyboardButton(text=tmr,  callback_data="noop_timer"),
+            [InlineKeyboardButton(text=tmr,  callback_data="noop_timer"),
              InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop")],
             HOME_BTN,
         ])
@@ -235,8 +232,7 @@ async def show_question(user_id, message=None):
                                 chat_id=sx["board_chat_id"],
                                 message_id=sx["q_msg_id"],
                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                    [InlineKeyboardButton(text="🔊", callback_data="speak_question"),
-                                     InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
+            [InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
                                      InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop")],
                                     HOME_BTN,
                                 ])
@@ -398,7 +394,7 @@ async def speak_all_question(user_id):
             if txt:
                 # [en]...[ /en] bo'lsa ingliz ovozi
                 lang = "en-US-AriaNeural" if "[en]" in str(opt) else voice
-                parts.append((f"{num}-javob:  {txt}", lang))
+                parts.append((f"{num}. {txt}", lang))
 
         combined = AS.silent(300)
         for text, v in parts:
