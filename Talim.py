@@ -3077,6 +3077,11 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
+    # BIRINCHI call.answer() — Telegram "yuklanyapti" ni darhol to'xtatadi
+    try:
+        await call.answer()
+    except Exception:
+        pass
     try:
         await _test_buttons_inner(call, state, user_id)
     except Exception as _e:
