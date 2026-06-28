@@ -3708,7 +3708,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("restart_lesson:"):
-        from learning import open_teacher_lesson
         await call.answer()
         tc = call.data.split(":")[1]
         try:
