@@ -335,11 +335,19 @@ async def la_template(call: CallbackQuery):
     topic_codes = [r[2] for r in rows]
     # _LESSON_COLS tartibida barcha ustunlarni olish
     col_sel = ", ".join(c for c in _LESSON_COLS if c != "id")
-    cur.execute(
-        f"SELECT {col_sel} FROM teacher_lessons WHERE topic_code = ANY(%s)",
-        (topic_codes,)
-    )
-    lessons = {r[0]: r for r in cur.fetchall()}  # r[0] = topic_code
+    try:
+        cur.execute(
+            f"SELECT {col_sel} FROM teacher_lessons WHERE topic_code = ANY(%s)",
+            (topic_codes,)
+        )
+    except Exception:
+        cur.execute(
+            "SELECT * FROM teacher_lessons WHERE topic_code = ANY(%s)",
+            (topic_codes,)
+        )
+    rows_raw = cur.fetchall()
+    # (None, r[0], r[1]...) formatiga o'girib LESSON_COLS bilan moslashtirish
+    lessons = {r[0]: (None, *r) for r in rows_raw}  # r[0] = topic_code
     cur.close(); conn.close()
 
     sname = rows[0][3] if rows else ""
@@ -795,3 +803,4 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     wb.save(buf)
     buf.seek(0)
     return buf
+    
