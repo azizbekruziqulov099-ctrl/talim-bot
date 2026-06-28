@@ -1313,18 +1313,20 @@ async def import_tests_excel(target, path, user_id):
             _conn = _pg.connect(os.getenv("DATABASE_URL"))
             _cur = _conn.cursor()
 
-            # Avval to'liq tekshiruv — duplikatmi?
+            # Avval to'liq tekshiruv — duplikatmi? (question_type ham hisobga olinadi)
             _cur.execute("""
                 SELECT COUNT(*) FROM generated_tests
                 WHERE topic_code=%s AND question=%s
                   AND option_a=%s AND option_b=%s
                   AND option_c=%s AND option_d=%s
                   AND correct_answer=%s
+                  AND COALESCE(question_type,'single_choice')=COALESCE(%s,'single_choice')
             """, (
                 test_data["topic_code"], test_data["question"],
                 test_data["option_a"], test_data["option_b"],
                 test_data["option_c"], test_data["option_d"],
                 test_data["correct_answer"],
+                test_data["question_type"],
             ))
             already = _cur.fetchone()[0]
 
