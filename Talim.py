@@ -3257,6 +3257,29 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
+def _mk_ts_kb(st2, cnt_total):
+    """ts_start settings uchun ✅ li keyboard."""
+    def c(cond): return "✅ " if cond else ""
+    cnt   = st2.get("ts_count", 20)
+    diff  = st2.get("ts_diff", "all")
+    timed = st2.get("ts_timed", True)
+    write = st2.get("ts_write", False)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{c(cnt==20)}20 ta",    callback_data="ts_cnt_20"),
+         InlineKeyboardButton(text=f"{c(cnt==40)}40 ta",    callback_data="ts_cnt_40"),
+         InlineKeyboardButton(text=f"{c(cnt==cnt_total)}Barchasi ({cnt_total})", callback_data=f"ts_cnt_{cnt_total}")],
+        [InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",  callback_data="ts_dif_oson"),
+         InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta", callback_data="ts_dif_orta"),
+         InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="ts_dif_qiyin"),
+         InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash", callback_data="ts_dif_all")],
+        [InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",     callback_data="ts_time_1"),
+         InlineKeyboardButton(text=f"{c(not timed)}∞ Vaqtsiz", callback_data="ts_time_0")],
+        [InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli ham",     callback_data="ts_wr_1"),
+         InlineKeyboardButton(text=f"{c(not write)}🔘 Faqat tugmali", callback_data="ts_wr_0")],
+        [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
+    ])
+
+
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
@@ -3401,32 +3424,34 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
         _us[user_id]["ts_topic"] = topic_code
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+        _us[user_id].update({"ts_topic": topic_code, "ts_count": 20,
+                              "ts_diff": "all", "ts_timed": True, "ts_write": False,
+                              "_ts_cnt_total": cnt})
         await call.message.answer(
             f"🧪 Test: {topic_code}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📝 20 ta", callback_data="ts_cnt_20"),
-                 InlineKeyboardButton(text="📝 40 ta", callback_data="ts_cnt_40"),
-                 InlineKeyboardButton(text="📝 barchasi", callback_data=f"ts_cnt_{cnt}")],
-                [InlineKeyboardButton(text="🟢 Oson", callback_data="ts_dif_oson"),
-                 InlineKeyboardButton(text="🟡 O'rta", callback_data="ts_dif_orta"),
-                 InlineKeyboardButton(text="🔴 Qiyin", callback_data="ts_dif_qiyin"),
-                 InlineKeyboardButton(text="🌈 Aralash", callback_data="ts_dif_all")],
-                [InlineKeyboardButton(text="✍️ Yozuvli ham", callback_data="ts_wr_1"),
-                 InlineKeyboardButton(text="🔘 Faqat tugmali", callback_data="ts_wr_0")],
-                [InlineKeyboardButton(text="✅ Boshlash", callback_data="ts_go")],
-            ])
+            reply_markup=_mk_ts_kb(_us[user_id], cnt)
         )
         return
 
-    if call.data.startswith("ts_cnt_") or call.data.startswith("ts_dif_") or call.data.startswith("ts_wr_"):
+    if (call.data.startswith("ts_cnt_") or call.data.startswith("ts_dif_")
+            or call.data.startswith("ts_wr_") or call.data.startswith("ts_time_")):
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
         st2 = _us[user_id]
-        if call.data.startswith("ts_cnt_"): st2["ts_count"] = int(call.data.split("_")[-1])
-        elif call.data.startswith("ts_dif_"): st2["ts_diff"] = call.data.replace("ts_dif_","")
-        elif call.data == "ts_wr_1": st2["ts_write"] = True
-        elif call.data == "ts_wr_0": st2["ts_write"] = False
+        if call.data.startswith("ts_cnt_"):   st2["ts_count"] = int(call.data.split("_")[-1])
+        elif call.data.startswith("ts_dif_"): st2["ts_diff"]  = call.data.replace("ts_dif_","")
+        elif call.data == "ts_wr_1":          st2["ts_write"] = True
+        elif call.data == "ts_wr_0":          st2["ts_write"] = False
+        elif call.data == "ts_time_1":        st2["ts_timed"] = True
+        elif call.data == "ts_time_0":        st2["ts_timed"] = False
         await call.answer("✅")
+        # Klaviaturani ✅ bilan yangilaymiz
+        cnt_total = st2.get("_ts_cnt_total", 999)
+        try:
+            await call.message.edit_reply_markup(reply_markup=_mk_ts_kb(st2, cnt_total))
+        except Exception: pass
         return
 
     if call.data.startswith("report_test:"):
@@ -3924,16 +3949,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "test_stop_yes":
-        await call.answer()
+        await call.answer("✅ To'xtatildi")
+        try: await call.message.delete()
+        except: pass
         await stop_test(call.from_user.id, call.message)
         return
 
     if call.data == "test_stop_no":
-        await call.answer("Davom etilmoqda!")
-        try:
-            await call.message.delete()
-        except Exception:
-            pass
+        await call.answer("▶️ Davom etilmoqda!")
+        try: await call.message.delete()
+        except: pass
         return
 
     if call.data.startswith("reg:"):
