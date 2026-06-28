@@ -1153,7 +1153,7 @@ async def start(message: types.Message, state: FSMContext):
             except Exception as _de:
                 import traceback
                 print(f"build_dashboard ERROR: {traceback.format_exc()}")
-                text = "🏠 Bosh menyu"
+                text = "👋 Xush kelibsiz!"
                 keyboard = None
 
             # Majburiy imtihon bormi?
@@ -1182,12 +1182,10 @@ async def start(message: types.Message, state: FSMContext):
                     )
                 )
             else:
+                # Dashboard va asosiy menyu birga
+                await message.answer(text, reply_markup=keyboard)
                 await message.answer(
-                    text,
-                    reply_markup=keyboard
-                )
-                await message.answer(
-                    "🏠 Menyu",
+                    "👇 Asosiy menyu:",
                     reply_markup=get_main_keyboard(role)
                 )
         else:
