@@ -3963,42 +3963,75 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from storage import user_state as us
         if not isinstance(us.get(user_id), dict):
             us[user_id] = {}
+        # O'quvchi sinfi
+        try:
+            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cc.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+            _gr = _cc.fetchone()
+            _my_g = str(_gr[0]) if _gr and _gr[0] else "1"
+            _cc.close(); _cn.close()
+        except: _my_g = "1"
+
         us[user_id]["test_settings"] = {
             "count": 20, "diff": "all",
             "timed": True, "images": True,
-            "write": False
+            "write": False, "grades": [_my_g]
         }
+
+        # Barcha mavjud sinflar
+        try:
+            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cc.execute("""SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
+                ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade""")
+            _all_gr = [r[0] for r in _cc.fetchall()]
+            _cc.close(); _cn.close()
+        except: _all_gr = [_my_g]
+
+        def _mk_settings_kb(s2, all_gr):
+            def c(cond): return "✅ " if cond else ""
+            cnt   = s2["count"]
+            diff  = s2["diff"]
+            timed = s2["timed"]
+            write = s2.get("write", False)
+            sel_gr = s2.get("grades", [])
+            rows = []
+            # Sinf tanlash
+            grade_row = []
+            for _g in all_gr:
+                lbl = f"{_g}-sinf" if str(_g).isdigit() else str(_g)
+                grade_row.append(InlineKeyboardButton(
+                    text=f"{c(str(_g) in [str(x) for x in sel_gr])}{lbl}",
+                    callback_data=f"tset_grade_{_g}"
+                ))
+                if len(grade_row) == 3:
+                    rows.append(grade_row); grade_row = []
+            if grade_row: rows.append(grade_row)
+            rows.append([
+                InlineKeyboardButton(text=f"{c(cnt==20)}20 ta", callback_data="tset_count_20"),
+                InlineKeyboardButton(text=f"{c(cnt==40)}40 ta", callback_data="tset_count_40"),
+                InlineKeyboardButton(text=f"{c(cnt==60)}60 ta", callback_data="tset_count_60"),
+            ])
+            rows.append([
+                InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",   callback_data="tset_diff_oson"),
+                InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta",  callback_data="tset_diff_orta"),
+                InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="tset_diff_qiyin"),
+                InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash",  callback_data="tset_diff_all"),
+            ])
+            rows.append([
+                InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",   callback_data="tset_time_on"),
+                InlineKeyboardButton(text=f"{c(not timed)}∞ Vaqtsiz", callback_data="tset_time_off"),
+            ])
+            rows.append([
+                InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli ham", callback_data="tset_write_on"),
+                InlineKeyboardButton(text=f"{c(not write)}🔘 Faqat tugmali", callback_data="tset_write_off"),
+            ])
+            rows.append([InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")])
+            return InlineKeyboardMarkup(inline_keyboard=rows)
+
+        us[user_id]["_all_grades"] = _all_gr
         await call.message.answer(
-            "⚙️ Test sozlamalari:\n\n"
-            "Savollar soni, qiyinlik, vaqt va turini tanlang:",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="📝 20 ta", callback_data="tset_count_20"),
-                        InlineKeyboardButton(text="📝 40 ta", callback_data="tset_count_40"),
-                        InlineKeyboardButton(text="📝 60 ta", callback_data="tset_count_60"),
-                    ],
-                    [
-                        InlineKeyboardButton(text="🟢 Oson", callback_data="tset_diff_oson"),
-                        InlineKeyboardButton(text="🟡 O'rta", callback_data="tset_diff_orta"),
-                        InlineKeyboardButton(text="🔴 Qiyin", callback_data="tset_diff_qiyin"),
-                        InlineKeyboardButton(text="🌈 Aralash", callback_data="tset_diff_all"),
-                    ],
-                    [
-                        InlineKeyboardButton(text="⏱ Vaqtli", callback_data="tset_time_on"),
-                        InlineKeyboardButton(text="∞ Vaqtsiz", callback_data="tset_time_off"),
-                    ],
-                    [
-                        InlineKeyboardButton(text="🖼 Rasmli", callback_data="tset_img_on"),
-                        InlineKeyboardButton(text="📝 Rasmsiz", callback_data="tset_img_off"),
-                    ],
-                    [
-                        InlineKeyboardButton(text="✍️ Yozuvli", callback_data="tset_write_on"),
-                        InlineKeyboardButton(text="🔘 Yozuvsiz", callback_data="tset_write_off"),
-                    ],
-                    [InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")]
-                ]
-            )
+            "⚙️ Test sozlamalari:\n\nSinf, son, qiyinlik va turni tanlang:",
+            reply_markup=_mk_settings_kb(us[user_id]["test_settings"], _all_gr)
         )
         return
 
@@ -4014,7 +4047,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         s = us[user_id]["test_settings"]
 
-        if call.data.startswith("tset_count_"):
+        if call.data.startswith("tset_grade_"):
+            grade_val = call.data.replace("tset_grade_", "")
+            sel = s.get("grades", [])
+            sel_str = [str(x) for x in sel]
+            if str(grade_val) in sel_str:
+                if len(sel) > 1:  # Kamida 1 ta qolsin
+                    s["grades"] = [x for x in sel if str(x) != str(grade_val)]
+            else:
+                s["grades"] = sel + [grade_val]
+            await call.answer(f"✅ {grade_val}")
+        elif call.data.startswith("tset_count_"):
             s["count"] = int(call.data.replace("tset_count_", ""))
             await call.answer(f"✅ {s['count']} ta savol")
         elif call.data.startswith("tset_diff_"):
@@ -4042,73 +4085,83 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         # Klaviaturani yangilash
         if not call.data == "tset_start":
-            def c(cond): return "✅ " if cond else ""
-            count = s["count"]
-            diff  = s["diff"]
-            timed = s["timed"]
-            imgs  = s["images"]
-            write = s.get("write", False)
-            new_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=f"{c(count==20)}20 ta", callback_data="tset_count_20"),
-                    InlineKeyboardButton(text=f"{c(count==40)}40 ta", callback_data="tset_count_40"),
-                    InlineKeyboardButton(text=f"{c(count==60)}60 ta", callback_data="tset_count_60"),
-                ],
-                [
+            from storage import user_state as _us2
+            _all_gr2 = _us2.get(user_id, {}).get("_all_grades", []) if isinstance(_us2.get(user_id), dict) else []
+
+            def _mk_kb2(s2, all_gr):
+                def c(cond): return "✅ " if cond else ""
+                cnt   = s2["count"]; diff  = s2["diff"]
+                timed = s2["timed"]; write = s2.get("write", False)
+                sel_gr = [str(x) for x in s2.get("grades", [])]
+                rows = []
+                grade_row = []
+                for _g in all_gr:
+                    lbl = f"{_g}-sinf" if str(_g).isdigit() else str(_g)
+                    grade_row.append(InlineKeyboardButton(
+                        text=f"{c(str(_g) in sel_gr)}{lbl}",
+                        callback_data=f"tset_grade_{_g}"
+                    ))
+                    if len(grade_row) == 3:
+                        rows.append(grade_row); grade_row = []
+                if grade_row: rows.append(grade_row)
+                rows.append([
+                    InlineKeyboardButton(text=f"{c(cnt==20)}20 ta", callback_data="tset_count_20"),
+                    InlineKeyboardButton(text=f"{c(cnt==40)}40 ta", callback_data="tset_count_40"),
+                    InlineKeyboardButton(text=f"{c(cnt==60)}60 ta", callback_data="tset_count_60"),
+                ])
+                rows.append([
                     InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",   callback_data="tset_diff_oson"),
                     InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta",  callback_data="tset_diff_orta"),
                     InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="tset_diff_qiyin"),
-                    InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash", callback_data="tset_diff_all"),
-                ],
-                [
-                    InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",    callback_data="tset_time_on"),
+                    InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash",  callback_data="tset_diff_all"),
+                ])
+                rows.append([
+                    InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",     callback_data="tset_time_on"),
                     InlineKeyboardButton(text=f"{c(not timed)}∞ Vaqtsiz", callback_data="tset_time_off"),
-                ],
-                [
-                    InlineKeyboardButton(text=f"{c(imgs)}🖼 Rasmli",     callback_data="tset_img_on"),
-                    InlineKeyboardButton(text=f"{c(not imgs)}📝 Rasmsiz", callback_data="tset_img_off"),
-                ],
-                [
-                    InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli",     callback_data="tset_write_on"),
-                    InlineKeyboardButton(text=f"{c(not write)}🔘 Yozuvsiz", callback_data="tset_write_off"),
-                ],
-                [InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")]
-            ])
+                ])
+                rows.append([
+                    InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli ham",   callback_data="tset_write_on"),
+                    InlineKeyboardButton(text=f"{c(not write)}🔘 Faqat tugmali", callback_data="tset_write_off"),
+                ])
+                rows.append([InlineKeyboardButton(text="▶️ Boshlash", callback_data="tset_start")])
+                return InlineKeyboardMarkup(inline_keyboard=rows)
+
+            new_kb = _mk_kb2(s, _all_gr2)
             try:
                 await call.message.edit_reply_markup(reply_markup=new_kb)
             except Exception:
                 pass
             return
         elif call.data == "tset_start":
-            # Test boshlash
+            # Test boshlash — tanlangan sinflardan
             conn2 = psycopg2.connect(DATABASE_URL)
             cur2  = conn2.cursor()
-            cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-            row = cur2.fetchone()
-            grade = row[0] if row else "5"
+
+            sel_grades = s.get("grades", [])
+            if not sel_grades:
+                cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+                row = cur2.fetchone()
+                sel_grades = [row[0] if row else "1"]
 
             diff_filter = "" if s["diff"] == "all" else f"AND difficulty='{s['diff']}'"
+            type_filter = "" if s.get("write") else "AND question_type != 'write_answer'"
 
-            # Yozuvli yoki yozuvsiz
-            if s.get("write"):
-                type_filter = ""  # Barcha turlar
-            else:
-                type_filter = "AND question_type != 'write_answer'"
-
+            grade_placeholders = ",".join(["%s"] * len(sel_grades))
             cur2.execute(f"""
                 SELECT question, option_a, option_b, option_c, option_d,
                        correct_answer, explanation, question_type, is_latex,
                        image_url, audio_text, language, time_limit
                 FROM generated_tests
                 WHERE topic_code IN (
-                    SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
+                    SELECT topic_code FROM dts_tree
+                    WHERE grade IN ({grade_placeholders}) AND is_deleted=FALSE
                 )
                 AND question IS NOT NULL
                 {diff_filter}
                 {type_filter}
                 ORDER BY RANDOM()
                 LIMIT %s
-            """, (grade, s["count"]))
+            """, (*sel_grades, s["count"]))
             tests = cur2.fetchall()
             cur2.close(); conn2.close()
 
