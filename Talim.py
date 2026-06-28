@@ -1049,8 +1049,54 @@ async def _error_and_home(source, user_id, err, label="Xato"):
     print(f"[ERROR] user={user_id} | {label}: {short}\n{tb}")
 
 
+from aiogram.filters import Command
+
+@dp.message(Command("menu"))
+@dp.message(Command("cancel"))
+@dp.message(Command("stop"))
+async def cmd_menu(message: types.Message):
+    """Har qanday holatda bosh menyuga qaytish."""
+    uid = message.from_user.id
+    user_state.pop(uid, None)
+    from storage import lesson_state as _ls, temp_user as _tu
+    from storage import registration_message as _rm
+    _ls.pop(uid, None); _tu.pop(uid, None); _rm.pop(uid, None)
+    from test_engine import test_sessions
+    if uid in test_sessions:
+        s_ = test_sessions.pop(uid, {})
+        if s_.get("timer_task"):
+            try: s_["timer_task"].cancel()
+            except: pass
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT role FROM users WHERE user_id=%s", (uid,))
+        row = cur.fetchone(); cur.close(); conn.close()
+        role = row[0] if row else "🧒 O'quvchi"
+    except: role = "🧒 O'quvchi"
+    if uid in ADMINS: role = "Admin"
+    await message.answer(
+        "🏠 Bosh menyu",
+        reply_markup=get_main_keyboard(role)
+    )
+
+
 @dp.message(CommandStart())
 async def start(message: types.Message):
+    # /start — har qanday holatda barcha state tozalanadi
+    uid = message.from_user.id
+    user_state.pop(uid, None)
+    from storage import lesson_state as _ls, temp_user as _tu
+    from storage import registration_message as _rm, reg_kbd_message as _rkm
+    _ls.pop(uid, None)
+    _tu.pop(uid, None)
+    _rm.pop(uid, None)
+    _rkm.pop(uid, None)
+    from test_engine import test_sessions
+    if uid in test_sessions:
+        s_ = test_sessions.pop(uid, {})
+        if s_.get("timer_task"):
+            try: s_["timer_task"].cancel()
+            except: pass
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -1573,7 +1619,25 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if user_state.get(message.from_user.id) == "in_test":
-        # Test davomida faqat javob tugmalaridan foydalaniladi — matn yozish bloklanadi
+        # Test paytida matn yozsa — yumshoq eslatma
+        try:
+            await message.answer(
+                "🧪 Test davom etyapti!\n"
+                "Javob berish uchun tugmalardan foydalaning.\n\n"
+                "Chiqish: /menu"
+            )
+        except: pass
+        return
+
+    if user_state.get(message.from_user.id) == "in_lesson":
+        # Dars paytida matn yozsa — yumshoq eslatma
+        try:
+            await message.answer(
+                "📖 Dars davom etyapti!\n"
+                "Oldinga o'tish uchun tugmalardan foydalaning.\n\n"
+                "Chiqish: /menu"
+            )
+        except: pass
         return
 
     if user_state.get(message.from_user.id) == "text_answer":
@@ -3534,6 +3598,55 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
         return
 
+    if call.data.startswith("resume_lesson:"):
+        from lesson_engine import build_lesson_data, show_main_step, LESSON_COLS
+        await call.answer()
+        tc  = call.data.split(":")[1]
+        uid = call.from_user.id
+        # lesson_progress dan step olish
+        try:
+            _conn = psycopg2.connect(DATABASE_URL); _cur = _conn.cursor()
+            _cur.execute("SELECT current_step FROM lesson_progress WHERE user_id=%s AND topic_code=%s", (uid, tc))
+            _row = _cur.fetchone()
+            _step = _row[0] if _row else 0
+            _cur.execute("SELECT * FROM teacher_lessons WHERE topic_code=%s", (tc,))
+            _lesson = _cur.fetchone()
+            _cur.execute("SELECT grade, subject_name, mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1", (tc,))
+            _t = _cur.fetchone()
+            _cur.execute("SELECT full_name, gender FROM users WHERE user_id=%s", (uid,))
+            _u = _cur.fetchone()
+            _cur.close(); _conn.close()
+        except Exception as _e:
+            await call.message.answer(f"❌ Xato: {_e}"); return
+        if not _lesson:
+            await call.message.answer("❌ Dars topilmadi"); return
+        _main, _simple = build_lesson_data(_lesson)
+        lesson_state[uid] = {
+            "topic_code": tc, "main_parts": _main, "simple_parts": _simple,
+            "main_step": _step, "simple_step": 0, "mode": "main",
+            "total": len(_main),
+            "full_name": _u[0] if _u else "O'quvchi",
+            "fan": _t[1] if _t else "", "mavzu": _t[2] if _t else tc,
+            "gender": _u[1] if _u else "",
+            "lesson_msg_id": None, "lesson_has_photo": False, "voice_msg_id": None,
+        }
+        user_state[uid] = "in_lesson"
+        await call.message.answer(f"▶️ {_step+1}-qadamdan davom etilmoqda...")
+        await show_main_step(uid, call.message.chat.id)
+        return
+
+    if call.data.startswith("restart_lesson:"):
+        from learning import open_teacher_lesson
+        await call.answer()
+        tc = call.data.split(":")[1]
+        try:
+            _conn = psycopg2.connect(DATABASE_URL); _cur = _conn.cursor()
+            _cur.execute("DELETE FROM lesson_progress WHERE user_id=%s", (call.from_user.id,))
+            _conn.commit(); _cur.close(); _conn.close()
+        except: pass
+        await open_teacher_lesson(call.message, topic_code=tc, _user_id=call.from_user.id)
+        return
+
     if call.data == "lesson_prev":
         from lesson_engine import lesson_prev
         await call.answer()
@@ -3828,13 +3941,22 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
 async def notify_on_restart():
-    """Bot yangilanganda barcha faol foydalanuvchilarga xabar yuboradi."""
+    """Bot yangilanganda foydalanuvchilarga xabar — dars/test holatini saqlab."""
     print("🔄 Foydalanuvchilarga xabar yuborilmoqda...")
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur  = conn.cursor()
         cur.execute("SELECT user_id, role FROM users")
         users = cur.fetchall()
+        # Dars o'rtada qolganlar
+        cur.execute("""
+            SELECT lp.user_id, lp.topic_code, lp.current_step,
+                   d.subject_name, d.mavzu_name
+            FROM lesson_progress lp
+            LEFT JOIN dts_tree d ON d.topic_code = lp.topic_code
+            WHERE lp.current_step > 0
+        """)
+        in_lesson = {r[0]: r for r in cur.fetchall()}
         cur.close(); conn.close()
     except Exception as e:
         print(f"DB xato (restart notify): {e}")
@@ -3847,13 +3969,23 @@ async def notify_on_restart():
             if uid in ADMINS:
                 role_str = "Admin"
             kb = get_main_keyboard(role_str)
-            await bot.send_message(
-                uid,
-                "🔄 Bot yangilandi!\n\nBosh menyuga qaytdingiz 🏠",
-                reply_markup=kb
-            )
+
+            if uid in in_lesson:
+                _, tc, step, subj, mavzu = in_lesson[uid]
+                subj  = subj  or tc
+                mavzu = mavzu or tc
+                text = (
+                    f"🔄 Bot yangilandi!\n\n"
+                    f"📖 Siz {subj} — {mavzu} darsini o'tayotgan edingiz.\n"
+                    f"📍 {step+1}-qadamda to'xtagan edingiz.\n\n"
+                    f"Davom etish uchun 👇 Bugungi reja → Davom etish"
+                )
+            else:
+                text = "🔄 Bot yangilandi!\n\nBosh menyuga qaytdingiz 🏠"
+
+            await bot.send_message(uid, text, reply_markup=kb)
             sent += 1
-            await asyncio.sleep(0.05)  # Telegram flood limit
+            await asyncio.sleep(0.05)
         except Exception:
             pass
     print(f"✅ {sent}/{len(users)} foydalanuvchiga xabar yuborildi")
