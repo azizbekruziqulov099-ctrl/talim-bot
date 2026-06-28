@@ -1483,7 +1483,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
         row = cur2.fetchone()
         cur2.close(); conn2.close()
-        await message.answer("🏠", reply_markup=get_main_keyboard(row[0] if row else "🧒 O'quvchi"))
+        await message.answer("🏠 Asosiy menyu", reply_markup=get_main_keyboard(row[0] if row else "🧒 O'quvchi"))
         return
 
     if message.text == "🎯 Bugungi reja":
