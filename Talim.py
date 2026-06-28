@@ -558,13 +558,19 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS lesson_progress (
         id SERIAL PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id BIGINT NOT NULL UNIQUE,
         topic_code TEXT,
         current_step INTEGER DEFAULT 0,
         completed BOOLEAN DEFAULT FALSE
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lesson_prog_user ON lesson_progress (user_id)")
+    # Agar eski jadval UNIQUE siz bo'lsa — qo'shamiz
+    try:
+        cur.execute("ALTER TABLE lesson_progress ADD CONSTRAINT lesson_progress_user_id_key UNIQUE (user_id)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS achievements (
@@ -1182,10 +1188,11 @@ async def start(message: types.Message, state: FSMContext):
                     )
                 )
             else:
-                # Dashboard va asosiy menyu birga
+                # Dashboard (inline keyboard)
                 await message.answer(text, reply_markup=keyboard)
+                # O'quvchi reply klaviaturasini yangilash
                 await message.answer(
-                    "👇 Asosiy menyu:",
+                    "📚",
                     reply_markup=get_main_keyboard(role)
                 )
         else:
@@ -3512,7 +3519,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         await call.answer()
         try:
-            await call.message.delete()
+            await call.message.edit_reply_markup(reply_markup=None)
         except Exception:
             pass
         await open_teacher_lesson(call.message, _user_id=call.from_user.id)
