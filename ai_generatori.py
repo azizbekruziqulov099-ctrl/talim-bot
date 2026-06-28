@@ -19,9 +19,23 @@ gen_state = {}  # user_id -> {grade, subject, selected_topics, ...}
 # ─────────────────────────────────────────
 async def show_gen_start(message, user_id):
     gen_state[user_id] = {}
-    grades = ["1","2","3","4","5","6","7","8","9","10","11"]
+    # DB dan barcha sinflarni olamiz (CEFR va boshqalar ham)
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT grade FROM dts_tree
+        WHERE is_deleted=FALSE
+        ORDER BY
+            CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END,
+            grade
+    """)
+    grades = [r[0] for r in cur.fetchall()]
+    cur.close(); conn.close()
+
+    def btn_label(g):
+        return f"{g}-sinf" if str(g).isdigit() else str(g)
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{g}-sinf", callback_data=f"gen_grade:{g}")
+        [InlineKeyboardButton(text=btn_label(g), callback_data=f"gen_grade:{g}")
          for g in grades[i:i+4]]
         for i in range(0, len(grades), 4)
     ])
@@ -48,7 +62,7 @@ async def show_subjects(call, user_id, grade):
     ] + [[InlineKeyboardButton(text="◀️ Orqaga", callback_data="gen_start")]])
 
     await call.message.edit_text(
-        f"🤖 AI Generator\n🎓 {grade}-sinf\n\nFanni tanlang:",
+        f"🤖 AI Generator\n🎓 {grade + ('-sinf' if str(grade).isdigit() else '')}\n\nFanni tanlang:",
         reply_markup=kb
     )
 
