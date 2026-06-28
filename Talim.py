@@ -3154,6 +3154,71 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 
 async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: int):
 
+    # ═══ DTS NAVIGATOR ═══
+    if call.data == "dts_navigator":
+        from dts_import_handlers import dts_navigator
+        await dts_navigator(call)
+        return
+
+    if call.data.startswith("dts_grade_"):
+        from dts_import_handlers import dts_grade
+        await dts_grade(call)
+        return
+
+    if call.data.startswith("dts_subject_"):
+        from dts_import_handlers import dts_subject
+        await dts_subject(call)
+        return
+
+    if call.data.startswith("dts_quarter_"):
+        from dts_import_handlers import dts_quarter
+        await dts_quarter(call)
+        return
+
+    if call.data.startswith("dts_bob_"):
+        from dts_import_handlers import dts_bob
+        await dts_bob(call)
+        return
+
+    if call.data.startswith("dts_bolim_"):
+        from dts_import_handlers import dts_bolim
+        await dts_bolim(call)
+        return
+
+    if call.data.startswith("dts_mavzu_"):
+        from dts_import_handlers import dts_mavzu
+        await dts_mavzu(call)
+        return
+
+    if call.data.startswith("dts_small_"):
+        from dts_import_handlers import dts_small
+        await dts_small(call)
+        return
+
+    if call.data == "dts_search":
+        from dts_import_handlers import dts_search
+        await dts_search(call)
+        return
+
+    if call.data.startswith("ts_start:"):
+        topic_code = call.data.split(":")[1]
+        from test_engine import start_test
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT question, option_a, option_b, option_c, option_d,
+                   correct_answer, explanation, question_type,
+                   is_latex, image_url, audio_text, language, time_limit
+            FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20
+        """, (topic_code,))
+        tests = cur2.fetchall(); cur2.close(); conn2.close()
+        if not tests:
+            await call.message.answer("❌ Bu mavzu uchun test yo'q!")
+            return
+        await start_test(call.from_user.id, tests, call.message)
+        return
+
+    # ═══════════════════════
+
     if call.data.startswith("next_lesson_"):
         topic_code = call.data.replace("next_lesson_", "")
         await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
