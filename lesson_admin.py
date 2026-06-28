@@ -65,7 +65,8 @@ async def la_entry(message: Message):
 
 async def la_show_grades(target, page=0):
     conn = db(); cur = conn.cursor()
-    cur.execute("SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE ORDER BY grade")
+    cur.execute("""SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
+        ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade""")
     items = cur.fetchall()
     cur.close(); conn.close()
 
