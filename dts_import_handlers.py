@@ -1198,9 +1198,11 @@ async def dts_navigator(
     cur = conn.cursor()
 
     cur.execute("""
+    SELECT grade FROM (
     SELECT DISTINCT grade
     FROM dts_tree
     WHERE is_deleted=FALSE
+    ) _g
     ORDER BY
         CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END,
         grade
