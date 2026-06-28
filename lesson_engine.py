@@ -267,31 +267,58 @@ async def show_main_step(uid, chat_id):
 
 
 async def show_simple_step(uid, chat_id):
-    """Tushunmadim — joriy simple qadamni ko'rsatadi."""
+    """Tushunmadim — joriy simple qadamni ko\'rsatadi. Rasm saqlanadi."""
     st = lesson_state.get(uid) or {}
     if not isinstance(st, dict): return
     simples   = st.get('simple_parts', [])
     step      = st.get('simple_step', 0)
-    full_name = st.get('full_name', "O'quvchi")
+    full_name = st.get('full_name', "O\'quvchi")
     fan       = st.get('fan', '')
     mavzu     = st.get('mavzu', '')
     gender    = st.get('gender', '')
-
     if not simples or step >= len(simples): return
     part  = simples[step]
     total = len(simples)
     text  = clean_text(part['text'])
-    label = part['label']
-
+    # Joriy main part rasmi saqlansin
+    main_parts = st.get('main_parts', [])
+    main_step  = st.get('main_step', 0)
+    cur_image  = None
+    if main_parts and main_step < len(main_parts):
+        cur_image = await _get_image(main_parts[main_step].get('image', ''))
     header = (
-        f'👤 {full_name}  |  📚 {fan}\n'
-        f'📍 {mavzu}\n'
-        f'━━━━━━━━━━━━━━\n'
-        f'{label}  •  {step+1}/{total}  {_progress(step, total)}\n\n'
+        f"👤 {full_name}  |  📚 {fan}\n"
+        f"📍 {mavzu}\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"💡 Tushuntirish  •  {step+1}/{total}  {_progress(step, total)}\n\n"
     )
     kb = _simple_kb(step, total)
-    await _send_or_edit(chat_id, uid, header + text, kb, None)
+    await _send_or_edit(chat_id, uid, header + text, kb, cur_image)
     asyncio.create_task(_auto_speak(uid, chat_id, text, gender))
+
+
+async def lesson_help_open(uid, chat_id):
+    st = lesson_state.setdefault(uid, {})
+    if not isinstance(st, dict): return
+    simples = st.get('simple_parts', [])
+    if not simples:
+        await bot.send_message(chat_id, "ℹ️ Bu mavzu uchun qo\'shimcha tushuntirish yo\'q.")
+        return
+    # Joriy part ga mos simple ni topamiz
+    main_parts = st.get('main_parts', [])
+    main_step  = st.get('main_step', 0)
+    cur_part   = main_parts[main_step] if main_parts and main_step < len(main_parts) else {}
+    cur_label  = cur_part.get('label', '')
+    # "📘 2-qism" → 2 → simple_parts[1]
+    import re as _re
+    m = _re.search(r'(\d+)-qism', cur_label)
+    matched_idx = 0
+    if m:
+        part_num = int(m.group(1))
+        matched_idx = min(part_num - 1, len(simples) - 1)
+    st['simple_step'] = max(0, matched_idx)
+    st['mode'] = 'tushunmadim'
+    await show_simple_step(uid, chat_id)
 
 
 async def lesson_next(uid, chat_id):
