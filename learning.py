@@ -250,6 +250,40 @@ async def continue_learning(message: Message):
         grade     = user[1] or "1"
         name      = full_name.split()[0]
 
+        # Dars o'rtada qolganmi? — lesson_progress tekshirish
+        cur.execute("""
+            SELECT lp.topic_code, lp.current_step,
+                   d.subject_name, d.mavzu_name
+            FROM lesson_progress lp
+            LEFT JOIN dts_tree d ON d.topic_code = lp.topic_code
+            WHERE lp.user_id = %s AND lp.current_step > 0
+            LIMIT 1
+        """, (user_id,))
+        prog = cur.fetchone()
+        if prog:
+            tc, step, subj, mavzu = prog
+            subj  = subj  or tc
+            mavzu = mavzu or tc
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            await message.answer(
+                f"📖 Siz oldingi darsni o'rtada qoldirgansiz:\n"
+                f"📚 {subj} — {mavzu}\n"
+                f"📍 {step+1}-qadam\n\n"
+                f"Davom etasizmi?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="▶️ Davom etish",
+                        callback_data=f"resume_lesson:{tc}"
+                    ),
+                    InlineKeyboardButton(
+                        text="🗑 Boshidan boshlash",
+                        callback_data=f"restart_lesson:{tc}"
+                    ),
+                ]])
+            )
+            cur.close(); conn.close()
+            return
+
         # Fanlar ro'yxati
         cur.execute("""
             SELECT DISTINCT subject_name
@@ -351,8 +385,19 @@ async def open_teacher_lesson(message, topic_code=None, _user_id=None):
                 await message.answer("🎉 Barcha mavzularni o'rgandingiz!")
                 return
 
-        cur.execute("SELECT * FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
-        lesson = cur.fetchone()
+        # Ustunlarni aniq tartibda olamiz (SELECT * DB tartibiga bog'liq — xavfli)
+        from lesson_engine import LESSON_COLS as _LC
+        _sel_cols = ", ".join(c for c in _LC if c != "id")
+        try:
+            cur.execute(f"SELECT {_sel_cols} FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
+            _row = cur.fetchone()
+            # id ustunini boshiga qo'shib LESSON_COLS bilan moslashtirish
+            lesson = (None, *_row) if _row else None
+        except Exception as _se:
+            # Ustun yo'q bo'lsa (yangi ustunlar hali qo'shilmagan) — SELECT * dan fallback
+            print(f"SELECT cols xato: {_se}, SELECT * ishlatilmoqda")
+            cur.execute("SELECT * FROM teacher_lessons WHERE topic_code=%s", (topic_code,))
+            lesson = cur.fetchone()
         if not lesson:
             await message.answer(f"📝 Bu mavzu uchun dars hali yozilmagan.\n🔑 {topic_code}")
             return
