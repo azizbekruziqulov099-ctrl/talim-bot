@@ -4020,8 +4020,7 @@ async def main():
         asyncio.create_task(_health_server())
     except Exception as _he:
         print(f"Health server xato: {_he}")
-    # Foydalanuvchilarga xabar
-    asyncio.create_task(notify_on_restart())
+    # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
