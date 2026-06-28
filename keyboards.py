@@ -8,13 +8,13 @@ def get_main_keyboard(role=None, unread_errors=0):
         keyboard = [
             [
                 KeyboardButton(text="🎯 Bugungi reja"),
+                KeyboardButton(text="📚 Bilimni mustahkamlash"),
                 KeyboardButton(text="🧪 Bilimni sinash"),
-                KeyboardButton(text="📈 Rivojlanishim"),
             ],
             [
+                KeyboardButton(text="📈 Rivojlanishim"),
                 KeyboardButton(text="🌍 Hamjamiyat"),
                 KeyboardButton(text="👤 Kabinet"),
-                KeyboardButton(text="⚙️ Sozlamalar"),
             ],
         ]
 
@@ -54,6 +54,7 @@ def get_main_keyboard(role=None, unread_errors=0):
                 KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
             ],
             [
+                KeyboardButton(text="📚 Bilimni mustahkamlash"),
                 KeyboardButton(text="🧪 Bilimni sinash"),
                 KeyboardButton(text=err_label),
             ],
