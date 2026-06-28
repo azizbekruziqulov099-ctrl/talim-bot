@@ -1201,7 +1201,9 @@ async def dts_navigator(
     SELECT DISTINCT grade
     FROM dts_tree
     WHERE is_deleted=FALSE
-    ORDER BY grade
+    ORDER BY
+        CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END,
+        grade
     """)
 
     grades = cur.fetchall()
@@ -1224,7 +1226,7 @@ async def dts_navigator(
 
             InlineKeyboardButton(
 
-                text=f"🏫 {grade}-sinf",
+                text=f"🏫 {grade}" + ("-sinf" if str(grade).isdigit() else ""),
 
                 callback_data=(
                     f"dts_grade_{grade}"
@@ -1388,7 +1390,7 @@ async def dts_grade(
 
     await call.message.edit_text(
 
-        f"🏫 {grade}-sinf fanlari",
+        ("🏫 " + grade + ("-sinf fanlari" if str(grade).isdigit() else " fanlari")),
 
         reply_markup=kb
 
