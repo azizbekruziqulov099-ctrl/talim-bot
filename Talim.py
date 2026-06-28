@@ -1081,7 +1081,7 @@ async def cmd_menu(message: types.Message, state: FSMContext):
     from storage import lesson_state as _ls, temp_user as _tu
     from storage import registration_message as _rm
     _ls.pop(uid, None); _tu.pop(uid, None); _rm.pop(uid, None)
-    from test_engine import test_sessions
+    from test_engine import test_sessions, start_test
     if uid in test_sessions:
         s_ = test_sessions.pop(uid, {})
         if s_.get("timer_task"):
@@ -1191,17 +1191,13 @@ async def start(message: types.Message, state: FSMContext):
                     )
                 )
             else:
-                # Dashboard inline keyboard bilan + reply keyboard alohida (Telegram cheklovi)
-                if keyboard:
-                    await message.answer(text, reply_markup=keyboard)
-                    # Reply keyboard uchun minimal xabar
-                    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-                    await message.answer(
-                        "─────────────────",
-                        reply_markup=get_main_keyboard(role)
-                    )
-                else:
-                    await message.answer(text, reply_markup=get_main_keyboard(role))
+                # Dashboard inline keyboard bilan
+                await message.answer(text, reply_markup=keyboard)
+                # O'quvchi reply keyboard (minimal xabar)
+                await message.answer(
+                    "👇",
+                    reply_markup=get_main_keyboard(role)
+                )
         else:
             await message.answer(
                 f"👋 Qaytganingiz bilan!\n🎭 Rol: {role}",
@@ -3225,7 +3221,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
-        from test_engine import start_test
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT question, option_a, option_b, option_c, option_d,
