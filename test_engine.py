@@ -45,20 +45,13 @@ def _build_kb(a, b, c, d, tl=0):
         InlineKeyboardButton(text=timer,     callback_data="noop_timer"),
         InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
     ]]
-    for ans, cb, spk in [
-        (a,"ans_A","speak_a"),(b,"ans_B","speak_b"),
-        (c,"ans_C","speak_c"),(d,"ans_D","speak_d"),
-    ]:
+    for num, (ans, cb) in enumerate([(a,"ans_A"),(b,"ans_B"),(c,"ans_C"),(d,"ans_D")], 1):
         label = str(ans) if ans else "—"
-        if len(label) <= 22:
-            rows.append([
-                InlineKeyboardButton(text="🔊",  callback_data=spk),
-                InlineKeyboardButton(text=label, callback_data=cb),
-            ])
-        else:
-            rows.append([InlineKeyboardButton(text=label, callback_data=cb)])
-            rows.append([InlineKeyboardButton(text="🔊 eshitish", callback_data=spk)])
-    rows.append(HOME_BTN)
+        rows.append([InlineKeyboardButton(text=f"{num}) {label}", callback_data=cb)])
+    rows.append([
+        InlineKeyboardButton(text="🔊 O'qib berish", callback_data="speak_all"),
+        InlineKeyboardButton(text="⏭ O'tkazish", callback_data="test_skip"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 async def _get_file_id(img_url):
@@ -340,6 +333,115 @@ async def _advance(user_id):
         await show_question(user_id)
 
 # ── javob tekshirish ──
+async def _auto_speak_result(user_id, q_text, correct_text=""):
+    """Javob berilgandan keyin savol + to'g'ri javobni o'qiydi."""
+    try:
+        import edge_tts, re
+        from pydub import AudioSegment as AS
+        voice = "uz-UZ-MadinaNeural"
+        def strip_tags(t):
+            t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r'\1', str(t), flags=re.DOTALL)
+            t = re.sub(r'[\U0001F000-\U0001FAFF]+', ' ', t)
+            return re.sub(r'\s+', ' ', t).strip()
+        parts = []
+        if q_text: parts.append(strip_tags(q_text))
+        if correct_text: parts.append("To'g'ri javob: " + strip_tags(correct_text))
+        if not parts: return
+        combined = AS.silent(0)
+        for part in parts:
+            if not part.strip(): continue
+            tmp = f"tts_res_{user_id}_{abs(hash(part)%99999)}.mp3"
+            try:
+                await edge_tts.Communicate(text=part[:200], voice=voice).save(tmp)
+                if os.path.exists(tmp) and os.path.getsize(tmp)>0:
+                    combined += AS.from_mp3(tmp)
+            except: pass
+            finally:
+                try: os.remove(tmp)
+                except: pass
+        if len(combined)==0: return
+        st = test_sessions.get(user_id, {})
+        chat_id = st.get("board_chat_id")
+        if not chat_id: return
+        fname = f"tts_result_{user_id}.mp3"
+        combined.export(fname, format="mp3")
+        await bot.send_voice(chat_id, FSInputFile(fname))
+    except Exception: pass
+    finally:
+        try: os.remove(fname)
+        except: pass
+
+
+async def speak_all_question(user_id):
+    """Bitta audioda: savol → 1-javob A → 2-javob B → 3-javob C → 4-javob D"""
+    try:
+        import edge_tts, re
+        from pydub import AudioSegment as AS
+        voice = "uz-UZ-MadinaNeural"
+
+        st = test_sessions.get(user_id)
+        if not st: return
+        test = st["questions"][st["current"]]
+        q,a,b,c,d = test[0], test[1], test[2], test[3], test[4]
+
+        def strip_tags(t):
+            if not t: return ""
+            t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r'\1', str(t), flags=re.DOTALL)
+            t = re.sub(r'[\U0001F000-\U0001FAFF]+', ' ', t)
+            return re.sub(r'\s+', ' ', t).strip()
+
+        # Barcha bo'laklar
+        parts = [(strip_tags(q), voice)]
+        for num, opt in enumerate([a,b,c,d], 1):
+            txt = strip_tags(opt)
+            if txt:
+                # [en]...[ /en] bo'lsa ingliz ovozi
+                lang = "en-US-AriaNeural" if "[en]" in str(opt) else voice
+                parts.append((f"{num}-javob:  {txt}", lang))
+
+        combined = AS.silent(300)
+        for text, v in parts:
+            if not text.strip(): continue
+            tmp = f"tts_all_{user_id}_{abs(hash(text)%99999)}.mp3"
+            try:
+                await edge_tts.Communicate(text=text[:300], voice=v).save(tmp)
+                if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+                    combined += AS.from_mp3(tmp)
+                    combined += AS.silent(400)
+            except: pass
+            finally:
+                try: os.remove(tmp)
+                except: pass
+
+        if len(combined) < 500: return
+        fname = f"tts_q_{user_id}.mp3"
+        combined.export(fname, format="mp3")
+        chat_id = st.get("board_chat_id")
+        if chat_id:
+            await bot.send_voice(chat_id, FSInputFile(fname))
+    except Exception as e:
+        print(f"speak_all xato: {e}")
+    finally:
+        try: os.remove(fname)
+        except: pass
+
+
+async def test_skip(user_id):
+    """O'tkazib yuborish — joriy savolni skip qiladi."""
+    s = test_sessions.get(user_id)
+    if not s or s.get("answered"): return
+    s["answered"] = True
+    s["wrong"] += 1
+    if s.get("timer_task"):
+        try: s["timer_task"].cancel()
+        except: pass
+        s["timer_task"] = None
+    await _edit_board(s, _board_text(s, "⏭ O'tkazib yuborildi"))
+    await asyncio.sleep(1.5)
+    if test_sessions.get(user_id):
+        await _advance(user_id)
+
+
 async def check_button_answer(user_id, answer, message):
     s = test_sessions.get(user_id)
     if not s or s.get("answered"): return
@@ -407,6 +509,7 @@ async def check_button_answer(user_id, answer, message):
         correct_show = lab_map.get(correct_key, render_text(correct)) if correct_key else render_text(correct)
         result = f"❌ Xato!\n\n✅ To'g'ri javob:\n{correct_show}"
         if expl: result += f"\n\n💡 Izoh: {expl}"
+    asyncio.create_task(_auto_speak_result(user_id, q_s, correct_show if not is_ok else ""))
     await _show_result(user_id, message, result)
 
 async def check_text_answer(user_id, user_answer, message):
@@ -477,8 +580,8 @@ async def speak_text(user_id, message, text):
         gender = row[0] if row else ""
     except: gender = ""
     voices = {
-        "uz":"uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-SardorNeural",
-        "en":"en-US-GuyNeural","ru":"ru-RU-DmitryNeural",
+        "uz":"uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-MadinaNeural",
+        "en":"en-US-AriaNeural","ru":"ru-RU-SvetlanaNeural",
     }
     import re as _re
     from pydub import AudioSegment as _AS
