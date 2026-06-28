@@ -81,7 +81,131 @@ async def la_show_grades(target, page=0):
     else:
         await target.answer(text, reply_markup=kb(buttons))
 
-@dp.callback_query(F.data.startswith("la_gs|p|"))
+# ─── MULTI-SELECT STATE ───
+la_multi_state = {}  # user_id -> {grade, scode, sname, page, selected}
+LA_PAGE_SIZE = 15
+
+async def _la_show_topics(call_or_msg, user_id, page=None):
+    st = la_multi_state.get(user_id, {})
+    grade  = st.get("grade","")
+    scode  = st.get("scode","")
+    sname  = st.get("sname","")
+    if page is not None: st["page"] = page
+    cur_page = st.get("page", 0)
+    selected = st.get("selected", set())
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT kichik_name, topic_code FROM dts_tree
+        WHERE grade=%s AND subject_code=%s AND is_deleted=FALSE ORDER BY topic_code
+    """, (grade, scode))
+    all_topics = cur.fetchall()
+    topic_codes = [r[1] for r in all_topics]
+    cur.execute("SELECT topic_code FROM teacher_lessons WHERE topic_code = ANY(%s)", (topic_codes,))
+    has_lesson = {r[0] for r in cur.fetchall()}
+    cur.close(); conn.close()
+
+    total = len(all_topics)
+    start = cur_page * LA_PAGE_SIZE
+    end   = min(start + LA_PAGE_SIZE, total)
+    page_topics = all_topics[start:end]
+
+    buttons = []
+    for name, tc in page_topics:
+        is_sel = tc in selected
+        icon = ("✅ " if is_sel else "⬜ ") + ("📖 " if tc in has_lesson else "")
+        buttons.append([InlineKeyboardButton(text=f"{icon}{name[:35]}", callback_data=f"la_sel|{tc}")])
+
+    nav = []
+    if cur_page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"la_tp|{cur_page-1}"))
+    if end < total: nav.append(InlineKeyboardButton(text="➡️", callback_data=f"la_tp|{cur_page+1}"))
+    if nav: buttons.append(nav)
+
+    n_sel = len(selected)
+    if n_sel > 0:
+        buttons.append([InlineKeyboardButton(text=f"📥 Shablon olish ({n_sel} ta)", callback_data="la_dl_sel")])
+    buttons.append([InlineKeyboardButton(text="☑️ Barchasini belgilash (15ta)", callback_data="la_sel_all")])
+    buttons.append(back_btn(f"la_g|{grade}"))
+
+    text = (f"📘 {grade}-sinf | {sname}\n📚 {total} ta | ✅ {n_sel} ta tanlangan\n"
+            f"📖=dars bor  ⬜=yo\'q\n15 tagacha tanlang:")
+    try:
+        if hasattr(call_or_msg, "message"):
+            await call_or_msg.message.edit_text(text, reply_markup=kb(buttons))
+        else:
+            await call_or_msg.edit_text(text, reply_markup=kb(buttons))
+    except Exception:
+        tgt = call_or_msg.message if hasattr(call_or_msg, "message") else call_or_msg
+        await tgt.answer(text, reply_markup=kb(buttons))
+
+
+@dp.callback_query(F.data.startswith("la_sel|"))
+async def la_toggle_select(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    tc  = call.data.split("|")[1]
+    st  = la_multi_state.setdefault(call.from_user.id, {"selected": set()})
+    sel = st.setdefault("selected", set())
+    if tc in sel:
+        sel.remove(tc)
+    elif len(sel) < 15:
+        sel.add(tc)
+    else:
+        await call.answer("⚠️ 15 tadan ko\'p tanlab bo\'lmaydi!", show_alert=True); return
+    await _la_show_topics(call, call.from_user.id)
+
+
+@dp.callback_query(F.data.startswith("la_tp|"))
+async def la_topics_page(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    await _la_show_topics(call, call.from_user.id, page=int(call.data.split("|")[1]))
+
+
+@dp.callback_query(F.data == "la_sel_all")
+async def la_select_all(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    st = la_multi_state.get(call.from_user.id, {})
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT DISTINCT topic_code FROM dts_tree WHERE grade=%s AND subject_code=%s AND is_deleted=FALSE ORDER BY topic_code LIMIT 15",
+                (st.get("grade",""), st.get("scode","")))
+    st["selected"] = {r[0] for r in cur.fetchall()}
+    cur.close(); conn.close()
+    await _la_show_topics(call, call.from_user.id)
+
+
+@dp.callback_query(F.data == "la_dl_sel")
+async def la_download_selected(call: CallbackQuery):
+    if call.from_user.id not in ADMINS: return
+    await call.answer()
+    st = la_multi_state.get(call.from_user.id, {})
+    selected = list(st.get("selected", set()))
+    grade = st.get("grade",""); sname = st.get("sname","")
+    if not selected: await call.message.answer("❌ Mavzu tanlanmagan!"); return
+
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT DISTINCT topic_code, kichik_name, mavzu_name FROM dts_tree WHERE topic_code = ANY(%s) AND is_deleted=FALSE", (selected,))
+    tinfo = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    rows = [(tc, tinfo.get(tc, (tc,""))[0], tc, sname, tinfo.get(tc, ("",tc))[1]) for tc in selected]
+    col_sel = ", ".join(c for c in _LESSON_COLS if c != "id")
+    try:
+        cur.execute(f"SELECT {col_sel} FROM teacher_lessons WHERE topic_code = ANY(%s)", (selected,))
+    except Exception:
+        cur.execute("SELECT * FROM teacher_lessons WHERE topic_code = ANY(%s)", (selected,))
+    lessons = {r[0]: (None, *r) for r in cur.fetchall()}
+    cur.close(); conn.close()
+
+    buf = make_excel(rows, lessons, grade, sname, "")
+    from aiogram.types import BufferedInputFile
+    await call.message.answer_document(
+        BufferedInputFile(buf.read(), filename=f"lesson_{grade}_{sname[:10]}.xlsx"),
+        caption=(f"📥 Dars shabloni\n🏫 {grade}-sinf | {sname}\n📚 {len(selected)} ta\n\nTo\'ldirib import qiling 👇"),
+        reply_markup=kb([[InlineKeyboardButton(text="📤 Import", callback_data="la_imp")]])
+    )
+
+
+
 async def la_grades_page(call: CallbackQuery):
     page = int(call.data.split("|")[2])
     await call.answer()
@@ -128,14 +252,12 @@ async def la_subject(call: CallbackQuery):
     sname = (cur.fetchone() or [scode])[0]
     cur.close(); conn.close()
 
-    buttons = [[InlineKeyboardButton(
-        text=f"🗓 {r[0]}-chorak",
-        callback_data=f"la_q|{grade}|{scode}|{r[0]}"
-    )] for r in items]
-    buttons.append(back_btn(f"la_g|{grade}"))
-    buttons.append(home_btn())
-
-    await call.message.edit_text(f"📘 {grade}-sinf | {sname}", reply_markup=kb(buttons))
+    # Kichik mavzular ro'yxatini ko'rsatamiz (multi-select)
+    la_multi_state[call.from_user.id] = {
+        "grade": grade, "scode": scode, "sname": sname,
+        "page": 0, "selected": set()
+    }
+    await _la_show_topics(call, call.from_user.id)
 
 # ─── CHORAK → BOB ───
 @dp.callback_query(F.data.startswith("la_q|"))
@@ -803,4 +925,3 @@ def make_excel(rows, lessons, grade, subject_name, mavzu_name):
     wb.save(buf)
     buf.seek(0)
     return buf
-    
