@@ -3175,84 +3175,38 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
 async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: int):
 
     # ═══ DTS NAVIGATOR ═══
-    if call.data == "dts_navigator":
-        from dts_import_handlers import dts_navigator
-        await dts_navigator(call)
-        return
 
-    if call.data.startswith("dts_grade_"):
-        from dts_import_handlers import dts_grade
-        await dts_grade(call)
-        return
 
-    if call.data.startswith("dts_subject_"):
-        from dts_import_handlers import dts_subject
-        await dts_subject(call)
-        return
+    # ═══ BARCHA DTS_ CALLBACKLAR (to'liq) ═══
+    if call.data.startswith("dts_"):
+        import dts_import_handlers as _dts
+        d = call.data
 
-    if call.data.startswith("dts_quarter_"):
-        from dts_import_handlers import dts_quarter
-        await dts_quarter(call)
-        return
+        # Navigator
+        if d == "dts_navigator":      await _dts.dts_navigator(call); return
+        if d == "dts_menu":           await _dts.dts_menu(call); return
+        if d == "dts_search":         await _dts.dts_search(call); return
+        if d == "dts_fast_search":    await _dts.dts_fast_search(call); return
+        if d == "dts_adv_search":     await _dts.dts_adv_search(call); return
+        if d == "dts_import":         await _dts.dts_import(call); return
+        if d == "dts_confirm_import": await _dts.dts_confirm_import(call); return
+        if d == "dts_problems":       await _dts.dts_problems(call); return
+        if d == "dts_download_errors":await _dts.dts_download_errors(call); return
+        if d == "dts_cancel_import":  await _dts.dts_cancel_import(call); return
+        if d == "dts_export":
+            try: await _dts.dts_export(call)
+            except: pass
+            return
 
-    if call.data.startswith("dts_bob_"):
-        from dts_import_handlers import dts_bob
-        await dts_bob(call)
-        return
-
-    if call.data.startswith("dts_bolim_"):
-        from dts_import_handlers import dts_bolim
-        await dts_bolim(call)
-        return
-
-    if call.data.startswith("dts_mavzu_"):
-        from dts_import_handlers import dts_mavzu
-        await dts_mavzu(call)
-        return
-
-    if call.data.startswith("dts_small_"):
-        from dts_import_handlers import dts_small
-        await dts_small(call)
-        return
-
-    if call.data == "dts_search":
-        from dts_import_handlers import dts_search
-        await dts_search(call)
-        return
-
-    # ═══ DTS IMPORT ACTIONS ═══
-    if call.data == "dts_confirm_import":
-        from dts_import_handlers import dts_confirm_import
-        await dts_confirm_import(call)
-        return
-
-    if call.data == "dts_problems":
-        from dts_import_handlers import dts_problems
-        await dts_problems(call)
-        return
-
-    if call.data == "dts_download_errors":
-        from dts_import_handlers import dts_download_errors
-        await dts_download_errors(call)
-        return
-
-    if call.data == "dts_cancel_import":
-        from dts_import_handlers import dts_cancel_import
-        await dts_cancel_import(call)
-        return
-
-    if call.data == "dts_fast_search":
-        from dts_import_handlers import dts_fast_search
-        await dts_fast_search(call)
-        return
-
-    if call.data.startswith("dts_adv_"):
-        from dts_import_handlers import dts_adv_search, dts_adv_grade
-        if call.data == "dts_adv_search":
-            await dts_adv_search(call)
-        else:
-            await dts_adv_grade(call)
-        return
+        if d.startswith("dts_grade_"):   await _dts.dts_grade(call); return
+        if d.startswith("dts_subject_"): await _dts.dts_subject(call); return
+        if d.startswith("dts_quarter_"): await _dts.dts_quarter(call); return
+        if d.startswith("dts_bob_"):     await _dts.dts_bob(call); return
+        if d.startswith("dts_bolim_"):   await _dts.dts_bolim(call); return
+        if d.startswith("dts_mavzu_"):   await _dts.dts_mavzu(call); return
+        if d.startswith("dts_small_"):   await _dts.dts_small(call); return
+        if d.startswith("dts_adv_"):     await _dts.dts_adv_grade(call); return
+        return  # Noma'lum dts_ callback — jimgina o'tkazib yubor
     # ════════════════════════════
 
     if call.data.startswith("ts_start:"):
@@ -3617,14 +3571,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.message.answer("🏠 Asosiy menyu", reply_markup=get_main_keyboard(role))
         return
 
-    if call.data == "dts_import":
 
-        await dts_import(
-            call,
-            state
-        )
-
-        return
 
 
     if call.data.startswith("ans_"):
