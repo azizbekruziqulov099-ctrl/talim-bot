@@ -8,7 +8,7 @@ from loader import bot
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 test_sessions = {}
-HOME_BTN = [InlineKeyboardButton(text="🏠 Bosh ekran", callback_data="go_home_dashboard")]
+HOME_BTN = []  # Bosh ekran tugmasi olib tashlandi
 
 def render_text(text):
     if not text: return ""
@@ -310,13 +310,22 @@ async def _show_result(user_id, message, result_text):
     # Yuqori: statistika + natija
     await _edit_board(s, _board_text(s, result_text))
 
-    # Pastki: savol ko'rinib tursin, keyboard olib tashlanadi
+    # Natija paytida rasm olib tashlanadi — faqat matn qoladi
     q_text = f"🧪 Savol {cur+1}/{total}\n\n{q_s}"
-    photo  = await _photo_for(test, user_id)
-    await _edit_question(s, q_text, None, photo)
+
+    # Xato bo'lsa ✏️ tugma qo'shamiz
+    report_kb = None
+    if "❌" in result_text:
+        from aiogram.types import InlineKeyboardMarkup as IKM, InlineKeyboardButton as IKB
+        # test ID sini topish uchun topic_code saqlanganmi?
+        tc = s.get("topic_code", "")
+        report_kb = IKM(inline_keyboard=[[
+            IKB(text="✏️ Xato test — tuzatish so'rash", callback_data=f"report_test:{cur}")
+        ]])
+
+    await _edit_question(s, q_text, report_kb, None)
 
     await asyncio.sleep(3.0)
-    # Sleep paytida session o'chib ketmadimi tekshirish
     if not test_sessions.get(user_id):
         return
     await _advance(user_id)
