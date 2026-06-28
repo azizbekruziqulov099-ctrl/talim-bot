@@ -3220,6 +3220,41 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await dts_search(call)
         return
 
+    # ═══ DTS IMPORT ACTIONS ═══
+    if call.data == "dts_confirm_import":
+        from dts_import_handlers import dts_confirm_import
+        await dts_confirm_import(call)
+        return
+
+    if call.data == "dts_problems":
+        from dts_import_handlers import dts_problems
+        await dts_problems(call)
+        return
+
+    if call.data == "dts_download_errors":
+        from dts_import_handlers import dts_download_errors
+        await dts_download_errors(call)
+        return
+
+    if call.data == "dts_cancel_import":
+        from dts_import_handlers import dts_cancel_import
+        await dts_cancel_import(call)
+        return
+
+    if call.data == "dts_fast_search":
+        from dts_import_handlers import dts_fast_search
+        await dts_fast_search(call)
+        return
+
+    if call.data.startswith("dts_adv_"):
+        from dts_import_handlers import dts_adv_search, dts_adv_grade
+        if call.data == "dts_adv_search":
+            await dts_adv_search(call)
+        else:
+            await dts_adv_grade(call)
+        return
+    # ════════════════════════════
+
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
         from test_engine import start_test
