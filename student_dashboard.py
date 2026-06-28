@@ -330,9 +330,13 @@ async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         # Salomlashish
         if is_night:
-            lines.append(f"🌙 Kech bo'ldi, {name}! Erta dam oling.")
+            lines.append(f"🌙 Kech bo'ldi, {name}! Yaxshi dam oling 🌙")
         elif is_weekend:
-            lines.append(f"🏖 Xayrli dam olish kuni, {name}!")
+            lines.append(
+                f"🏖 Xayrli dam olish kuni, {name}!\n"
+                f"Bugun dam olish kuni — lekin bilim hech qachon dam olmaydi 😊\n"
+                f"Ishlaysizmi? Test yoki mavzu o'rganishni tanlang 👇"
+            )
         else:
             greeting = get_time_greeting(hour, group, gender, name)
             lines.append(greeting)
@@ -478,7 +482,10 @@ async def dashboard_refresh(call: CallbackQuery):
         cur2.close(); conn2.close()
         if row:
             from keyboards import get_main_keyboard
-            await call.message.answer("🏠", reply_markup=get_main_keyboard(row[0]))
+            await call.message.answer(
+                "🏠 Asosiy menyu",
+                reply_markup=get_main_keyboard(row[0])
+            )
     except Exception as e:
         await call.answer(f"❌ {e}", show_alert=True)
 
