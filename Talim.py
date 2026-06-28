@@ -4055,6 +4055,18 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await lesson_next(call.from_user.id, call.message.chat.id)
         return
 
+    if call.data == "speak_all":
+        from test_engine import speak_all_question
+        await call.answer()
+        await speak_all_question(call.from_user.id)
+        return
+
+    if call.data == "test_skip":
+        from test_engine import test_skip
+        await call.answer()
+        await test_skip(call.from_user.id)
+        return
+
     if call.data == "lesson_speak":
         from lesson_engine import lesson_speak
         await call.answer()
