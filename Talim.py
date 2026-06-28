@@ -3858,6 +3858,21 @@ async def notify_on_restart():
             pass
     print(f"✅ {sent}/{len(users)} foydalanuvchiga xabar yuborildi")
 
+async def _health_server():
+    """Railway health check uchun oddiy HTTP server."""
+    from aiohttp import web
+    async def health(request):
+        return web.Response(text="OK", status=200)
+    app = web.Application()
+    app.router.add_get("/health", health)
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("✅ Health server port 8080 da ishga tushdi")
+
+
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
     init_db()
@@ -3868,6 +3883,11 @@ async def main():
     temp_user.clear()
     registration_message.clear()
     reg_kbd_message.clear()
+    # Health server
+    try:
+        asyncio.create_task(_health_server())
+    except Exception as _he:
+        print(f"Health server xato: {_he}")
     # Foydalanuvchilarga xabar
     asyncio.create_task(notify_on_restart())
     await dp.start_polling(bot)
