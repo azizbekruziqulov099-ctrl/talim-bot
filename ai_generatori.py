@@ -22,8 +22,9 @@ async def show_gen_start(message, user_id):
     # DB dan barcha sinflarni olamiz (CEFR va boshqalar ham)
     conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT grade FROM dts_tree
-        WHERE is_deleted=FALSE
+        SELECT grade FROM (
+            SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE
+        ) _g
         ORDER BY
             CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END,
             grade
