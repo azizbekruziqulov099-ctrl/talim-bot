@@ -1063,9 +1063,11 @@ from aiogram.filters import Command
 @dp.message(Command("menu"))
 @dp.message(Command("cancel"))
 @dp.message(Command("stop"))
-async def cmd_menu(message: types.Message):
+async def cmd_menu(message: types.Message, state: FSMContext):
     """Har qanday holatda bosh menyuga qaytish."""
     uid = message.from_user.id
+    try: await state.clear()
+    except: pass
     user_state.pop(uid, None)
     from storage import lesson_state as _ls, temp_user as _tu
     from storage import registration_message as _rm
@@ -1090,9 +1092,11 @@ async def cmd_menu(message: types.Message):
 
 
 @dp.message(CommandStart())
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
     # /start — har qanday holatda barcha state tozalanadi
     uid = message.from_user.id
+    try: await state.clear()
+    except: pass
     user_state.pop(uid, None)
     from storage import lesson_state as _ls, temp_user as _tu
     from storage import registration_message as _rm, reg_kbd_message as _rkm
@@ -2047,9 +2051,16 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if user_id not in ADMINS:
             return
         from dts_import_handlers import DTSImportState
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         admin_state[user_id] = None
         await state.set_state(DTSImportState.waiting_excel)
-        await message.answer("📄 DTS Excel faylini yuboring")
+        await message.answer(
+            "📄 DTS Excel faylini yuboring\n\n"
+            "Bekor qilish: /menu",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_import")
+            ]])
+        )
         return
 
     elif message.text == "📥 Test import":
@@ -3670,6 +3681,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             call.from_user.id,
             call.message
         )
+        return
+
+    if call.data == "cancel_import":
+        await state.clear()
+        admin_state.pop(user_id, None)
+        await call.message.edit_text("❌ Import bekor qilindi")
+        await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard("Admin"))
         return
 
     if call.data.startswith("resume_lesson:"):
