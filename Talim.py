@@ -522,6 +522,8 @@ def init_db():
         "part_5 TEXT",  "part_6 TEXT",  "part_7 TEXT",
         "simple_5 TEXT","simple_6 TEXT","simple_7 TEXT",
         "example_3 TEXT","example_4 TEXT","example_5 TEXT",
+        "image_e_1 TEXT","image_e_2 TEXT","image_e_3 TEXT",
+        "image_e_4 TEXT","image_e_5 TEXT",
     ]:
         try:
             cur.execute(f"ALTER TABLE teacher_lessons ADD COLUMN IF NOT EXISTS {_col}")
