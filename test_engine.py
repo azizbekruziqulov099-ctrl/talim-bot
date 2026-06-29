@@ -1,32 +1,42 @@
+"""
+test_engine.py — Test tizimi
+Ikki xabar: board (statistika) + q_msg (savol+tugmalar)
+Natija: tugmalar o'rnida ✅/❌, izoh savol o'rnida, 4s turadi
+"""
+import os, asyncio, re, psycopg2
 from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile,
-    InputMediaPhoto
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    InputMediaPhoto, FSInputFile, BufferedInputFile
 )
-import edge_tts, asyncio, psycopg2, os, re
-from storage import user_state
 from loader import bot
+from storage import user_state, test_sessions
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-test_sessions = {}
-HOME_BTN = []  # Bosh ekran tugmasi olib tashlandi
 
-def render_text(text):
-    if not text: return ""
-    t = str(text)
+# ── Matnni tozalash ──
+def render_text(t):
+    if not t: return ""
+    t = str(t)
+    t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[en\](.*?)\[/en\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', t, flags=re.DOTALL)
-    t = re.sub(r'\[skip\](.*?)\[/skip\]', r'\1', t, flags=re.DOTALL)
-    t = re.sub(r'\[latex\](.*?)\[/latex\]', r'[\1]', t, flags=re.DOTALL)
-    t = re.sub(r'\[img\](.*?)\[/img\]', '', t, flags=re.DOTALL)
     return t.strip()
 
-def tts_clean(text):
-    t = render_text(text)
-    t = re.sub(r'[\U0001F000-\U0001FFFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+', ' ', t)
-    t = re.sub(r'[•\*\#\|\_\~\`━\-]{2,}', ' ', t)
-    return re.sub(r'\s+', ' ', t).strip()
+def _tts_clean(t):
+    """TTS uchun tinish belgilarini o'chirish."""
+    if not t: return ""
+    t = str(t).strip()
+    t = re.sub(r'\[en\](.*?)\[/en\]', r'\1', t, flags=re.DOTALL)
+    t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
+    # Tinish belgilari: / - = + * % # @ ! kerakmas
+    t = re.sub(r'[/\-=+*%#@!]', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
 
-# ── statistika (yuqori xabar) ──
+def _has_en(t):
+    return '[en]' in str(t)
+
+# ── Statistika xabari ──
 def _board_text(s, result=""):
     total = len(s["questions"])
     ok, err = s["correct"], s["wrong"]
@@ -34,120 +44,171 @@ def _board_text(s, result=""):
     bar = "🟩"*ok + "🟥"*err + "⬜"*max(0, min(20,total)-done)
     t = f"📊 {done}/{total} | ✅ {ok} | ❌ {err}\n{bar}"
     if result:
-        # Natija aniq ko'rinsin
         t += f"\n{'━'*18}\n{result}\n{'━'*18}"
     return t
 
-# ── javob tugmalari: [🔊][javob] ──
+# ── Savol klaviaturasi ──
 def _build_kb(a, b, c, d, tl=0):
     timer = f"⏱ {tl}s" if tl > 0 else "∞"
     rows = [[
-        InlineKeyboardButton(text=timer,     callback_data="noop_timer"),
-        InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop"),
+        InlineKeyboardButton(text="🔊 O'qib berish", callback_data="speak_all"),
+        InlineKeyboardButton(text=timer,              callback_data="noop_timer"),
+        InlineKeyboardButton(text="🛑",               callback_data="test_stop"),
     ]]
     for num, (ans, cb) in enumerate([(a,"ans_A"),(b,"ans_B"),(c,"ans_C"),(d,"ans_D")], 1):
         label = str(ans) if ans else "—"
         rows.append([InlineKeyboardButton(text=f"{num}) {label}", callback_data=cb)])
-    rows.append([
-        InlineKeyboardButton(text="⏭ O'tkazib yuborish", callback_data="test_skip"),
-    ])
+    rows.append([InlineKeyboardButton(text="⏭ O'tkazish", callback_data="test_skip")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+# ── DB dan rasm ──
 async def _get_file_id(img_url):
+    if not img_url or str(img_url).strip() in ("", "None", "nan"): return None
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur  = conn.cursor()
-        cur.execute("SELECT file_id FROM images WHERE name=%s", (img_url.strip(),))
-        row  = cur.fetchone(); cur.close(); conn.close()
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        cur.execute("SELECT file_id FROM images WHERE name=%s", (str(img_url).strip(),))
+        row = cur.fetchone(); cur.close(); conn.close()
         return row[0] if row else None
     except: return None
 
-async def _photo_for(test, user_id):
+async def _photo_for(test):
     (q,a,b,c,d,correct,expl,qtype,is_latex,img_url,audio,lang,tl) = test
     if is_latex and str(is_latex).lower() not in ("false","0","none",""):
         try:
             from latex_utils import latex_to_image as l2i
-            p = l2i(q, user_id)
+            p = l2i(q, 0)
             if p and os.path.exists(p): return FSInputFile(p)
         except: pass
-    elif img_url and str(img_url).strip() not in ("","None","nan"):
-        return await _get_file_id(img_url)
+    if img_url and str(img_url).strip() not in ("","None","nan"):
+        return await _get_file_id(str(img_url).strip())
     return None
 
-# ══════════════════════════════════════════
-#  IKKI XABARLI TIZIM
-#  board_msg_id  — yuqori (statistika + natija)  — MATN
-#  q_msg_id      — pastki (rasm + savol + tugma) — PHOTO yoki MATN
-# ══════════════════════════════════════════
-
+# ── Xabar yuborish/edit ──
 async def _edit_board(s, text):
-    """Yuqori statistika xabarini edit qil."""
     chat = s["board_chat_id"]
     mid  = s.get("board_msg_id")
     if mid:
         try:
             await bot.edit_message_text(text=text, chat_id=chat, message_id=mid)
             return
-        except Exception:
-            # Edit muvaffaqiyatsiz — o'chir va yangi yuborish
-            try: await bot.delete_message(chat, mid)
-            except: pass
-            s["board_msg_id"] = None
-    try:
-        nm = await bot.send_message(chat, text)
-        s["board_msg_id"] = nm.message_id
-    except Exception:
-        pass
+        except: pass
+    nm = await bot.send_message(chat, text)
+    s["board_msg_id"] = nm.message_id
 
 async def _edit_question(s, q_text, kb, photo=None):
-    """Pastki savol xabarini edit qil (rasm yoki matn)."""
     chat = s["board_chat_id"]
     qmid = s.get("q_msg_id")
-
     if photo:
-        # Caption 1024 belgi limiti
-        cap = q_text[:1020] if len(q_text) > 1020 else q_text
+        cap = q_text[:1020]
         if s.get("q_has_photo") and qmid:
             try:
                 await bot.edit_message_media(
                     chat_id=chat, message_id=qmid,
-                    media=InputMediaPhoto(media=photo, caption=cap),
-                    reply_markup=kb
-                )
+                    media=InputMediaPhoto(media=photo, caption=cap), reply_markup=kb)
                 return
-            except Exception: pass
+            except: pass
         if qmid:
             try: await bot.delete_message(chat, qmid)
             except: pass
         nm = await bot.send_photo(chat, photo, caption=cap, reply_markup=kb)
-        s["q_msg_id"]    = nm.message_id
-        s["q_has_photo"] = True
+        s["q_msg_id"] = nm.message_id; s["q_has_photo"] = True
     else:
         if s.get("q_has_photo") and qmid:
             try: await bot.delete_message(chat, qmid)
             except: pass
-            qmid = None
+            qmid = None; s["q_has_photo"] = False
         if qmid:
             try:
-                await bot.edit_message_text(
-                    text=q_text, chat_id=chat, message_id=qmid,
-                    reply_markup=kb
-                )
-                s["q_has_photo"] = False
+                await bot.edit_message_text(text=q_text, chat_id=chat, message_id=qmid, reply_markup=kb)
                 return
-            except Exception:
-                # Edit muvaffaqiyatsiz — eski xabarni o'chir
+            except:
                 try: await bot.delete_message(chat, qmid)
                 except: pass
                 s["q_msg_id"] = None
-        try:
-            nm = await bot.send_message(chat, q_text, reply_markup=kb)
-            s["q_msg_id"]    = nm.message_id
-            s["q_has_photo"] = False
-        except Exception:
-            pass
+        nm = await bot.send_message(chat, q_text, reply_markup=kb)
+        s["q_msg_id"] = nm.message_id; s["q_has_photo"] = False
 
-# ── test boshlash ──
+# ── Ovoz ──
+async def _stop_voice(s):
+    """Avvalgi ovoz xabarini o'chirish."""
+    chat = s.get("board_chat_id")
+    for vid in s.get("voice_msgs", []):
+        try: await bot.delete_message(chat, vid)
+        except: pass
+    s["voice_msgs"] = []
+
+async def _tts_send(s, text, voice="uz-UZ-MadinaNeural"):
+    """Matnni TTS ga berib ovoz yuborish."""
+    try:
+        import edge_tts
+        from pydub import AudioSegment as AS
+        from io import BytesIO
+        clean = _tts_clean(text)
+        if not clean.strip(): return
+        fname = f"tts_{s.get('board_chat_id',0)}.mp3"
+        await edge_tts.Communicate(text=clean[:400], voice=voice).save(fname)
+        if not os.path.exists(fname) or os.path.getsize(fname) < 100: return
+        nm = await bot.send_voice(s["board_chat_id"], FSInputFile(fname))
+        s.setdefault("voice_msgs", []).append(nm.message_id)
+    except Exception as e:
+        print(f"TTS xato: {e}")
+    finally:
+        try: os.remove(fname)
+        except: pass
+
+async def speak_all_question(user_id):
+    """Bitta audioda: savol → 1. A → 2. B → 3. C → 4. D"""
+    try:
+        import edge_tts
+        from pydub import AudioSegment as AS
+        from io import BytesIO
+
+        s = test_sessions.get(user_id)
+        if not s: return
+        test = s["questions"][s["current"]]
+        q,a,b,c,d = test[0],test[1],test[2],test[3],test[4]
+
+        uz_voice = "uz-UZ-MadinaNeural"
+        en_voice = "en-US-AriaNeural"
+
+        parts = []
+        # Savol
+        parts.append((_tts_clean(q), en_voice if _has_en(q) else uz_voice))
+        # Javoblar raqam bilan
+        for num, opt in enumerate([a,b,c,d], 1):
+            txt = _tts_clean(str(opt or ""))
+            if txt:
+                v = en_voice if _has_en(str(opt)) else uz_voice
+                parts.append((f"{num}. {txt}", v))
+
+        combined = AS.silent(200)
+        for text, voice in parts:
+            if not text.strip(): continue
+            tmp = f"tts_p_{user_id}_{abs(hash(text)%99999)}.mp3"
+            try:
+                await edge_tts.Communicate(text=text[:300], voice=voice).save(tmp)
+                if os.path.exists(tmp) and os.path.getsize(tmp) > 100:
+                    combined += AS.from_mp3(tmp)
+                    combined += AS.silent(350)
+            except: pass
+            finally:
+                try: os.remove(tmp)
+                except: pass
+
+        if len(combined) < 300: return
+        # Avvalgi ovozni o'chirish
+        await _stop_voice(s)
+        fname = f"tts_q_{user_id}.mp3"
+        combined.export(fname, format="mp3")
+        nm = await bot.send_voice(s["board_chat_id"], FSInputFile(fname))
+        s.setdefault("voice_msgs", []).append(nm.message_id)
+    except Exception as e:
+        print(f"speak_all xato: {e}")
+    finally:
+        try: os.remove(fname)
+        except: pass
+
+# ── Test boshlash ──
 async def start_test(user_id, tests, message):
     if not tests:
         await message.answer("❌ Test topilmadi"); return
@@ -157,24 +218,23 @@ async def start_test(user_id, tests, message):
         except: pass
     user_state[user_id] = "in_test"
 
-    # 1-xabar: statistika (yuqori)
     bm = await message.answer("⏳ Test yuklanmoqda...")
-    # 2-xabar: savol (pastki) — keyin to'ldiriladi
     qm = await message.answer("...")
 
     test_sessions[user_id] = {
-        "questions":   tests, "current": 0,
-        "correct":     0,     "wrong":   0,
-        "timer_task":  None,
+        "questions":     tests, "current": 0,
+        "correct":       0,     "wrong":   0,
+        "timer_task":    None,
         "board_chat_id": message.chat.id,
         "board_msg_id":  bm.message_id,
         "q_msg_id":      qm.message_id,
         "q_has_photo":   False,
         "voice_msgs":    [], "answered": False,
+        "topic_code":    "",
     }
     await show_question(user_id)
 
-# ── savolni ko'rsatish ──
+# ── Savolni ko'rsatish ──
 async def show_question(user_id, message=None):
     s = test_sessions.get(user_id)
     if not s: return
@@ -184,11 +244,8 @@ async def show_question(user_id, message=None):
         s["timer_task"] = None
     s["answered"] = False
 
-    chat = s["board_chat_id"]
-    for vid in s.get("voice_msgs", []):
-        try: await bot.delete_message(chat, vid)
-        except: pass
-    s["voice_msgs"] = []
+    # Avvalgi ovozni o'chirish
+    await _stop_voice(s)
 
     cur   = s["current"]
     total = len(s["questions"])
@@ -202,23 +259,23 @@ async def show_question(user_id, message=None):
     try: tl = int(tl) if tl and int(tl) > 0 else 0
     except: tl = 0
 
-    photo = await _photo_for(test, user_id)
+    photo = await _photo_for(test)
 
-    # Yuqori xabar: faqat statistika (natija yo'q)
     await _edit_board(s, _board_text(s))
-    await asyncio.sleep(0.3)  # Telegram rate limit uchun
+    await asyncio.sleep(0.2)
 
-    # Yozma savol
     if qtype == "write_answer":
         user_state[user_id] = "text_answer"
         tmr = f"⏱ {tl}s" if tl > 0 else "∞"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=tmr,  callback_data="noop_timer"),
-             InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop")],
-            HOME_BTN,
+            [InlineKeyboardButton(text="🔊 O'qib berish", callback_data="speak_all"),
+             InlineKeyboardButton(text=tmr,               callback_data="noop_timer"),
+             InlineKeyboardButton(text="🛑",              callback_data="test_stop")],
         ])
-        q_text = f"✍️ Savol {cur+1}/{total}\n\n{q_s}\n\n📝 Javobingizni yozing:"
+        q_text = f"✍️ {cur+1}/{total}\n\n{q_s}\n\n📝 Javobingizni yozing:"
         await _edit_question(s, q_text, kb, photo)
+        # Avto TTS
+        asyncio.create_task(speak_all_question(user_id))
         if tl > 0:
             async def write_cd():
                 left = tl
@@ -226,31 +283,21 @@ async def show_question(user_id, message=None):
                     await asyncio.sleep(5); left = max(0, left-5)
                     sx = test_sessions.get(user_id)
                     if not sx or sx.get("answered"): return
-                    if left > 0:
-                        try:
-                            await bot.edit_message_reply_markup(
-                                chat_id=sx["board_chat_id"],
-                                message_id=sx["q_msg_id"],
-                                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
-                                     InlineKeyboardButton(text="🛑 Stop", callback_data="test_stop")],
-                                    HOME_BTN,
-                                ])
-                            )
-                        except: pass
                 sx = test_sessions.get(user_id)
                 if not sx or sx.get("answered"): return
                 sx["answered"] = True; sx["wrong"] += 1
-                sx["timer_task"] = None
-                user_state[user_id] = None
+                sx["timer_task"] = None; user_state[user_id] = None
                 await _advance(user_id)
             s["timer_task"] = asyncio.create_task(write_cd())
         return
 
     user_state[user_id] = "in_test"
     kb     = _build_kb(a_s, b_s, c_s, d_s, tl)
-    q_text = f"🧪 Savol {cur+1}/{total}\n\n{q_s}"
+    q_text = f"🧪 {cur+1}/{total}\n\n{q_s}"
     await _edit_question(s, q_text, kb, photo)
+
+    # Avto TTS — yangi savol chiqganda o'qiladi
+    asyncio.create_task(speak_all_question(user_id))
 
     if tl <= 0: return
     async def cd():
@@ -262,62 +309,46 @@ async def show_question(user_id, message=None):
             if left > 0:
                 try:
                     await bot.edit_message_reply_markup(
-                        chat_id=sx["board_chat_id"],
-                        message_id=sx["q_msg_id"],
+                        chat_id=sx["board_chat_id"], message_id=sx["q_msg_id"],
                         reply_markup=_build_kb(a_s, b_s, c_s, d_s, left)
                     )
                 except: pass
         sx = test_sessions.get(user_id)
         if not sx or sx.get("answered"): return
-        sx["answered"] = True
-        sx["wrong"]   += 1
-        sx["timer_task"] = None  # avval tozala — _show_result chaqirmasdan
-        # To'g'ridan-to'g'ri natija ko'rsat va keyingisiga o't
-        try:
-            await _edit_board(sx, _board_text(sx, "⏱ Vaqt tugadi!"))
-        except Exception:
-            pass
-        await asyncio.sleep(2.0)
-        if test_sessions.get(user_id):
-            await _advance(user_id)
+        sx["answered"] = True; sx["wrong"] += 1; sx["timer_task"] = None
+        await _edit_board(sx, _board_text(sx, "⏱ Vaqt tugadi!"))
+        await asyncio.sleep(1.5)
+        if test_sessions.get(user_id): await _advance(user_id)
     s["timer_task"] = asyncio.create_task(cd())
 
-# ── natijani ko'rsatish ──
-async def _show_result(user_id, message, result_text):
+# ── Natijani ko'rsatish (o'rnida qoladi) ──
+async def _show_result(user_id, result_text, result_kb, photo):
+    """Natija: izoh savol o'rnida, 4s turadi, keyin keyingi savol."""
     s = test_sessions.get(user_id)
     if not s: return
     s["answered"] = True
-    if s.get("timer_task"):
-        try: s["timer_task"].cancel()
-        except: pass
-        s["timer_task"] = None
 
     cur   = s["current"]
     total = len(s["questions"])
     test  = s["questions"][cur]
     q_s   = render_text(test[0])
+    expl  = render_text(str(test[6] or ""))
 
-    # Yuqori: statistika + natija
+    # Board yangilanadi
     await _edit_board(s, _board_text(s, result_text))
 
-    # Natija paytida rasm olib tashlanadi — faqat matn qoladi
-    q_text = f"🧪 Savol {cur+1}/{total}\n\n{q_s}"
+    # Savol xabari: natija + izoh (rasm saqlanadi!)
+    izoh_text = ""
+    if expl:
+        izoh_text = f"\n\n💡 {expl}"
+    q_text = f"🧪 {cur+1}/{total}\n\n{q_s}{izoh_text}"
 
-    # Xato bo'lsa ✏️ tugma qo'shamiz
-    report_kb = None
-    if "❌" in result_text:
-        from aiogram.types import InlineKeyboardMarkup as IKM, InlineKeyboardButton as IKB
-        # test ID sini topish uchun topic_code saqlanganmi?
-        tc = s.get("topic_code", "")
-        report_kb = IKM(inline_keyboard=[[
-            IKB(text="✏️ Xato test — tuzatish so'rash", callback_data=f"report_test:{cur}")
-        ]])
+    # Rasm saqlansin — photo beramiz
+    await _edit_question(s, q_text, result_kb, photo)
 
-    await _edit_question(s, q_text, report_kb, None)
-
-    await asyncio.sleep(3.0)
-    if not test_sessions.get(user_id):
-        return
+    # 4 soniya turadi
+    await asyncio.sleep(4.0)
+    if not test_sessions.get(user_id): return
     await _advance(user_id)
 
 async def _advance(user_id):
@@ -329,116 +360,7 @@ async def _advance(user_id):
     else:
         await show_question(user_id)
 
-# ── javob tekshirish ──
-async def _auto_speak_result(user_id, q_text, correct_text=""):
-    """Javob berilgandan keyin savol + to'g'ri javobni o'qiydi."""
-    try:
-        import edge_tts, re
-        from pydub import AudioSegment as AS
-        voice = "uz-UZ-MadinaNeural"
-        def strip_tags(t):
-            t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r'\1', str(t), flags=re.DOTALL)
-            t = re.sub(r'[\U0001F000-\U0001FAFF]+', ' ', t)
-            return re.sub(r'\s+', ' ', t).strip()
-        parts = []
-        if q_text: parts.append(strip_tags(q_text))
-        if correct_text: parts.append("To'g'ri javob: " + strip_tags(correct_text))
-        if not parts: return
-        combined = AS.silent(0)
-        for part in parts:
-            if not part.strip(): continue
-            tmp = f"tts_res_{user_id}_{abs(hash(part)%99999)}.mp3"
-            try:
-                await edge_tts.Communicate(text=part[:200], voice=voice).save(tmp)
-                if os.path.exists(tmp) and os.path.getsize(tmp)>0:
-                    combined += AS.from_mp3(tmp)
-            except: pass
-            finally:
-                try: os.remove(tmp)
-                except: pass
-        if len(combined)==0: return
-        st = test_sessions.get(user_id, {})
-        chat_id = st.get("board_chat_id")
-        if not chat_id: return
-        fname = f"tts_result_{user_id}.mp3"
-        combined.export(fname, format="mp3")
-        await bot.send_voice(chat_id, FSInputFile(fname))
-    except Exception: pass
-    finally:
-        try: os.remove(fname)
-        except: pass
-
-
-async def speak_all_question(user_id):
-    """Bitta audioda: savol → 1-javob A → 2-javob B → 3-javob C → 4-javob D"""
-    try:
-        import edge_tts, re
-        from pydub import AudioSegment as AS
-        voice = "uz-UZ-MadinaNeural"
-
-        st = test_sessions.get(user_id)
-        if not st: return
-        test = st["questions"][st["current"]]
-        q,a,b,c,d = test[0], test[1], test[2], test[3], test[4]
-
-        def strip_tags(t):
-            if not t: return ""
-            t = re.sub(r'\[\w+\](.*?)\[/\w+\]', r'\1', str(t), flags=re.DOTALL)
-            t = re.sub(r'[\U0001F000-\U0001FAFF]+', ' ', t)
-            return re.sub(r'\s+', ' ', t).strip()
-
-        # Barcha bo'laklar
-        parts = [(strip_tags(q), voice)]
-        for num, opt in enumerate([a,b,c,d], 1):
-            txt = strip_tags(opt)
-            if txt:
-                # [en]...[ /en] bo'lsa ingliz ovozi
-                lang = "en-US-AriaNeural" if "[en]" in str(opt) else voice
-                parts.append((f"{num}. {txt}", lang))
-
-        combined = AS.silent(300)
-        for text, v in parts:
-            if not text.strip(): continue
-            tmp = f"tts_all_{user_id}_{abs(hash(text)%99999)}.mp3"
-            try:
-                await edge_tts.Communicate(text=text[:300], voice=v).save(tmp)
-                if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
-                    combined += AS.from_mp3(tmp)
-                    combined += AS.silent(400)
-            except: pass
-            finally:
-                try: os.remove(tmp)
-                except: pass
-
-        if len(combined) < 500: return
-        fname = f"tts_q_{user_id}.mp3"
-        combined.export(fname, format="mp3")
-        chat_id = st.get("board_chat_id")
-        if chat_id:
-            await bot.send_voice(chat_id, FSInputFile(fname))
-    except Exception as e:
-        print(f"speak_all xato: {e}")
-    finally:
-        try: os.remove(fname)
-        except: pass
-
-
-async def test_skip(user_id):
-    """O'tkazib yuborish — joriy savolni skip qiladi."""
-    s = test_sessions.get(user_id)
-    if not s or s.get("answered"): return
-    s["answered"] = True
-    s["wrong"] += 1
-    if s.get("timer_task"):
-        try: s["timer_task"].cancel()
-        except: pass
-        s["timer_task"] = None
-    await _edit_board(s, _board_text(s, "⏭ O'tkazib yuborildi"))
-    await asyncio.sleep(1.5)
-    if test_sessions.get(user_id):
-        await _advance(user_id)
-
-
+# ── Tugma javob ──
 async def check_button_answer(user_id, answer, message):
     s = test_sessions.get(user_id)
     if not s or s.get("answered"): return
@@ -446,6 +368,7 @@ async def check_button_answer(user_id, answer, message):
         try: s["timer_task"].cancel()
         except: pass
         s["timer_task"] = None
+
     test = s["questions"][s["current"]]
     a,b,c,d   = test[1],test[2],test[3],test[4]
     correct   = str(test[5] or "").strip()
@@ -453,62 +376,56 @@ async def check_button_answer(user_id, answer, message):
     sel_map   = {"A":str(a),"B":str(b),"C":str(c),"D":str(d)}
     lab_map   = {k: render_text(str(v or "")) for k,v in sel_map.items()}
     selected  = sel_map.get(answer.upper(),"")
+
     if correct.upper() in ("A","B","C","D"):
         is_ok = answer.upper() == correct.upper()
         correct_key = correct.upper()
     else:
         is_ok = render_text(selected).strip().lower() == render_text(correct).strip().lower()
-        # to'g'ri kalit — qaysi javob to'g'ri ekanini topamiz
         correct_key = None
         for k,v in lab_map.items():
             if v.strip().lower() == render_text(correct).strip().lower():
                 correct_key = k; break
 
-    # ── Tugmalarni natija bilan yangilaymiz ──
+    # ── Tugmalarni natija bilan yangilaymiz (o'rnida qoladi) ──
     rows = []
-    for k, cb, spk in [("A","ans_A","speak_a"),("B","ans_B","speak_b"),
-                        ("C","ans_C","speak_c"),("D","ans_D","speak_d")]:
+    for num, (k, cb) in enumerate([("A","ans_A"),("B","ans_B"),("C","ans_C"),("D","ans_D")], 1):
         label = lab_map[k]
         if k == answer.upper():
-            icon = "✅✅" if is_ok else "❌"
+            icon = "✅" if is_ok else "❌"
             rows.append([InlineKeyboardButton(text=f"{icon} {label}", callback_data="noop_result")])
         elif not is_ok and k == correct_key:
-            rows.append([InlineKeyboardButton(text=f"🟢✅ TO'G'RI: {label}", callback_data="noop_result")])
+            rows.append([InlineKeyboardButton(text=f"🟢 {label}", callback_data="noop_result")])
         else:
-            if len(label) <= 22:
-                rows.append([
-                    InlineKeyboardButton(text="🔊",  callback_data=spk),
-                    InlineKeyboardButton(text=label, callback_data="noop_result"),
-                ])
-            else:
-                rows.append([InlineKeyboardButton(text=label, callback_data="noop_result")])
-    rows.append(HOME_BTN)
+            rows.append([InlineKeyboardButton(text=f"  {label}", callback_data="noop_result")])
+
+    # Xato bo'lsa "✏️ Xato" tugmasi
+    if not is_ok:
+        rows.append([InlineKeyboardButton(text="✏️ Xato test bildirish", callback_data=f"report_test:{s['current']}")])
+
     result_kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
-    # Keyboard ni darhol yangilaymiz (foydalanuvchi ko'zi shu yerda)
+    # Darhol tugmalarni yangilaymiz
     try:
         await bot.edit_message_reply_markup(
-            chat_id=s["board_chat_id"],
-            message_id=s["q_msg_id"],
-            reply_markup=result_kb
+            chat_id=s["board_chat_id"], message_id=s["q_msg_id"], reply_markup=result_kb
         )
-    except Exception:
-        pass
+    except: pass
 
     if is_ok:
         s["correct"] += 1
-        result = "✅ To'g'ri!"
-        if expl: result += f"\n\n💡 {expl}"
+        result_text = "✅ To'g'ri!"
     else:
         s["wrong"] += 1
         correct_show = lab_map.get(correct_key, render_text(correct)) if correct_key else render_text(correct)
-        result = f"❌ Xato!\n\n✅ To'g'ri javob:\n{correct_show}"
-        if expl: result += f"\n\n💡 Izoh: {expl}"
-    _q_s = render_text(test[0])
-    _correct_show = correct_show if not is_ok else ""
-    asyncio.create_task(_auto_speak_result(user_id, _q_s, _correct_show))
-    await _show_result(user_id, message, result)
+        result_text = f"❌ Xato!  ✅ To'g'ri: {correct_show}"
 
+    # Rasim olinadi (natijada ham ko'rinsin)
+    photo = await _photo_for(test)
+
+    await _show_result(user_id, result_text, result_kb, photo)
+
+# ── Yozma javob ──
 async def check_text_answer(user_id, user_answer, message):
     s = test_sessions.get(user_id)
     if not s or s.get("answered"): return
@@ -519,122 +436,74 @@ async def check_text_answer(user_id, user_answer, message):
     test    = s["questions"][s["current"]]
     correct = render_text(str(test[5] or "")).strip().lower()
     expl    = render_text(str(test[6] or ""))
-    if str(user_answer).strip().lower() == correct:
-        s["correct"] += 1; result = "✅ To'g'ri!"
+    given   = render_text(user_answer.strip()).lower()
+    is_ok   = given == correct or correct in given or given in correct
+
+    photo = await _photo_for(test)
+    noop_kb = InlineKeyboardMarkup(inline_keyboard=[])
+
+    if is_ok:
+        s["correct"] += 1
+        result_text = f"✅ To'g'ri!"
     else:
-        s["wrong"] += 1; result = f"❌ Xato!\n✅ To'g'ri: {render_text(str(test[5]))}"
-    if expl: result += f"\n\n💡 {expl}"
-    user_state[user_id] = None
-    await _show_result(user_id, message, result)
+        s["wrong"] += 1
+        result_text = f"❌ Xato!  ✅ To'g'ri: {render_text(test[5])}"
 
-# ── test tugash ──
-async def next_question(user_id, message=None): await _advance(user_id)
+    user_state[user_id] = "in_test"
+    await _show_result(user_id, result_text, noop_kb, photo)
 
-async def finish_test(user_id, message=None):
+# ── O'tkazib yuborish ──
+async def test_skip(user_id):
     s = test_sessions.get(user_id)
+    if not s or s.get("answered"): return
+    s["answered"] = True; s["wrong"] += 1
+    if s.get("timer_task"):
+        try: s["timer_task"].cancel()
+        except: pass
+        s["timer_task"] = None
+    await _edit_board(s, _board_text(s, "⏭ O'tkazib yuborildi"))
+    await asyncio.sleep(1.5)
+    if test_sessions.get(user_id): await _advance(user_id)
+
+# ── Test tugash ──
+async def finish_test(user_id, message=None):
+    s = test_sessions.pop(user_id, {})
     if not s: return
     if s.get("timer_task"):
         try: s["timer_task"].cancel()
         except: pass
+    await _stop_voice(s)
     user_state[user_id] = None
-    ok, err = s["correct"], s["wrong"]
-    total   = ok + err
-    pct     = round(ok*100/total,1) if total else 0
-    emoji   = "🏆" if pct>=80 else "👍" if pct>=60 else "💪"
-    result_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home_dashboard")
-    ]])
-    await _edit_board(s,
-        f"{emoji} Test yakunlandi!\n\n"
-        f"✅ To'g'ri:   {ok}\n❌ Noto'g'ri: {err}\n📊 Natija: {pct}%"
+    chat = s.get("board_chat_id")
+    if not chat: return
+
+    ok    = s.get("correct", 0)
+    err   = s.get("wrong", 0)
+    total = ok + err
+    pct   = round(ok*100/max(total,1))
+
+    if pct >= 90:   grade = "🏆 A'lo"
+    elif pct >= 75: grade = "👍 Yaxshi"
+    elif pct >= 50: grade = "📈 Qoniqarli"
+    else:           grade = "📚 Mashq kerak"
+
+    text = (
+        f"🏁 Test yakunlandi!\n\n"
+        f"✅ To'g'ri:  {ok}\n"
+        f"❌ Noto'g'ri: {err}\n"
+        f"📊 Natija: {pct}%  {grade}\n\n"
+        f"{'🟩'*ok}{'🟥'*err}"
     )
-    # Pastki xabar — keyboard bilan yakuniy ko'rinish
-    chat = s["board_chat_id"]
-    qmid = s.get("q_msg_id")
-    if qmid:
-        try: await bot.edit_message_text(
-            text="🎯 Test yakunlandi!", chat_id=chat,
-            message_id=qmid, reply_markup=result_kb
-        )
-        except:
-            try: await bot.send_message(chat, "🎯 Test yakunlandi!", reply_markup=result_kb)
-            except: pass
-    test_sessions.pop(user_id, None)
+    try: await bot.edit_message_text(text=text, chat_id=chat, message_id=s.get("board_msg_id"))
+    except: await bot.send_message(chat, text)
+
+    result_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🏠 Bosh menyuga qaytish", callback_data="go_home")
+    ]])
+    try:
+        await bot.edit_message_reply_markup(chat_id=chat, message_id=s.get("q_msg_id"), reply_markup=result_kb)
+    except: pass
 
 async def stop_test(user_id, message): await finish_test(user_id, message)
-
-# ── TTS ──
-async def speak_text(user_id, message, text):
-    s = test_sessions.get(user_id)
-    lang = "uz"
-    if s:
-        try: lang = str(s["questions"][s["current"]][11]).lower()
-        except: pass
-    try:
-        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
-        cur.execute("SELECT gender FROM users WHERE user_id=%s",(user_id,))
-        row = cur.fetchone(); cur.close(); conn.close()
-        gender = row[0] if row else ""
-    except: gender = ""
-    voices = {
-        "uz":"uz-UZ-MadinaNeural" if "Ayol" in str(gender) else "uz-UZ-MadinaNeural",
-        "en":"en-US-AriaNeural","ru":"ru-RU-SvetlanaNeural",
-    }
-    import re as _re
-    from pydub import AudioSegment as _AS
-    _pts = _re.split(r'\[en\](.*?)\[/en\]', str(text), flags=_re.DOTALL)
-    _segs = []
-    for _i,_p in enumerate(_pts):
-        _cl = tts_clean(_p) if _i%2==0 else _p.strip()
-        _cl = _re.sub(r'\s+',' ',_cl).strip()
-        if not _cl or not any(_c.isalnum() for _c in _cl): continue
-        _segs.append((_cl, voices["en"] if _i%2==1 else voices.get(lang,voices["uz"])))
-    if not _segs: return
-    _comb = _AS.silent(duration=0)
-    for _st,_sv in _segs:
-        _tmp = f"tts_tmp_{user_id}_{abs(hash(_st))}.mp3"
-        try:
-            await edge_tts.Communicate(text=_st,voice=_sv).save(_tmp)
-            if os.path.exists(_tmp) and os.path.getsize(_tmp)>0:
-                _comb += _AS.from_mp3(_tmp)
-        except: pass
-        finally:
-            try: os.remove(_tmp)
-            except: pass
-    if len(_comb)==0: return
-    fname = f"tts_{user_id}.mp3"
-    try:
-        _comb.export(fname,format="mp3")
-        vm = await message.answer_voice(FSInputFile(fname))
-        sx = test_sessions.get(user_id)
-        if sx: sx.setdefault("voice_msgs",[]).append(vm.message_id)
-    except: pass
-    finally:
-        try: os.remove(fname)
-        except: pass
-
-async def speak_question(u,m):
-    s=test_sessions.get(u)
-    if s: await speak_text(u,m,s["questions"][s["current"]][0])
-async def speak_a(u,m):
-    s=test_sessions.get(u)
-    if s: await speak_text(u,m,s["questions"][s["current"]][1])
-async def speak_b(u,m):
-    s=test_sessions.get(u)
-    if s: await speak_text(u,m,s["questions"][s["current"]][2])
-async def speak_c(u,m):
-    s=test_sessions.get(u)
-    if s: await speak_text(u,m,s["questions"][s["current"]][3])
-async def speak_d(u,m):
-    s=test_sessions.get(u)
-    if s: await speak_text(u,m,s["questions"][s["current"]][4])
-
-def latex_to_image(latex_text, filename):
-    try:
-        import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(6,2))
-        plt.text(0.05,0.5,f"${latex_text}$",fontsize=24)
-        plt.axis("off")
-        plt.savefig(filename,bbox_inches="tight",dpi=150)
-        plt.close(fig)
-    except: pass
+async def next_question(user_id, message=None): await _advance(user_id)
+async def speak_question(u, m): await speak_all_question(u)
