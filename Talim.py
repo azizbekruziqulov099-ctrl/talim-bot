@@ -894,16 +894,73 @@ async def save_image(message: types.Message):
     # Agar caption "split:TOPIC_CODE:rows:cols:prefix" formatida bo'lsa
     # Misol: split:1-01-1-01-01-01-001:1:6:p  → -p-1..-p-6
     #        split:1-01-1-01-01-01-001:1:5:e  → -e-1..-e-5
+    # msplit:QATOR:USTUN:TC1,TC2,TC3,...
+    # Misol: msplit:5:2:TC1,TC2,TC3,TC4,TC5 → har TC dan 10 ta panel
+    if caption.lower().startswith("msplit:"):
+        parts = caption[7:].strip().split(":")
+        rows   = int(parts[0]) if parts else 5
+        cols   = int(parts[1]) if len(parts)>1 else 4
+        tcs    = [t.strip() for t in parts[2].split(",") if t.strip()] if len(parts)>2 else []
+        prefix = parts[3].strip() if len(parts)>3 else ""
+        if not tcs:
+            await message.answer("❌ TC kodlar yo'q! Format: msplit:5:4:TC1,TC2,..."); return
+        panel_per_tc = rows * cols
+        total = panel_per_tc * len(tcs)
+        sep = f"-{prefix}-" if prefix else "-"
+        await message.answer(
+            f"⏳ msplit: {rows}×{cols}={panel_per_tc} panel × {len(tcs)} TC = {total} bo'lak\n"
+            f"TC lar: {', '.join(tcs[:3])}{'...' if len(tcs)>3 else ''}"
+        )
+        buf = await message.bot.download(message.photo[-1].file_id)
+        from PIL import Image as PILImage
+        from io import BytesIO
+        buf.seek(0)
+        img = PILImage.open(buf)
+        total_cols = cols
+        total_rows = rows * len(tcs)
+        w, h = img.size
+        pw = w // total_cols
+        ph = h // total_rows
+
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        saved = 0
+        for tc_idx, tc in enumerate(tcs):
+            for r in range(rows):
+                for c in range(cols):
+                    n = r * cols + c + 1
+                    global_row = tc_idx * rows + r
+                    x1, y1 = c*pw, global_row*ph
+                    x2, y2 = x1+pw, y1+ph
+                    piece = img.crop((x1,y1,x2,y2))
+                    pb = BytesIO(); piece.save(pb, format="JPEG", quality=90); pb.seek(0)
+                    from aiogram.types import BufferedInputFile
+                    sent = await message.answer_photo(
+                        BufferedInputFile(pb.read(), f"{tc}{sep}{n}.jpg"),
+                        caption=f"{tc}{sep}{n}"
+                    )
+                    fid = sent.photo[-1].file_id
+                    name = f"{tc}{sep}{n}"
+                    cur2.execute("""
+                        INSERT INTO images(name, file_id)
+                        VALUES(%s,%s)
+                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id
+                    """, (name, fid))
+                    saved += 1
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ {saved} ta rasm saqlandi!\n{len(tcs)} ta mavzu × {panel_per_tc} panel")
+        return
+
     if caption.lower().startswith("split:"):
-        parts = caption[6:].strip().split(":")
+        parts  = caption[6:].strip().split(":")
         topic_code = parts[0].strip()
         rows   = int(parts[1]) if len(parts) > 1 else 1
         cols   = int(parts[2]) if len(parts) > 2 else 6
-        prefix = parts[3].strip() if len(parts) > 3 else "p"
+        prefix = parts[3].strip() if len(parts) > 3 else ""
         total  = rows * cols
+        sep    = f"-{prefix}-" if prefix else "-"
         await message.answer(
             f"⏳ Rasm {rows}×{cols}={total} ga bo'linmoqda...\n"
-            f"📌 Kod: {topic_code}-{prefix}-1 ... -{prefix}-{total}"
+            f"📌 {topic_code}{sep}1 ... {topic_code}{sep}{total}"
         )
 
         # Rasmni yuklab olish
@@ -952,7 +1009,8 @@ async def save_image(message: types.Message):
                 file_id = sent.photo[-1].file_id
 
                 # DBga saqlash
-                name = f"{topic_code}-{prefix}-{n}"
+                sep2 = f"-{prefix}-" if prefix else "-"
+                name = f"{topic_code}{sep2}{n}"
                 cur.execute("""
                     INSERT INTO images(name, file_id)
                     VALUES(%s,%s)
@@ -962,9 +1020,10 @@ async def save_image(message: types.Message):
 
         conn.commit()
         cur.close(); conn.close()
+        sep3 = f"-{prefix}-" if prefix else "-"
         await message.answer(
             f"✅ {saved} ta rasm saqlandi!\n"
-            f"📁 {topic_code}-{prefix}-1 ... {topic_code}-{prefix}-{total}"
+            f"📁 {topic_code}{sep3}1 ... {topic_code}{sep3}{total}"
         )
         return
 
