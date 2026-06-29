@@ -149,10 +149,10 @@ async def la_toggle_select(call: CallbackQuery):
     sel = st.setdefault("selected", set())
     if tc in sel:
         sel.remove(tc)
-    elif len(sel) < 15:
+    elif len(sel) < 999:  # Limit yo'q
         sel.add(tc)
     else:
-        await call.answer("⚠️ 15 tadan ko\'p tanlab bo\'lmaydi!", show_alert=True); return
+        await call.answer("✅"); return
     await _la_show_topics(call, call.from_user.id)
 
 
