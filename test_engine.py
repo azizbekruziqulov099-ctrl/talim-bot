@@ -507,3 +507,20 @@ async def finish_test(user_id, message=None):
 async def stop_test(user_id, message): await finish_test(user_id, message)
 async def next_question(user_id, message=None): await _advance(user_id)
 async def speak_question(u, m): await speak_all_question(u)
+
+async def speak_text(user_id, message, text):
+    """Matnni TTS bilan o'qish (learning.py uchun)."""
+    try:
+        import edge_tts
+        voice = "uz-UZ-MadinaNeural"
+        fname = f"tts_st_{user_id}.mp3"
+        clean = _tts_clean(text)
+        if not clean: return
+        await edge_tts.Communicate(text=clean[:400], voice=voice).save(fname)
+        if os.path.exists(fname) and os.path.getsize(fname) > 100:
+            await message.answer_voice(FSInputFile(fname))
+    except Exception as e:
+        print(f"speak_text xato: {e}")
+    finally:
+        try: os.remove(fname)
+        except: pass
