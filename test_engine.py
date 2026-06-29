@@ -15,10 +15,11 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ── Matnni tozalash ──
 def render_text(t):
+    """Matnni ko'rsatish uchun: [en]...[/en] → yotiq (italic)."""
     if not t: return ""
     t = str(t)
     t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
-    t = re.sub(r'\[en\](.*?)\[/en\]', r'\1', t, flags=re.DOTALL)
+    t = re.sub(r'\[en\](.*?)\[/en\]', r'_\1_', t, flags=re.DOTALL)  # italic
     t = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', t, flags=re.DOTALL)
     return t.strip()
 
@@ -65,23 +66,20 @@ def _build_kb(a, b, c, d, tl=0):
 async def _get_file_id(img_url):
     if not img_url or str(img_url).strip() in ("", "None", "nan"): return None
     name = str(img_url).strip()
+    m = re.match(r'^(.+)-(\d+)$', name)
+    if m:
+        base, num = m.group(1), m.group(2)
+        variants = [name, f"{base}-t-{num}", f"{base}-p-{num}"]
+    else:
+        variants = [name]
     try:
         conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
-        # Bir necha variantni sinab ko'ramiz
-        variants = [name]
-        # TC-1 → TC-t-1, TC-p-1 ham bo'lishi mumkin
-        import re
-        m = re.match(r'^(.+)-(\d+)$', name)
-        if m:
-            base, num = m.group(1), m.group(2)
-            variants += [f"{base}-t-{num}", f"{base}-p-{num}"]
-        cur.execute(
-            "SELECT file_id FROM images WHERE name = ANY(%s) LIMIT 1",
-            (variants,)
-        )
+        ph = ",".join(["%s"] * len(variants))
+        cur.execute(f"SELECT file_id FROM images WHERE name IN ({ph}) LIMIT 1", variants)
         row = cur.fetchone(); cur.close(); conn.close()
         return row[0] if row else None
     except: return None
+
 
 async def _photo_for(test, user_id=None):
     (q,a,b,c,d,correct,expl,qtype,is_latex,img_url,audio,lang,tl) = test
@@ -138,7 +136,7 @@ async def _edit_question(s, q_text, kb, photo=None):
         if qmid:
             try: await bot.delete_message(chat, qmid)
             except: pass
-        nm = await bot.send_photo(chat, photo, caption=cap, reply_markup=kb)
+        nm = await bot.send_photo(chat, photo, caption=cap, reply_markup=kb, parse_mode="Markdown")
         s["q_msg_id"] = nm.message_id; s["q_has_photo"] = True
     else:
         if s.get("q_has_photo") and qmid:
@@ -147,13 +145,13 @@ async def _edit_question(s, q_text, kb, photo=None):
             qmid = None; s["q_has_photo"] = False
         if qmid:
             try:
-                await bot.edit_message_text(text=q_text, chat_id=chat, message_id=qmid, reply_markup=kb)
+                await bot.edit_message_text(text=q_text, chat_id=chat, message_id=qmid, reply_markup=kb, parse_mode="Markdown")
                 return
             except:
                 try: await bot.delete_message(chat, qmid)
                 except: pass
                 s["q_msg_id"] = None
-        nm = await bot.send_message(chat, q_text, reply_markup=kb)
+        nm = await bot.send_message(chat, q_text, reply_markup=kb, parse_mode="Markdown")
         s["q_msg_id"] = nm.message_id; s["q_has_photo"] = False
 
 # ── Ovoz ──
@@ -199,15 +197,25 @@ async def speak_all_question(user_id):
         uz_voice = "uz-UZ-MadinaNeural"
         en_voice = "en-US-AriaNeural"
 
+        def pick_voice(raw_text):
+            """[en] tegli qismlar uchun ingliz, qolganlar uchun o'zbek ovozi."""
+            if _has_en(str(raw_text)): return en_voice
+            # Agar matn ko'proq lotin harflardan iborat bo'lsa — ingliz ovozi
+            clean = _tts_clean(str(raw_text))
+            en_chars = sum(1 for c in clean if c.isascii() and c.isalpha())
+            all_chars = sum(1 for c in clean if c.isalpha())
+            if all_chars > 0 and en_chars / all_chars > 0.7:
+                return en_voice
+            return uz_voice
+
         parts = []
         # Savol
-        parts.append((_tts_clean(q), en_voice if _has_en(q) else uz_voice))
+        parts.append((_tts_clean(q), pick_voice(q)))
         # Javoblar raqam bilan
         for num, opt in enumerate([a,b,c,d], 1):
             txt = _tts_clean(str(opt or ""))
             if txt:
-                v = en_voice if _has_en(str(opt)) else uz_voice
-                parts.append((f"{num}. {txt}", v))
+                parts.append((f"{num}. {txt}", pick_voice(opt)))
 
         combined = AS.silent(200)
         for text, voice in parts:
