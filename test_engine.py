@@ -64,23 +64,51 @@ def _build_kb(a, b, c, d, tl=0):
 # ── DB dan rasm ──
 async def _get_file_id(img_url):
     if not img_url or str(img_url).strip() in ("", "None", "nan"): return None
+    name = str(img_url).strip()
     try:
         conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
-        cur.execute("SELECT file_id FROM images WHERE name=%s", (str(img_url).strip(),))
+        # Bir necha variantni sinab ko'ramiz
+        variants = [name]
+        # TC-1 → TC-t-1, TC-p-1 ham bo'lishi mumkin
+        import re
+        m = re.match(r'^(.+)-(\d+)$', name)
+        if m:
+            base, num = m.group(1), m.group(2)
+            variants += [f"{base}-t-{num}", f"{base}-p-{num}"]
+        cur.execute(
+            "SELECT file_id FROM images WHERE name = ANY(%s) LIMIT 1",
+            (variants,)
+        )
         row = cur.fetchone(); cur.close(); conn.close()
         return row[0] if row else None
     except: return None
 
-async def _photo_for(test):
+async def _photo_for(test, user_id=None):
     (q,a,b,c,d,correct,expl,qtype,is_latex,img_url,audio,lang,tl) = test
+    # LaTeX rasm
     if is_latex and str(is_latex).lower() not in ("false","0","none",""):
         try:
             from latex_utils import latex_to_image as l2i
-            p = l2i(q, 0)
+            p = l2i(q, user_id or 0)
             if p and os.path.exists(p): return FSInputFile(p)
         except: pass
+    # image_url bo'yicha
     if img_url and str(img_url).strip() not in ("","None","nan"):
-        return await _get_file_id(str(img_url).strip())
+        fid = await _get_file_id(str(img_url).strip())
+        if fid: return fid
+    # Session topic_code + savol tartib raqami
+    if user_id:
+        from storage import test_sessions as _ts
+        s = _ts.get(user_id)
+        if s:
+            tc  = s.get("topic_code","")
+            cur = s.get("current", 0)
+            n   = cur + 1
+            if tc:
+                # TC-N, TC-t-N, TC-p-N formatlarini sinab ko'ramiz
+                for fmt in [f"{tc}-{n}", f"{tc}-t-{n}", f"{tc}-p-{n}"]:
+                    fid = await _get_file_id(fmt)
+                    if fid: return fid
     return None
 
 # ── Xabar yuborish/edit ──
@@ -259,7 +287,7 @@ async def show_question(user_id, message=None):
     try: tl = int(tl) if tl and int(tl) > 0 else 0
     except: tl = 0
 
-    photo = await _photo_for(test)
+    photo = await _photo_for(test, user_id)
 
     await _edit_board(s, _board_text(s))
     await asyncio.sleep(0.2)
@@ -421,7 +449,7 @@ async def check_button_answer(user_id, answer, message):
         result_text = f"❌ Xato!  ✅ To'g'ri: {correct_show}"
 
     # Rasim olinadi (natijada ham ko'rinsin)
-    photo = await _photo_for(test)
+    photo = await _photo_for(test, user_id)
 
     await _show_result(user_id, result_text, result_kb, photo)
 
@@ -439,7 +467,7 @@ async def check_text_answer(user_id, user_answer, message):
     given   = render_text(user_answer.strip()).lower()
     is_ok   = given == correct or correct in given or given in correct
 
-    photo = await _photo_for(test)
+    photo = await _photo_for(test, user_id)
     noop_kb = InlineKeyboardMarkup(inline_keyboard=[])
 
     if is_ok:
