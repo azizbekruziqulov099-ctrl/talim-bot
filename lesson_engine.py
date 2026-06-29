@@ -463,13 +463,14 @@ async def lesson_finish_and_test(uid, chat_id, topic_code):
         f"🎉 Dars tugadi! Endi 5 ta savol — bilimingizni tekshiramiz! 🧠"
     )
     from test_engine import start_test
+
     class FakeMsg:
-        def __init__(self, cid, bot_):
+        def __init__(self, cid):
             self.chat = type('C', (), {'id': cid})()
-            self.bot = bot_
-        async def answer(self, *a, **kw):
-            return await bot.send_message(self.chat.id, *a, **kw)
-    await start_test(uid, tests, FakeMsg(chat_id, bot))
+        async def answer(self, text, **kw):
+            return await bot.send_message(self.chat.id, text, **kw)
+
+    await start_test(uid, tests, FakeMsg(chat_id))
 
 
 def _save_progress(uid, step):
@@ -487,3 +488,9 @@ def _save_progress(uid, step):
 def build_parts(row):
     main_parts, _ = build_lesson_data(row)
     return main_parts
+
+
+async def lesson_consolidation_test(uid, chat_id, topic_code=None):
+    """lesson_finish_and_test ga alias."""
+    tc = topic_code or (lesson_state.get(uid) or {}).get('topic_code', '')
+    await lesson_finish_and_test(uid, chat_id, tc)
