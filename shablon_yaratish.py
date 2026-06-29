@@ -47,13 +47,64 @@ async def handle_shablon_callback(call, user_id):
         )
         await call.answer()
 
+
     elif data == "sh_import":
         shablon_state[user_id] = {"step": "import_wait"}
         await call.message.edit_text(
-            "📥 Import qilish\n\n"
-            "To'ldirilgan Excel faylni yuboring:"
+            "📥 Import qilish\n\nTo'ldirilgan Excel faylni yuboring:"
         )
         await call.answer()
+
+    elif data.startswith(("sh_d_","sh_t_","sh_n_")) or data == "sh_download":
+        st2      = shablon_state.get(user_id, {})
+        settings = st2.setdefault("settings", {"diff":"aralash","type":"single_choice","count":20})
+        if data.startswith("sh_d_"):    settings["diff"]  = data[5:]
+        elif data == "sh_t_choice":     settings["type"]  = "single_choice"
+        elif data == "sh_t_write":      settings["type"]  = "write_answer"
+        elif data == "sh_t_both":       settings["type"]  = "both"
+        elif data.startswith("sh_n_"):  settings["count"] = int(data[5:])
+        elif data == "sh_download":
+            sinf     = st2.get("sinf","1")
+            fan      = st2.get("fan","Fan")
+            mavzular = st2.get("mavzular",[])
+            buf = await _create_shablon(sinf, fan, mavzular,
+                                        diff=settings["diff"],
+                                        qtype=settings["type"],
+                                        count=settings["count"])
+            fname = f"shablon_{sinf}sinf_{fan[:10].replace(' ','_')}.xlsx"
+            await call.message.answer_document(
+                BufferedInputFile(buf.read(), filename=fname),
+                caption=(
+                    f"✅ Shablon tayyor!\n🏫 {sinf}-sinf | {fan}\n"
+                    f"📚 {len(mavzular)} ta mavzu × {settings['count']} ta\n"
+                    f"🎯 {settings['diff']} | {settings['type']}\n"
+                    f"📊 Jami: {len(mavzular)*settings['count']} ta qator"
+                )
+            )
+            shablon_state.pop(user_id, None)
+            await call.answer("✅")
+            return
+        await call.answer("✅")
+        def c(x): return "✅ " if x else ""
+        s2 = settings
+        new_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{c(s2['diff']=='oson')}🟢 Oson",        callback_data="sh_d_oson"),
+             InlineKeyboardButton(text=f"{c(s2['diff']=='orta')}🟡 O'rta",      callback_data="sh_d_orta"),
+             InlineKeyboardButton(text=f"{c(s2['diff']=='qiyin')}🔴 Qiyin",      callback_data="sh_d_qiyin"),
+             InlineKeyboardButton(text=f"{c(s2['diff']=='murakkab')}⚫ Murakkab", callback_data="sh_d_murakkab"),
+             InlineKeyboardButton(text=f"{c(s2['diff']=='aralash')}🌈 Aralash",  callback_data="sh_d_aralash")],
+            [InlineKeyboardButton(text=f"{c(s2['type']=='single_choice')}🔘 Tugmali", callback_data="sh_t_choice"),
+             InlineKeyboardButton(text=f"{c(s2['type']=='write_answer')}✍️ Yozuvli",  callback_data="sh_t_write"),
+             InlineKeyboardButton(text=f"{c(s2['type']=='both')}📝 Ikkalasi",          callback_data="sh_t_both")],
+            [InlineKeyboardButton(text=f"{c(s2['count']==5)}5 ta",   callback_data="sh_n_5"),
+             InlineKeyboardButton(text=f"{c(s2['count']==10)}10 ta", callback_data="sh_n_10"),
+             InlineKeyboardButton(text=f"{c(s2['count']==15)}15 ta", callback_data="sh_n_15"),
+             InlineKeyboardButton(text=f"{c(s2['count']==20)}20 ta", callback_data="sh_n_20")],
+            [InlineKeyboardButton(text="📥 Shablon yuklab olish", callback_data="sh_download")],
+        ])
+        try: await call.message.edit_reply_markup(reply_markup=new_kb)
+        except: pass
+
 
 
 # ─── XABAR HANDLER ───────────────────────────────
@@ -122,22 +173,36 @@ async def handle_shablon_message(message, user_id):
             await message.answer("❌ Mavzular topilmadi! Qayta yozing.")
             return
 
-        # Excel yaratish
-        buf = await _create_shablon(sinf, fan, mavzular)
+        # Sozlamalar tanlash bosqichi
+        shablon_state[user_id]["mavzular"] = mavzular
+        shablon_state[user_id]["step"] = "settings"
+        shablon_state[user_id]["settings"] = {
+            "diff": "aralash", "type": "single_choice", "count": 20
+        }
 
-        fname = f"shablon_{sinf}sinf_{fan.replace(' ', '_')}.xlsx"
-        await message.answer_document(
-            BufferedInputFile(buf.read(), filename=fname),
-            caption=(
-                f"✅ Shablon tayyor!\n"
-                f"📚 {sinf}-sinf | {fan}\n"
-                f"📝 {len(mavzular)} ta mavzu × 2 qator\n"
-                f"📊 Jami: {len(mavzular)*2} ta qator\n\n"
-                f"Bo'sh ustunlar: Bob, Bo'lim, Kichik mavzu\n"
-                f"To'ldirib import qiling ✅"
-            )
+        def _sh_kb(st2):
+            def c(cond): return "✅ " if cond else ""
+            return InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=f"{c(st2['diff']=='oson')}🟢 Oson",        callback_data="sh_d_oson"),
+                 InlineKeyboardButton(text=f"{c(st2['diff']=='orta')}🟡 O'rta",       callback_data="sh_d_orta"),
+                 InlineKeyboardButton(text=f"{c(st2['diff']=='qiyin')}🔴 Qiyin",      callback_data="sh_d_qiyin"),
+                 InlineKeyboardButton(text=f"{c(st2['diff']=='murakkab')}⚫ Muraккab", callback_data="sh_d_murakkab"),
+                 InlineKeyboardButton(text=f"{c(st2['diff']=='aralash')}🌈 Aralash",  callback_data="sh_d_aralash")],
+                [InlineKeyboardButton(text=f"{c(st2['type']=='single_choice')}🔘 Tugmali", callback_data="sh_t_choice"),
+                 InlineKeyboardButton(text=f"{c(st2['type']=='write_answer')}✍️ Yozuvli",  callback_data="sh_t_write"),
+                 InlineKeyboardButton(text=f"{c(st2['type']=='both')}📝 Ikkalasi",          callback_data="sh_t_both")],
+                [InlineKeyboardButton(text=f"{c(st2['count']==5)}5 ta",    callback_data="sh_n_5"),
+                 InlineKeyboardButton(text=f"{c(st2['count']==10)}10 ta",  callback_data="sh_n_10"),
+                 InlineKeyboardButton(text=f"{c(st2['count']==15)}15 ta",  callback_data="sh_n_15"),
+                 InlineKeyboardButton(text=f"{c(st2['count']==20)}20 ta",  callback_data="sh_n_20")],
+                [InlineKeyboardButton(text="📥 Shablon yuklab olish", callback_data="sh_download")],
+            ])
+
+        shablon_state[user_id]["_sh_kb"] = _sh_kb
+        await message.answer(
+            f"⚙️ Sozlamalar\n📚 {len(mavzular)} ta mavzu\n\nQiyinlik, tur va mavzu boshiga son:",
+            reply_markup=_sh_kb(shablon_state[user_id]["settings"])
         )
-        shablon_state.pop(user_id, None)
 
     # Import
     elif step == "import_wait":
@@ -238,7 +303,7 @@ async def handle_shablon_document(message, user_id, bot):
 
 
 # ─── EXCEL SHABLON YARATISH ───────────────────────
-async def _create_shablon(sinf, fan, mavzular):
+async def _create_shablon(sinf, fan, mavzular, diff='aralash', qtype='single_choice', count=2):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "DTS_SHABLON"
@@ -260,7 +325,7 @@ async def _create_shablon(sinf, fan, mavzular):
     row_num = 2
     for chorak, mavzu in mavzular:
         color = chorak_colors.get(str(chorak), "F2F2F2")
-        for _ in range(2):  # 2 ta kichik mavzu uchun
+        for _ in range(count):  # count ta qator
             ws.cell(row_num, 1, value=sinf)
             ws.cell(row_num, 2, value=fan)
             ws.cell(row_num, 3, value=chorak)
