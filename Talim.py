@@ -1528,107 +1528,76 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         _gr = cur2.fetchone()
         _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
 
-        # DARS yozilgan mavzular — teacher_lessons jadvalida bor
+        # Dars bor fanlar (o'z sinfi + CEFR kabi raqamsiz sinflar)
         cur2.execute("""
-            SELECT tl.topic_code, d.kichik_name, d.subject_name
+            SELECT DISTINCT d.subject_name,
+                   COUNT(tl.topic_code) as cnt,
+                   d.grade
             FROM teacher_lessons tl
             JOIN dts_tree d ON d.topic_code = tl.topic_code
-            WHERE d.grade = %s AND d.is_deleted = FALSE
-            ORDER BY d.subject_name, tl.topic_code
+            WHERE (d.grade = %s OR d.grade !~ '^[0-9]+$')
+              AND d.is_deleted = FALSE
+            GROUP BY d.subject_name, d.grade
+            ORDER BY d.grade, d.subject_name
         """, (_my_grade,))
-        my_lessons = cur2.fetchall()
-
-        # CEFR va boshqa sinflar uchun ham
-        cur2.execute("""
-            SELECT tl.topic_code, d.kichik_name, d.subject_name
-            FROM teacher_lessons tl
-            JOIN dts_tree d ON d.topic_code = tl.topic_code
-            WHERE d.grade != %s AND d.is_deleted = FALSE
-            ORDER BY d.grade, d.subject_name, tl.topic_code
-        """, (_my_grade,))
-        other_lessons = cur2.fetchall()
-
-        # O'tilgan mavzular (lesson_progress)
-        cur2.execute("SELECT topic_code FROM lesson_progress WHERE user_id=%s", (user_id,))
-        studied_set = {r[0] for r in cur2.fetchall()}
+        subjects = cur2.fetchall()
         cur2.close(); conn2.close()
 
-        rows = []
-        total = len(my_lessons) + len(other_lessons)
-
-        for tc, kname, subj in my_lessons[:20]:
-            icon = "✅" if tc in studied_set else "📖"
-            rows.append([InlineKeyboardButton(
-                text=f"{icon} {kname[:40]}",
-                callback_data=f"mustah_lesson:{tc}"
-            )])
-
-        if other_lessons:
-            rows.append([InlineKeyboardButton(
-                text=f"🌐 Boshqa sinflar ({len(other_lessons)} ta)",
-                callback_data=f"mustah_other:0"
-            )])
-
-        if not rows:
-            await message.answer(
-                "📚 Hali bu sinf uchun darslar yozilmagan.\nAdmin darslar qo'shishi kerak!"
-            )
+        if not subjects:
+            await message.answer("📚 Hali darslar yozilmagan. Admin darslar qo'shishi kerak!")
             return
 
-        title = (
-            f"📚 Bilimni mustahkamlash\n"
-            f"✅ = o'tilgan  📖 = yangi\n"
-            f"🏫 {_my_grade}-sinf | {total} ta dars:\n"
+        rows = []
+        for subj, cnt, grade in subjects:
+            lbl = f"{grade}-sinf" if str(grade).isdigit() else str(grade)
+            icon = "⭐" if str(grade) == str(_my_grade) else "🌐"
+            rows.append([InlineKeyboardButton(
+                text=f"{icon} {subj} ({cnt} ta dars)",
+                callback_data=f"mustah_subj:{grade}:{subj}"
+            )])
+
+        await message.answer(
+            "📚 Bilimni mustahkamlash\nFan tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        await message.answer(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
 
     if message.text == "🧪 Bilimni sinash":
-        # O'quvchi sinifini topamiz
-        try:
-            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
-            _cc.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-            _ur = _cc.fetchone()
-            _my_grade = str(_ur[0]) if _ur and _ur[0] else ""
-            _cc.close(); _cn.close()
-        except Exception: _my_grade = ""
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
+        _gr = cur2.fetchone()
+        _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
 
-        # Barcha sinflar
-        try:
-            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
-            _cc.execute("""
-                SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
-                ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade
-            """)
-            _grades = [r[0] for r in _cc.fetchall()]
-            _cc.close(); _cn.close()
-        except Exception: _grades = []
+        # Faqat TEST bor fanlar (o'z sinfi + raqamsiz sinflar)
+        cur2.execute("""
+            SELECT DISTINCT d.subject_name,
+                   COUNT(DISTINCT g.topic_code) as cnt,
+                   d.grade
+            FROM generated_tests g
+            JOIN dts_tree d ON d.topic_code = g.topic_code
+            WHERE (d.grade = %s OR d.grade !~ '^[0-9]+$')
+              AND d.is_deleted = FALSE
+            GROUP BY d.subject_name, d.grade
+            ORDER BY d.grade, d.subject_name
+        """, (_my_grade,))
+        subjects = cur2.fetchall()
+        cur2.close(); conn2.close()
 
-        def _glabel(g):
-            if str(g).isdigit():
-                lbl = f"{g}-sinf"
-                return f"⭐ {lbl} (Mening sinfim)" if str(g) == str(_my_grade) else f"🏫 {lbl}"
-            return f"⭐ {g} (Mening sinfim)" if str(g) == str(_my_grade) else f"📚 {g}"
+        if not subjects:
+            await message.answer("🧪 Hali test mavjud emas. Admin testlar qo'shishi kerak!")
+            return
 
         rows = []
-        # Avval o'z sinfi
-        if _my_grade and _my_grade in _grades:
+        for subj, cnt, grade in subjects:
+            icon = "⭐" if str(grade) == str(_my_grade) else "🌐"
             rows.append([InlineKeyboardButton(
-                text=_glabel(_my_grade),
-                callback_data=f"stnav_grade:{_my_grade}"
-            )])
-        # Faqat raqamsiz sinflar (CEFR, A1 va h.k.) — boshqa raqamli sinflar chiqmaydi
-        for _g in _grades:
-            if str(_g) == str(_my_grade): continue
-            if str(_g).isdigit(): continue  # boshqa raqamli sinflar chiqmaydi
-            rows.append([InlineKeyboardButton(
-                text=_glabel(_g),
-                callback_data=f"stnav_grade:{_g}"
+                text=f"{icon} {subj} ({cnt} ta mavzu)",
+                callback_data=f"sinash_subj:{grade}:{subj}"
             )])
         rows.append([InlineKeyboardButton(text="⚡ Tezkor (aralash 20ta)", callback_data="tset_start_quick")])
 
         await message.answer(
-            "🧪 Bilimni sinash\n\nSinf tanlang:",
+            "🧪 Bilimni sinash\nFan tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
@@ -3482,6 +3451,69 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # ════════════════════════════
 
     # ═══ O'QUVCHI TEST NAVIGATOR ═══
+    if call.data.startswith("sinash_subj:"):
+        parts2 = call.data.split(":", 2)
+        grade2 = parts2[1]; subj2 = parts2[2]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT DISTINCT d.kichik_name, d.topic_code,
+                   COUNT(g.id) as test_cnt
+            FROM dts_tree d
+            JOIN generated_tests g ON g.topic_code = d.topic_code
+            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            GROUP BY d.kichik_name, d.topic_code
+            ORDER BY d.topic_code
+        """, (grade2, subj2))
+        topics2 = cur2.fetchall()
+        cur2.close(); conn2.close()
+
+        rows = []
+        for kname, tc, cnt in topics2:
+            rows.append([InlineKeyboardButton(
+                text=f"📝 {kname[:40]} ({cnt} ta)",
+                callback_data=f"ts_start:{tc}"
+            )])
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="sinash_back")])
+        await call.message.edit_text(
+            f"🧪 {subj2}\n{len(topics2)} ta mavzu (faqat test borlar):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
+    if call.data == "sinash_back":
+        await call.message.delete()
+        return
+
+    if call.data.startswith("mustah_subj:"):
+        parts2 = call.data.split(":", 2)
+        grade2 = parts2[1]; subj2 = parts2[2]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT tl.topic_code, d.kichik_name
+            FROM teacher_lessons tl
+            JOIN dts_tree d ON d.topic_code = tl.topic_code
+            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            ORDER BY tl.topic_code
+        """, (grade2, subj2))
+        topics2 = cur2.fetchall()
+        cur2.execute("SELECT topic_code FROM lesson_progress WHERE user_id=%s", (call.from_user.id,))
+        studied2 = {r[0] for r in cur2.fetchall()}
+        cur2.close(); conn2.close()
+
+        rows = []
+        for tc, kname in topics2:
+            icon = "✅" if tc in studied2 else "📖"
+            rows.append([InlineKeyboardButton(
+                text=f"{icon} {kname[:45]}",
+                callback_data=f"mustah_lesson:{tc}"
+            )])
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="mustah_back")])
+        await call.message.edit_text(
+            f"📚 {subj2}\n✅=o'tilgan  📖=yangi\n{len(topics2)} ta mavzu:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
     if call.data.startswith("mustah_lesson:"):
         tc = call.data.split(":")[1]
         await call.answer()
