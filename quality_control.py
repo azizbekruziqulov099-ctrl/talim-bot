@@ -9,26 +9,22 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # TIL ANIQLASH
 # ══════════════════════════════════════
 def detect_lang(text: str) -> str:
-    """Matn tilini aniqlaydi: uz | ru | en"""
+    """Matn tilini aniqlaydi: uz | ru | en
+    Default: uz (o'zbek)"""
     if not text: return "uz"
-    text = text.lower()
-    # O'zbek harflari
-    uz_chars = set("gʻoʻıñ") | set("'")
-    uz_words = {"nima","qanday","qachon","kim","bu","va","emas","bilan",
-                "uchun","kerak","yaxshi","bilaman","o'rganish"}
-    # Rus harflari
+    t = text.lower().strip()
+    # Rus kirill harflari ko'p bo'lsa — ru
     ru_chars = set("абвгдежзийклмнопрстуфхцчшщъыьэюяё")
-    ru_words = {"что","как","где","когда","почему","это","для","учебник"}
-    # Ingliz
-    en_words = {"what","how","where","when","why","this","for","the","is","are"}
-
-    words = set(re.findall(r'\b\w+\b', text))
-    ru_score = sum(1 for c in text if c in ru_chars) + len(words & ru_words)*3
-    en_score = len(words & en_words)*3 + (1 if all(c.isascii() for c in text if c.isalpha()) else 0)*2
-    uz_score = sum(1 for c in text if c in uz_chars) + len(words & uz_words)*3
-
-    if ru_score > en_score and ru_score > uz_score: return "ru"
-    if en_score > uz_score: return "en"
+    ru_count = sum(1 for c in t if c in ru_chars)
+    if ru_count > 2: return "ru"
+    # Ingliz so'zlari aniq bo'lsa — en
+    en_words = {"what","how","where","when","why","this","for","the",
+                "is","are","hello","hi","tell","me","teach","explain",
+                "give","show","can","you","do","know","about"}
+    words = set(re.findall(r"\b[a-zA-Z]+\b", t))
+    en_score = len(words & en_words)
+    if en_score >= 2: return "en"
+    # Qolgan hamma narsa o'zbek (default)
     return "uz"
 
 # ══════════════════════════════════════
