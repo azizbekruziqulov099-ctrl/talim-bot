@@ -3455,6 +3455,40 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
+
+    # ═══ BRAIN ═══
+    if (user_id not in ADMINS and message.text
+            and not message.text.startswith("/")
+            and user_state.get(user_id) not in ("text_answer","in_test")):
+        skip = {"🎯 Bugungi reja","📚 Bilimni mustahkamlash","🧪 Bilimni sinash",
+                "📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet","🤖 Yordamchi","👇",
+                "✅ Ha, import qil","❌ Bekor"}
+        if message.text not in skip:
+            try:
+                from brain import process_message as _b
+                _cn=psycopg2.connect(DATABASE_URL); _cu=_cn.cursor()
+                _cu.execute("SELECT class FROM users WHERE user_id=%s",(user_id,))
+                _gr=_cu.fetchone(); grade_=str(_gr[0]) if _gr else None
+                _cu.close(); _cn.close()
+                r=await _b(message.text, user_id, grade_)
+                if r.get("message"): await message.answer(r["message"])
+                if r.get("action")=="START_TEST" and r.get("topic"):
+                    _cn2=psycopg2.connect(DATABASE_URL); _cu2=_cn2.cursor()
+                    _cu2.execute("""SELECT question,option_a,option_b,option_c,option_d,
+                        correct_answer,explanation,question_type,is_latex,
+                        image_url,audio_text,language,time_limit
+                        FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20""",
+                        (r["topic"]["topic_code"],))
+                    t_=_cu2.fetchall(); _cu2.close(); _cn2.close()
+                    if t_: await start_test(user_id, t_, message)
+                elif r.get("action")=="START_LESSON" and r.get("topic"):
+                    await open_teacher_lesson(message,
+                        topic_code=r["topic"]["topic_code"],_user_id=user_id)
+                elif r.get("action")=="SHOW_STATS":
+                    await continue_learning(message)
+            except Exception as _e:
+                print(f"brain: {_e}")
+
 # ===== MAKTABNI ALMASHTIRISH =====
 
         elif message.text == "🏫 Maktabni almashtirish":
