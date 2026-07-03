@@ -1799,10 +1799,48 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
 
 
+    # ── Kitob PDF yuklash ──
+    if (message.document and user_id in ADMINS and
+            admin_state.get(user_id) == "kitob_yuklash_pdf"):
+        info = admin_state.get(f"{user_id}_kitob_info", {})
+        title   = info.get("title", "Kitob")
+        fan     = info.get("fan", "")
+        sinf    = info.get("sinf", "")
+        muallif = info.get("muallif", "")
+        fid     = message.document.file_id
+        status_k = await message.answer("⏳ PDF qabul qilindi, qayta ishlash boshlandi...")
+
+        async def do_process_kitob():
+            try:
+                import kitob_bazasi as _kb
+                buf_k = BytesIO()
+                await message.bot.download(fid, destination=buf_k)
+                buf_k.seek(0)
+                result = await _kb.process_book(
+                    pdf_bytes=buf_k.read(),
+                    title=title, fan=fan, sinf=sinf,
+                    muallif=muallif, file_id=fid,
+                    progress_cb=lambda msg: status_k.edit_text(msg)
+                )
+                await message.answer(
+                    f"✅ Kitob saqlandi!\n📖 {title}\n"
+                    f"📚 {result['sections']} bo'lim | "
+                    f"📝 {result['chunks']} matn | "
+                    f"🔢 {result['formulas']} formula"
+                )
+            except Exception as e:
+                await message.answer(f"❌ Xato: {e}")
+            finally:
+                admin_state.pop(user_id, None)
+                admin_state.pop(f"{user_id}_kitob_info", None)
+
+        asyncio.create_task(do_process_kitob())
+        return
+
     # ── Excel shablon yuborilsa — faqat "excel_merge" state da ──
     if (message.document and user_id in ADMINS and
             message.document.file_name and
-            message.document.file_name.endswith(".xlsx") and
+            (message.document.file_name or "").endswith(".xlsx") and
             admin_state.get(user_id) == "excel_merge"):
 
         first_key = f"merge_file1_{user_id}"
