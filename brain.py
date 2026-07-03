@@ -183,15 +183,15 @@ HELP_TEXT = {
 }
 
 GREET_TEXT = {
-    "uz": "👋 Salom! Men ta'lim yordamchisiman.\n\n«yordam» yozing — nima qila olishimni ko'rasiz.",
-    "ru": "👋 Привет! Я образовательный помощник.\n\nНапишите «помощь» чтобы увидеть возможности.",
-    "en": "👋 Hello! I'm an educational assistant.\n\nType «help» to see what I can do.",
+    "uz": "👋 Salom! Men ta'lim yordamchisiman.\n\nIstalgan savolingizni yozing:\n• «kasr nima?»\n• «misol ber»\n• «test ber»",
+    "ru": "👋 Привет! Я образовательный помощник.\n\nЗадайте любой вопрос:",
+    "en": "👋 Hello! I'm an educational assistant.\n\nAsk me anything:",
 }
 
 NOT_FOUND = {
-    "uz": "🤔 Tushunmadim yoki ma'lumot topilmadi. «yordam» yozing.",
-    "ru": "🤔 Не понял или информация не найдена. Напишите «помощь».",
-    "en": "🤔 I didn't understand or no info found. Type «help».",
+    "uz": "🤔 Bu haqda ma'lumot bazamda yo'q.\n\nBoshqa savol bering yoki aniqroq yozing:\n• «kasr nima?»\n• «qo'shish qoidasi»",
+    "ru": "🤔 Информация не найдена. Попробуйте другой вопрос.",
+    "en": "🤔 No info found. Try asking differently.",
 }
 
 # ══════════════════════════════════════
@@ -274,11 +274,16 @@ async def process_message(text: str, user_id: int, grade: str = None, yosh: int 
         }.get(lang)
 
     else:
-        # Hali ham bilim bazasidan qidiramiz
+        # Har qanday matn uchun bilim bazasidan qidiramiz
         kb = answer_from_db(text, yosh=yosh, lang=lang)
         if kb.get("found"):
+            izoh = kb.get("izoh","")
             result["message"] = f"📖 {kb['mavzu']}\n\n{kb['javob']}"
+            if izoh: result["message"] += f"\n\n💡 {izoh}"
+        elif topic:
+            result["action"]  = "START_LESSON"
+            result["message"] = f"📖 {topic['kichik_name']} bo\'yicha dars boshlayman..."
         else:
-            result["message"] = NOT_FOUND.get(lang)
+            result["message"] = NOT_FOUND.get(lang, NOT_FOUND["uz"])
 
     return result
