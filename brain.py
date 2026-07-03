@@ -12,6 +12,17 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # NIYAT QO'LLANMASI (3 tilda)
 # ══════════════════════════════════════
 INTENTS = {
+    "MISOL": [
+        r"misol(lar)?|mashq|topshiriq",
+        r"пример|задание|упражнение",
+        r"example|exercise|practice",
+    ],
+    "MASALA": [
+        r"masala(lar)?|muammo|hisoblash",
+        r"задача|вычисли|реши",
+        r"problem|solve|calculate",
+    ],
+
     "TEST": [
         r"test\s*(ber|boshlash|ishla|qil)", r"sinov", r"imtihon",
         r"тест|проверь|экзамен", r"test|quiz|exam",
@@ -118,6 +129,20 @@ def answer_from_db(text: str, fan: str = None, sinf: str = None, yosh: int = 10,
 
     if not rows: return {"found": False}
     best = rows[0]
+    # Misol/masalalarni ham qidiramiz
+    try:
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        ph2 = ",".join(["%s"]*len(words))
+        cur2.execute(f"""
+            SELECT ex_type, savol, yechim, javob, qiyinlik
+            FROM book_exercises
+            WHERE mavzu ILIKE ANY(ARRAY[{",".join(["%s"]*len(words))}])
+               OR savol ILIKE ANY(ARRAY[{",".join(["%s"]*len(words))}])
+            ORDER BY id LIMIT 3
+        """, [f"%{w}%" for w in words]*2)
+        exercises = cur2.fetchall()
+        cur2.close(); conn2.close()
+    except: exercises = []
     javob = (best[5] if yosh<=7 else best[6] if yosh<=11 else best[7]) or best[3]
     return {
         "found":  True,
