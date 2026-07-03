@@ -45,6 +45,7 @@ def get_main_keyboard(role=None, unread_errors=0):
             ],
             [
                 KeyboardButton(text="🖼 Rasmlar boshqaruvi"),
+                KeyboardButton(text="🎨 AI Rasm yaratish"),
                 KeyboardButton(text="👥 Foydalanuvchilar"),
                 KeyboardButton(text="🧭 DTS topik boshqaruvi"),
             ],
