@@ -11,8 +11,8 @@ def get_main_keyboard(role=None, unread_errors=0):
                 KeyboardButton(text="🧪 Bilimni sinash"),
             ],
             [
+                KeyboardButton(text="🤖 Yordamchi"),
                 KeyboardButton(text="📈 Rivojlanishim"),
-                KeyboardButton(text="🌍 Hamjamiyat"),
                 KeyboardButton(text="👤 Kabinet"),
             ],
         ]
