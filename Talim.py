@@ -1774,11 +1774,11 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
 
 
-    # ── Excel shablon yuborilsa — DB dan avtomatik to'ldirish ──
+    # ── Excel shablon yuborilsa — faqat "excel_merge" state da ──
     if (message.document and user_id in ADMINS and
             message.document.file_name and
             message.document.file_name.endswith(".xlsx") and
-            admin_state.get(user_id) not in ("test_import","test_import_confirm","kitob_yuklash","kitob_yuklash_pdf")):
+            admin_state.get(user_id) == "excel_merge"):
 
         first_key = f"merge_file1_{user_id}"
 
@@ -2003,7 +2003,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
             return
 
-    elif message.text == "📖 Kitob yaratish":
+    elif message.text == "📦 Kitob Word":
         if user_id not in ADMINS: return
         # Kitoblar ro'yxati
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
@@ -2069,6 +2069,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
         except Exception as e:
             await message.answer(f"Excel xato: {e}")
+        return
+
+    elif message.text == "📝 Shablon to'ldirish":
+        if user_id not in ADMINS: return
+        admin_state[user_id] = "excel_merge"
+        await message.answer(
+            "📝 Shablon to'ldirish\n\n"
+            "Bo'sh shablon Excel faylini yuboring.\n"
+            "Bot DB dagi savollardan avtomatik to'ldiradi.\n\n"
+            "Agar DB da savol yo'q bo'lsa — 2-fayl (savol fayli) ham yuborasiz."
+        )
         return
 
     elif message.text == "📖 Kitob yuklash":
