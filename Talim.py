@@ -1530,6 +1530,49 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             except Exception:
                 pass
 
+    # ═══ BRAIN ═══
+    if (user_id not in ADMINS
+            and message.text
+            and not message.text.startswith("/")
+            and user_state.get(user_id) not in ("text_answer","in_test","in_lesson")
+            and not isinstance(user_state.get(user_id), dict)):
+        _skip = {
+            "⚙️ Sozlamalar","🎯 Bugungi reja","📚 Bilimni mustahkamlash",
+            "🧪 Bilimni sinash","📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet",
+            "🤖 Yordamchi","👇","✅ Ha, import qil","❌ Bekor",
+            "🔙 Ortga","🏠 Bosh menyu","🏠 Bosh ekran",
+            "▶️ O'rganishni boshlash","🔊 O'qib berish",
+        }
+        if message.text not in _skip:
+            try:
+                from brain import process_message as _b
+                _cn = psycopg2.connect(DATABASE_URL); _cu = _cn.cursor()
+                _cu.execute("SELECT class FROM users WHERE user_id=%s",(user_id,))
+                _gr = _cu.fetchone(); _grade = str(_gr[0]) if _gr else None
+                _cu.close(); _cn.close()
+                _res = await _b(message.text, user_id, _grade)
+                if _res.get("message"):
+                    await message.answer(_res["message"])
+                if _res.get("action") == "START_TEST" and _res.get("topic"):
+                    _c2 = psycopg2.connect(DATABASE_URL); _cu2 = _c2.cursor()
+                    _cu2.execute("""SELECT question,option_a,option_b,option_c,option_d,
+                           correct_answer,explanation,question_type,is_latex,
+                           image_url,audio_text,language,time_limit
+                           FROM generated_tests WHERE topic_code=%s
+                           ORDER BY RANDOM() LIMIT 20""",
+                        (_res["topic"]["topic_code"],))
+                    _t = _cu2.fetchall(); _cu2.close(); _c2.close()
+                    if _t: await start_test(user_id, _t, message)
+                elif _res.get("action") == "START_LESSON" and _res.get("topic"):
+                    await open_teacher_lesson(message,
+                        topic_code=_res["topic"]["topic_code"], _user_id=user_id)
+                elif _res.get("action") == "SHOW_STATS":
+                    await continue_learning(message)
+            except Exception as _be:
+                print(f"brain: {_be}")
+            return
+    # ════════════════════════════════
+
     if message.text == "⚙️ Sozlamalar":
         from student_settings import show_settings
         await show_settings(message, user_id)
@@ -1686,6 +1729,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await student_profile(message)
         return
 
+    
     if user_id not in temp_user:
         temp_user[user_id] = {}
 
@@ -3599,39 +3643,6 @@ Qoidalar:
 
             return
 
-
-    # ═══ BRAIN ═══
-    if (user_id not in ADMINS and message.text
-            and not message.text.startswith("/")
-            and user_state.get(user_id) not in ("text_answer","in_test")):
-        skip = {"🎯 Bugungi reja","📚 Bilimni mustahkamlash","🧪 Bilimni sinash",
-                "📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet","🤖 Yordamchi","👇",
-                "✅ Ha, import qil","❌ Bekor"}
-        if message.text not in skip:
-            try:
-                from brain import process_message as _b
-                _cn=psycopg2.connect(DATABASE_URL); _cu=_cn.cursor()
-                _cu.execute("SELECT class FROM users WHERE user_id=%s",(user_id,))
-                _gr=_cu.fetchone(); grade_=str(_gr[0]) if _gr else None
-                _cu.close(); _cn.close()
-                r=await _b(message.text, user_id, grade_)
-                if r.get("message"): await message.answer(r["message"])
-                if r.get("action")=="START_TEST" and r.get("topic"):
-                    _cn2=psycopg2.connect(DATABASE_URL); _cu2=_cn2.cursor()
-                    _cu2.execute("""SELECT question,option_a,option_b,option_c,option_d,
-                        correct_answer,explanation,question_type,is_latex,
-                        image_url,audio_text,language,time_limit
-                        FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20""",
-                        (r["topic"]["topic_code"],))
-                    t_=_cu2.fetchall(); _cu2.close(); _cn2.close()
-                    if t_: await start_test(user_id, t_, message)
-                elif r.get("action")=="START_LESSON" and r.get("topic"):
-                    await open_teacher_lesson(message,
-                        topic_code=r["topic"]["topic_code"],_user_id=user_id)
-                elif r.get("action")=="SHOW_STATS":
-                    await continue_learning(message)
-            except Exception as _e:
-                print(f"brain: {_e}")
 
 # ===== MAKTABNI ALMASHTIRISH =====
 
