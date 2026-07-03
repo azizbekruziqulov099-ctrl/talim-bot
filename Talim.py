@@ -1932,6 +1932,26 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
             return
 
+    elif message.text == "📖 Kitob yuklash":
+        if user_id not in ADMINS: return
+        admin_state[user_id] = "kitob_yuklash"
+        await message.answer(
+            "📖 Kitob yuklash\n\n"
+            "Quyidagi formatda yozing:\n"
+            "<code>Kitob nomi | Fan | Sinf | Muallif</code>\n\n"
+            "Masalan:\n"
+            "<code>Matematika 5 | Matematika | 5 | Mirzayev A.</code>\n\n"
+            "Keyin PDF faylni yuboring.",
+            parse_mode="HTML"
+        )
+        return
+
+    elif message.text == "🔍 Bilim qidirish":
+        if user_id not in ADMINS: return
+        admin_state[user_id] = "kitob_qidirish"
+        await message.answer("🔍 Qidiruv so'zini yozing:")
+        return
+
     elif message.text == "🔧 Test tuzatmalar":
         if user_id not in ADMINS: return
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
@@ -3370,6 +3390,10 @@ def _mk_ts_kb(st2, cnt_total):
 
 
 @dp.callback_query()
+
+
+
+
 async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
     # BIRINCHI call.answer() — Telegram "yuklanyapti" ni darhol to'xtatadi
@@ -3815,12 +3839,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "ts_go":
         from storage import user_state as _us
         st2 = _us.get(user_id) if isinstance(_us.get(user_id), dict) else {}
-        tc  = st2.get("ts_topic","")
+        tc   = st2.get("ts_topic","")
         cnt2 = st2.get("ts_count", 20)
         diff = st2.get("ts_diff", "all")
         write= st2.get("ts_write", False)
         if not tc:
-            await call.message.answer("❌ Mavzu tanlanmagan"); return
+            await call.answer("❌ Mavzu tanlanmagan — qayta tanlang", show_alert=True)
+            return
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         diff_f = "" if diff=="all" else f"AND difficulty='{diff}'"
         type_f = "" if write else "AND question_type != 'write_answer'"
@@ -3833,8 +3858,14 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         """, (tc, cnt2))
         tests = cur2.fetchall(); cur2.close(); conn2.close()
         if not tests:
-            await call.message.answer("❌ Bu filtr bo'yicha test topilmadi!"); return
+            await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
+            return
+        await call.answer()
         await start_test(user_id, tests, call.message)
+        # topic_code ni sessionga saqlaymiz (rasm uchun)
+        from storage import test_sessions as _ts
+        if user_id in _ts:
+            _ts[user_id]["topic_code"] = tc
         return
 
     # ═══════════════════════
@@ -4753,6 +4784,48 @@ async def _health_server():
     await site.start()
     print("✅ Health server port 8080 da ishga tushdi")
 
+
+
+# ═══ BRAIN message handler ═══
+@dp.message()
+async def brain_handler(message: Message, state: FSMContext):
+    uid = message.from_user.id if message.from_user else 0
+    if uid in ADMINS: return
+    if user_state.get(uid) in ("text_answer", "in_test"): return
+    if not message.text or message.text.startswith("/"): return
+    # Tugmalar (menyu) — brain ga kirmasin
+    menu_buttons = {
+        "🎯 Bugungi reja","📚 Bilimni mustahkamlash","🧪 Bilimni sinash",
+        "📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet",
+    }
+    if message.text in menu_buttons: return
+    try:
+        from brain import process_message as _brain
+        conn_ = psycopg2.connect(DATABASE_URL); cur_ = conn_.cursor()
+        cur_.execute("SELECT class FROM users WHERE user_id=%s", (uid,))
+        gr_ = cur_.fetchone()
+        grade_ = str(gr_[0]) if gr_ else None
+        cur_.close(); conn_.close()
+        res = await _brain(message.text, uid, grade_)
+        if res.get("message"):
+            await message.answer(res["message"])
+        if res.get("action") == "START_TEST" and res.get("topic"):
+            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            cur2.execute("""
+                SELECT question,option_a,option_b,option_c,option_d,
+                       correct_answer,explanation,question_type,is_latex,
+                       image_url,audio_text,language,time_limit
+                FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20
+            """, (res["topic"]["topic_code"],))
+            tests_ = cur2.fetchall(); cur2.close(); conn2.close()
+            if tests_: await start_test(uid, tests_, message)
+        elif res.get("action") == "START_LESSON" and res.get("topic"):
+            await open_teacher_lesson(message, topic_code=res["topic"]["topic_code"], _user_id=uid)
+        elif res.get("action") == "SHOW_STATS":
+            await continue_learning(message)
+    except Exception as e:
+        print(f"brain xato: {e}")
+# ════════════════════════════════
 
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
