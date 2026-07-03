@@ -11,7 +11,40 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def db(): return psycopg2.connect(DATABASE_URL)
 
 # Generator holati
-gen_state = {}  # user_id -> {grade, subject, selected_topics, ...}
+gen_state = {}
+
+def _gen_settings_kb(groups):
+    DIFFS = [("oson","🟢"),("orta","🟡"),("qiyin","🔴"),("murakkab","⚫")]
+    rows = []
+    for g in groups:
+        d = g["diff"]; icon = next(em for df,em in DIFFS if df==d)
+        cnt = g["count"]; tp = g["type"]
+        rows.append([
+            InlineKeyboardButton(text=f"{icon} {d.capitalize()}", callback_data="noop"),
+            InlineKeyboardButton(text="✅0" if cnt==0  else "0",  callback_data=f"gg_cnt_{d}_0"),
+            InlineKeyboardButton(text="✅5" if cnt==5  else "5",  callback_data=f"gg_cnt_{d}_5"),
+            InlineKeyboardButton(text="✅10" if cnt==10 else "10", callback_data=f"gg_cnt_{d}_10"),
+            InlineKeyboardButton(text="✅15" if cnt==15 else "15", callback_data=f"gg_cnt_{d}_15"),
+            InlineKeyboardButton(text="✅20" if cnt==20 else "20", callback_data=f"gg_cnt_{d}_20"),
+        ])
+        rows.append([
+            InlineKeyboardButton(
+                text="✅ 🔘 Tugmali" if tp=="single_choice" else "🔘 Tugmali",
+                callback_data=f"gg_tp_{d}_choice"
+            ),
+            InlineKeyboardButton(
+                text="✅ ✍️ Yozuvli" if tp=="write_answer" else "✍️ Yozuvli",
+                callback_data=f"gg_tp_{d}_write"
+            ),
+        ])
+    total = sum(g["count"] for g in groups)
+    rows.append([InlineKeyboardButton(
+        text=f"🤖 AI bilan yaratish (jami: {total} ta mavzuga)",
+        callback_data="gen_go"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+  # user_id -> {grade, subject, selected_topics, ...}
 
 
 # ─────────────────────────────────────────
@@ -121,7 +154,7 @@ async def _render_topics(message, user_id, selected, grade, subject, edit=False)
         f"🎓 {grade}-sinf | 📚 {subject}\n\n"
         f"🔴 Bo'sh: {empty_cnt} ta | 📊 Jami: {all_cnt} ta\n"
         f"✅ Tanlangan: {len(selected)} ta\n"
-        f"⚠️ Max 15 ta tanlang\n\n"
+        f""
     )
     filter_label = "🔴 Faqat bo'sh mavzular" if filt == "empty" else "📋 Barcha mavzular"
     text += f"{filter_label} ({page*PAGE_SIZE+1}-{min((page+1)*PAGE_SIZE, total)}/{total}):"
@@ -181,8 +214,8 @@ async def toggle_topic(call, user_id, code):
     if code in selected:
         selected.remove(code)
     else:
-        if len(selected) >= 15:
-            await call.answer("⚠️ Max 15 ta mavzu!", show_alert=True)
+        if False:  # limit olib tashlandi
+            await call.answer("✅")
             return
         selected.append(code)
 
