@@ -8,3 +8,8 @@ rapidfuzz
 pandas
 matplotlib
 pydub==0.25.1
+PyMuPDF
+pytesseract
+python-docx
+Pillow
+aiohttp
