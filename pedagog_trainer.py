@@ -16,6 +16,24 @@ def init_knowledge_db():
     conn = psycopg2.connect(DATABASE_URL)
     cur  = conn.cursor()
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS book_exercises (
+            id          SERIAL PRIMARY KEY,
+            book_id     INT,
+            section_id  INT,
+            mavzu       TEXT,
+            fan         TEXT,
+            sinf        TEXT,
+            ex_type     TEXT,  -- 'misol' yoki 'masala'
+            savol       TEXT,
+            yechim      TEXT,  -- bosqichma-bosqich yechish
+            javob       TEXT,
+            formula     TEXT,  -- LaTeX formula (agar bo'lsa)
+            qiyinlik    TEXT DEFAULT 'orta',
+            source_ai   TEXT,
+            created_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS knowledge_facts (
             id          SERIAL PRIMARY KEY,
             mavzu       TEXT,
@@ -127,6 +145,36 @@ Quyidagi JSON formatda javob ber:
 
 Faqat JSON qayt, boshqa hech narsa yozma."""
 
+def make_exercise_prompt(chunk_text: str, fan: str, sinf: str) -> str:
+    return f"""Sen {fan} fani bo'yicha {sinf}-sinf muallifisin.
+
+MATN:
+{chunk_text[:1500]}
+
+Bu matndan 3 ta MISOL va 2 ta MASALA yoz. JSON formatda:
+{{
+  "misollar": [
+    {{
+      "savol": "½ + ⅓ = ?",
+      "formula": "$\\frac{{1}}{{2}} + \\frac{{1}}{{3}} = ?$",
+      "yechim": "1-qadam: umumiy maxraj = 6\n2-qadam: 3/6 + 2/6 = 5/6",
+      "javob": "5/6",
+      "qiyinlik": "oson"
+    }}
+  ],
+  "masalalar": [
+    {{
+      "savol": "Fermer 20 ta tarvuz yetishtiurdi, 8 tasini sotdi. Nechta qoldi?",
+      "yechim": "20 - 8 = 12",
+      "javob": "12 ta",
+      "qiyinlik": "oson"
+    }}
+  ]
+}}
+
+Faqat JSON, boshqa hech narsa yozma."""
+
+
 def make_test_prompt(chunk_text: str, fan: str, sinf: str) -> str:
     return f"""Sen {fan} fani bo'yicha {sinf}-sinf uchun test muallifisin.
 
@@ -232,7 +280,39 @@ async def train_from_book(
             except Exception as e:
                 errors += 1
 
-        # 2) Test savollar yaratish
+        # 2) Misol va masalalar yaratish
+        ex_prompt = make_exercise_prompt(batch_text, fan, sinf)
+        ex_raw, ex_ai = await ask_best(ex_prompt)
+        if ex_raw:
+            try:
+                ex_json = re.search(r'\{.*\}', ex_raw, re.DOTALL)
+                if ex_json:
+                    ex_data = json.loads(ex_json.group())
+                    conn_ex = psycopg2.connect(DATABASE_URL)
+                    cur_ex  = conn_ex.cursor()
+                    for m in ex_data.get("misollar", []):
+                        cur_ex.execute("""
+                            INSERT INTO book_exercises
+                            (book_id,mavzu,fan,sinf,ex_type,savol,yechim,javob,formula,qiyinlik,source_ai)
+                            VALUES(%s,%s,%s,%s,'misol',%s,%s,%s,%s,%s,%s)
+                        """, (book_id, section_title, fan, sinf,
+                              m.get("savol",""), m.get("yechim",""),
+                              m.get("javob",""), m.get("formula",""),
+                              m.get("qiyinlik","oson"), ex_ai))
+                    for ma in ex_data.get("masalalar", []):
+                        cur_ex.execute("""
+                            INSERT INTO book_exercises
+                            (book_id,mavzu,fan,sinf,ex_type,savol,yechim,javob,qiyinlik,source_ai)
+                            VALUES(%s,%s,%s,%s,'masala',%s,%s,%s,%s,%s)
+                        """, (book_id, section_title, fan, sinf,
+                              ma.get("savol",""), ma.get("yechim",""),
+                              ma.get("javob",""),
+                              ma.get("qiyinlik","orta"), ex_ai))
+                    conn_ex.commit(); cur_ex.close(); conn_ex.close()
+            except Exception as _ee:
+                pass
+
+        # 3) Test savollar yaratish
         test_prompt = make_test_prompt(batch_text, fan, sinf)
         test_raw, _ = await ask_best(test_prompt)
 
@@ -272,13 +352,27 @@ async def train_from_book(
 
         await asyncio.sleep(0.5)  # API limit uchun
 
+    # Misol/masala soni
+    try:
+        conn_st = psycopg2.connect(DATABASE_URL); cur_st = conn_st.cursor()
+        cur_st.execute("SELECT COUNT(*) FROM book_exercises WHERE book_id=%s AND ex_type='misol'", (book_id,))
+        total_misollar = cur_st.fetchone()[0]
+        cur_st.execute("SELECT COUNT(*) FROM book_exercises WHERE book_id=%s AND ex_type='masala'", (book_id,))
+        total_masalalar = cur_st.fetchone()[0]
+        cur_st.close(); conn_st.close()
+    except: total_misollar = total_masalalar = 0
+
     await p(
         f"🎓 O'qitish yakunlandi!\n"
         f"✅ {total_facts} ta bilim saqlandi\n"
         f"🧪 {total_tests} ta test yaratildi\n"
-        f"❌ {errors} ta xato (o'tkazib yuborildi)"
+        f"📐 {total_misollar} ta misol\n"
+        f"📝 {total_masalalar} ta masala\n"
+        f"❌ {errors} ta xato"
     )
-    return {"facts": total_facts, "tests": total_tests, "errors": errors}
+    return {"facts": total_facts, "tests": total_tests,
+            "misollar": total_misollar, "masalalar": total_masalalar,
+            "errors": errors}
 
 # ══════════════════════════════════════
 # MUSTAQIL JAVOB BERISH (AI siz)
