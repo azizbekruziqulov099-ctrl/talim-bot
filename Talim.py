@@ -1751,6 +1751,109 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         pass
 
     # ── Kitob yuklash matn handler ──
+    if admin_state.get(user_id) == "ai_rasm_custom" and message.text:
+        tavsif = message.text.strip()
+        admin_state.pop(user_id, None)
+        status_r = await message.answer(f"🤔 Tushunmoqda...\n«{tavsif[:60]}»")
+
+        async def do_smart_rasm():
+            try:
+                # 1. Gemini/GPT dan FLUX promptini olish
+                from auto_trainer import ask_gemini, ask_gpt
+                prompt_req = f"""Siz ta'lim rasmi uchun professional prompt yozuvchisiz.
+
+O'zbek so'rovi: "{tavsif}"
+
+Bu so'rov uchun FLUX/Stable Diffusion uchun inglizcha prompt yoz.
+Qoidalar:
+- Ta'lim rasmi, maktab uchun
+- Aniq, batafsil tavsif
+- Professional uslub
+- Oq fon
+- Matn yo'q
+- Faqat promptni yoz, boshqa hech narsa yozma
+- Maksimal 60 so'z"""
+
+                prompt = await ask_gemini(prompt_req)
+                if not prompt:
+                    prompt = await ask_gpt(prompt_req)
+                if not prompt:
+                    # Oddiy tarjima
+                    prompt = f"Educational illustration: {tavsif}, professional diagram, white background, colorful, school textbook style, no text"
+
+                await status_r.edit_text(f"🎨 Chizilmoqda...\n📝 {prompt[:80]}...")
+
+                # 2. FLUX bilan rasm
+                from rasim_generator import generate_hf, generate_dalle
+                img = await generate_hf(prompt)
+                if not img:
+                    img = await generate_dalle(prompt)
+
+                if img:
+                    from aiogram.types import BufferedInputFile
+                    sent = await status_r.answer_photo(
+                        BufferedInputFile(img, "rasm.png"),
+                        caption=f"🎨 {tavsif[:80]}\n\n📝 Prompt: {prompt[:100]}..."
+                    )
+                    await status_r.edit_text(
+                        f"✅ Tayyor!\n\nDB ga saqlash uchun nom yozing:\n"
+                        f"Masalan: <code>bio-skelet-1</code>",
+                        parse_mode="HTML"
+                    )
+                    fid = sent.photo[-1].file_id
+                    admin_state[user_id] = f"save_rasm:{fid}"
+                else:
+                    await status_r.edit_text(
+                        "❌ Rasm yaratilmadi.\n\n"
+                        "HF_TOKEN bormi? Railway → Variables ga qo\'shing."
+                    )
+            except Exception as e:
+                await status_r.edit_text(f"❌ {e}")
+
+        asyncio.create_task(do_smart_rasm())
+        return
+
+    if admin_state.get(user_id) == "ai_rasm_custom" and message.text:
+        tavsif = message.text.strip()
+        admin_state.pop(user_id, None)
+        status_r = await message.answer(f"⏳ Rasm yaratilmoqda...\n🖌 {tavsif[:60]}")
+        async def do_custom_rasm():
+            try:
+                from rasim_generator import generate_dalle
+                img_bytes = await generate_dalle(tavsif)
+                if img_bytes:
+                    from aiogram.types import BufferedInputFile
+                    sent = await message.answer_photo(
+                        BufferedInputFile(img_bytes, "rasm.png"),
+                        caption=f"🎨 {tavsif[:100]}"
+                    )
+                    fid = sent.photo[-1].file_id
+                    # Nomi so'raladi
+                    admin_state[user_id] = f"save_rasm:{fid}"
+                    await status_r.edit_text(
+                        "✅ Rasm tayyor!\n\nDB ga saqlash uchun nom yozing:\n"
+                        "Masalan: <code>1-01-1-01-01-01-001-1</code>",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await status_r.edit_text("❌ Rasm yaratilmadi. API kalitni tekshiring.")
+            except Exception as e:
+                await status_r.edit_text(f"❌ {e}")
+        asyncio.create_task(do_custom_rasm())
+        return
+
+    if (admin_state.get(user_id,"").startswith("save_rasm:") and message.text):
+        fid = admin_state[user_id].split(":",1)[1]
+        name = message.text.strip()
+        admin_state.pop(user_id, None)
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                    (name, fid))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ Saqlandi! Kod: <code>{name}</code>", parse_mode="HTML")
+        return
+
     if admin_state.get(user_id) == "kitob_yuklash" and message.text:
         txt = message.text.strip().strip("`").strip()
         parts = [x.strip() for x in txt.split("|")]
@@ -2222,6 +2325,42 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 [InlineKeyboardButton(text="📚 Bilimni mustahkamlash",   callback_data="menu_bilim_must")],
                 [InlineKeyboardButton(text="🧪 Bilimni sinash (test)",   callback_data="menu_bilim_sin")],
             ])
+        )
+        return
+
+    elif message.text == "🎨 AI Rasm yaratish":
+        if user_id not in ADMINS: return
+        if not os.getenv("OPENAI_API_KEY"):
+            await message.answer(
+                "❌ OPENAI_API_KEY kerak!\n"
+                "Railway → Variables → OPENAI_API_KEY = ..."
+            ); return
+        admin_state[user_id] = "ai_rasm"
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT DISTINCT d.topic_code, d.kichik_name, d.subject_name, d.grade
+            FROM dts_tree d
+            JOIN generated_tests g ON g.topic_code=d.topic_code
+            WHERE d.is_deleted=FALSE
+            ORDER BY d.grade, d.subject_name
+            LIMIT 20
+        """)
+        topics = cur2.fetchall(); cur2.close(); conn2.close()
+        if not topics:
+            await message.answer("❌ Testlar yo'q — avval test qo'shing."); return
+        rows = [[InlineKeyboardButton(
+            text=f"📝 {t[1][:30]} ({t[2]})",
+            callback_data=f"ai_rasm:{t[0]}:{t[2]}:{t[3]}"
+        )] for t in topics]
+        rows.append([InlineKeyboardButton(
+            text="✏️ O'zim tavsif beraman",
+            callback_data="ai_rasm_custom"
+        )])
+        await message.answer(
+            "🎨 AI Rasm yaratish (DALL-E 3)\n\n"
+            "Qaysi mavzu uchun rasm?\n"
+            "Bot savol asosida avtomatik rasm chizadi:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
 
@@ -4074,6 +4213,88 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "📦 Qaysi kitobdan Word yasaymiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         ); return
+
+    if call.data == "ai_rasm_custom":
+        await call.answer()
+        admin_state[user_id] = "ai_rasm_custom"
+        await call.message.answer(
+            "✏️ Rasm tavsifini yozing (ingliz yoki o'zbek tilida):\n\n"
+            "Masalan: «3 ta olma va 2 ta nok, ular daraxtda osig'liq»\n"
+            "Yoki: «A teacher explaining math on blackboard»"
+        )
+        return
+
+    if call.data.startswith("ai_rasm:"):
+        parts2 = call.data.split(":")
+        tc, fan2, sinf2 = parts2[1], parts2[2], parts2[3] if len(parts2)>3 else "1"
+        await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute(
+            "SELECT question FROM generated_tests WHERE topic_code=%s LIMIT 5",
+            (tc,)
+        )
+        questions = [r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(
+            text=f"🖼 {q[:45]}...",
+            callback_data=f"ai_rasm_q:{tc}:{fan2}:{sinf2}:{i}"
+        )] for i,q in enumerate(questions[:5],1)]
+        rows2.append([InlineKeyboardButton(
+            text="🖼 Hammasi uchun (20 ta) — $0.80",
+            callback_data=f"ai_rasm_all:{tc}:{fan2}:{sinf2}"
+        )])
+        await call.message.edit_text(
+            f"🎨 {fan2} — {tc}\n\nQaysi savol uchun rasm?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return
+
+    if call.data.startswith("ai_rasm_q:"):
+        parts2 = call.data.split(":")
+        tc, fan2, sinf2, num = parts2[1], parts2[2], parts2[3], int(parts2[4])
+        await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute(
+            "SELECT id, question FROM generated_tests WHERE topic_code=%s LIMIT %s",
+            (tc, num)
+        )
+        rows2 = cur2.fetchall(); cur2.close(); conn2.close()
+        if not rows2: return
+        tid, question = rows2[-1]
+        status_r = await call.message.answer(f"⏳ Rasm yaratilmoqda...\n📝 {question[:60]}")
+        async def do_rasm():
+            try:
+                from rasim_generator import generate_and_save
+                fid = await generate_and_save(tc, question, fan2, sinf2, num, bot, call.message.chat.id)
+                if fid:
+                    conn3 = psycopg2.connect(DATABASE_URL); cur3 = conn3.cursor()
+                    cur3.execute("UPDATE generated_tests SET image_url=%s WHERE id=%s",
+                                (f"{tc}-{num}", tid))
+                    conn3.commit(); cur3.close(); conn3.close()
+                    await status_r.edit_text(f"✅ Rasm saqlandi! Kod: {tc}-{num}")
+                else:
+                    await status_r.edit_text("❌ Rasm yaratishda xato.")
+            except Exception as e:
+                await status_r.edit_text(f"❌ {e}")
+        asyncio.create_task(do_rasm())
+        return
+
+    if call.data.startswith("ai_rasm_all:"):
+        parts2 = call.data.split(":")
+        tc, fan2, sinf2 = parts2[1], parts2[2], parts2[3] if len(parts2)>3 else "1"
+        await call.answer()
+        status_r = await call.message.answer(f"⏳ 20 ta rasm yaratilmoqda (taxm. 2 daqiqa)...")
+        async def do_all_rasm():
+            try:
+                from rasim_generator import generate_topic_images
+                async def prog(msg):
+                    try: await status_r.edit_text(msg)
+                    except: pass
+                await generate_topic_images(tc, fan2, sinf2, 20, bot,
+                                           call.message.chat.id, prog)
+            except Exception as e:
+                await status_r.edit_text(f"❌ {e}")
+        asyncio.create_task(do_all_rasm())
+        return
 
     if call.data == "menu_ai_train":
         await call.answer()
