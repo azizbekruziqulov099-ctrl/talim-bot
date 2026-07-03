@@ -1946,6 +1946,24 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
+    elif message.text == "🎓 Kitob o'qit":
+        if user_id not in ADMINS: return
+        # Oxirgi yuklangan kitobni o'qitamiz
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 5")
+        books = cur2.fetchall(); cur2.close(); conn2.close()
+        if not books:
+            await message.answer("❌ Hali kitob yuklanmagan."); return
+        rows = [[InlineKeyboardButton(
+            text=f"📖 {b[1]} ({b[2]}, {b[3]}-sinf)",
+            callback_data=f"train_book:{b[0]}:{b[2]}:{b[3]}"
+        )] for b in books]
+        await message.answer(
+            "🎓 Qaysi kitobni o'qitamiz?\n(AI tahlil qilib bilim bazasiga saqlaydi)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
     elif message.text == "🔍 Bilim qidirish":
         if user_id not in ADMINS: return
         admin_state[user_id] = "kitob_qidirish"
@@ -3739,6 +3757,35 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try:
             await call.message.edit_reply_markup(reply_markup=_mk_ts_kb(st2, cnt_total))
         except Exception: pass
+        return
+
+    if call.data.startswith("train_book:"):
+        parts2 = call.data.split(":")
+        book_id2 = int(parts2[1])
+        fan2  = parts2[2] if len(parts2)>2 else ""
+        sinf2 = parts2[3] if len(parts2)>3 else ""
+        await call.answer()
+        status2 = await call.message.answer(
+            f"🎓 O'qitish boshlanmoqda...\n"
+            f"📖 Kitob #{book_id2} | {fan2} | {sinf2}-sinf\n\n"
+            f"⏳ Bu bir necha daqiqa davom etishi mumkin..."
+        )
+        async def do_train():
+            try:
+                from pedagog_trainer import train_from_book
+                async def prog(msg):
+                    try: await status2.edit_text(msg)
+                    except: pass
+                result = await train_from_book(book_id2, fan2, sinf2, prog)
+                await call.message.answer(
+                    f"✅ O'qitish yakunlandi!\n"
+                    f"🧠 {result['facts']} ta bilim saqlandio'n"
+                    f"🧪 {result['tests']} ta test yaratildi\n"
+                    f"Endi Gemini/GPT siz ham javob bera olaman!"
+                )
+            except Exception as e:
+                await call.message.answer(f"❌ Xato: {e}")
+        asyncio.create_task(do_train())
         return
 
     if call.data.startswith("report_test:"):
