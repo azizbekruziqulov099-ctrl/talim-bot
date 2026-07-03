@@ -493,6 +493,18 @@ def init_db():
     )
     """)
     cur.execute("""
+    # Kitob va bilim jadvallari
+    for _tbl in [
+        "CREATE TABLE IF NOT EXISTS books (id SERIAL PRIMARY KEY, title TEXT, fan TEXT, sinf TEXT, muallif TEXT, file_id TEXT, created_at TIMESTAMP DEFAULT NOW())",
+        "CREATE TABLE IF NOT EXISTS book_sections (id SERIAL PRIMARY KEY, book_id INT, title TEXT, from_page INT, to_page INT, tartib INT)",
+        "CREATE TABLE IF NOT EXISTS book_chunks (id SERIAL PRIMARY KEY, section_id INT, book_id INT, matn TEXT, latex TEXT, chunk_type TEXT, page_num INT, keywords TEXT)",
+        "CREATE TABLE IF NOT EXISTS knowledge_facts (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, sinf TEXT, fact_type TEXT, savol TEXT, javob TEXT, izoh TEXT, yosh_5_7 TEXT, yosh_8_11 TEXT, yosh_12plus TEXT, source_ai TEXT, quality INT DEFAULT 5, book_id INT, chunk_text TEXT, keywords TEXT, created_at TIMESTAMP DEFAULT NOW())",
+        "CREATE TABLE IF NOT EXISTS weak_topics (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, error_count INT DEFAULT 1, last_error TIMESTAMP DEFAULT NOW(), UNIQUE(mavzu, fan))",
+        "CREATE TABLE IF NOT EXISTS answer_feedback (id SERIAL PRIMARY KEY, question TEXT, answer_given TEXT, correct_answer TEXT, was_correct BOOLEAN, user_id BIGINT, created_at TIMESTAMP DEFAULT NOW())",
+    ]:
+        try: cur.execute(_tbl); conn.commit()
+        except: conn.rollback()
+
     CREATE TABLE IF NOT EXISTS test_corrections (
         id SERIAL PRIMARY KEY,
         test_id INTEGER,
@@ -1762,6 +1774,66 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
 
+
+    # ── Excel shablon yuborilsa — DB dan avtomatik to'ldirish ──
+    if (message.document and user_id in ADMINS and
+            message.document.file_name and
+            message.document.file_name.endswith(".xlsx") and
+            admin_state.get(user_id) not in ("test_import","test_import_confirm","kitob_yuklash","kitob_yuklash_pdf")):
+
+        first_key = f"merge_file1_{user_id}"
+
+        if first_key in admin_state:
+            # Ikkinchi fayl keldi — birlashtirish
+            file1_bytes = admin_state.pop(first_key)
+            buf2 = BytesIO()
+            await message.bot.download(message.document.file_id, destination=buf2)
+            st = await message.answer("⏳ Birlashtirilyapti...")
+            try:
+                from excel_merger import merge_excel
+                res_bytes, info = merge_excel(file1_bytes, buf2.getvalue())
+                if res_bytes:
+                    from aiogram.types import BufferedInputFile
+                    await message.answer_document(
+                        BufferedInputFile(res_bytes, "birlashtirilgan.xlsx"),
+                        caption=info
+                    )
+                    await st.delete()
+                else:
+                    await st.edit_text(info)
+            except Exception as e:
+                await st.edit_text(f"❌ Xato: {e}")
+        else:
+            # Birinchi fayl — DB dan to'ldirishga urinish
+            buf1 = BytesIO()
+            await message.bot.download(message.document.file_id, destination=buf1)
+            file1_bytes = buf1.getvalue()
+            st = await message.answer("⏳ DB dan savollar qidirilmoqda...")
+            try:
+                from excel_merger import fill_from_db
+                res_bytes, info = fill_from_db(file1_bytes)
+                if res_bytes and "To'ldirildi" in info:
+                    from aiogram.types import BufferedInputFile
+                    fname_out = "toldiriilgan_" + message.document.file_name
+                    await message.answer_document(
+                        BufferedInputFile(res_bytes, fname_out),
+                        caption=info
+                    )
+                    await st.delete()
+                else:
+                    admin_state[first_key] = file1_bytes
+                    await st.edit_text(
+                        f"📎 {message.document.file_name} saqlandi.\n"
+                        f"DB da savol topilmadi.\n\n"
+                        f"2-fayl yuboring (savol fayli) — birlashtiraman!"
+                    )
+            except Exception as e:
+                admin_state[first_key] = file1_bytes
+                await st.edit_text(
+                    f"📎 {message.document.file_name} saqlandi.\n"
+                    f"2-fayl yuboring — birlashtiraman!"
+                )
+        return
 
     if (
         admin_state.get(user_id) == "test_import"
