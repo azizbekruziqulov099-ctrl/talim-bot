@@ -2352,14 +2352,18 @@ Qoidalar:
             text=f"📝 {t[1][:30]} ({t[2]})",
             callback_data=f"ai_rasm:{t[0]}:{t[2]}:{t[3]}"
         )] for t in topics]
-        rows.append([InlineKeyboardButton(
-            text="✏️ O'zim tavsif beraman",
+        rows.insert(0,[InlineKeyboardButton(
+            text="✏️ O'zimdan tavsif beraman (har narsa)",
             callback_data="ai_rasm_custom"
         )])
+        rows.append([InlineKeyboardButton(
+            text="📚 Fan bo'yicha barcha rasmlar",
+            callback_data="ai_rasm_auto"
+        )])
         await message.answer(
-            "🎨 AI Rasm yaratish (DALL-E 3)\n\n"
-            "Qaysi mavzu uchun rasm?\n"
-            "Bot savol asosida avtomatik rasm chizadi:",
+            "🎨 AI Rasm yaratish\n"
+            "⚡ Hugging Face FLUX.1 — BEPUL\n\n"
+            "Nima chizishni xohlaysiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
@@ -4213,6 +4217,42 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "📦 Qaysi kitobdan Word yasaymiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         ); return
+
+    if call.data == "ai_rasm_auto":
+        await call.answer()
+        await call.message.answer(
+            "📚 Qaysi fan uchun rasmlar generatsiya qilinsin?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🧬 Biologiya",   callback_data="ai_auto:biologiya")],
+                [InlineKeyboardButton(text="📐 Matematika",  callback_data="ai_auto:matematika")],
+                [InlineKeyboardButton(text="⚡ Fizika",       callback_data="ai_auto:fizika")],
+                [InlineKeyboardButton(text="🌍 Geografiya",  callback_data="ai_auto:geografiya")],
+                [InlineKeyboardButton(text="📝 Ingliz tili", callback_data="ai_auto:ingliz tili")],
+                [InlineKeyboardButton(text="🔬 Kimyo",       callback_data="ai_auto:kimyo")],
+                [InlineKeyboardButton(text="⭐ Barcha fanlar", callback_data="ai_auto:all")],
+            ])
+        )
+        return
+
+    if call.data.startswith("ai_auto:"):
+        fan2 = call.data.split(":",1)[1]
+        await call.answer()
+        status_aa = await call.message.answer(f"⏳ {fan2} rasmlari yaratilmoqda...")
+        async def do_auto():
+            try:
+                from rasim_generator import auto_generate_subject_images
+                async def pg(msg):
+                    try: await status_aa.edit_text(msg)
+                    except: pass
+                n = await auto_generate_subject_images(
+                    fan2 if fan2!="all" else "all",
+                    call.message.bot, call.message.chat.id, pg
+                )
+                await call.message.answer(f"✅ {n} ta rasm saqlandi!")
+            except Exception as e:
+                await status_aa.edit_text(f"❌ {e}")
+        asyncio.create_task(do_auto())
+        return
 
     if call.data == "ai_rasm_custom":
         await call.answer()
