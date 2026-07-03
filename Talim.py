@@ -1574,6 +1574,20 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
+    if message.text == "🤖 Yordamchi":
+        await message.answer(
+            "🤖 Ta'lim yordamchisi\n\n"
+            "Menga istalgan savolni yozing!\n\n"
+            "Masalan:\n"
+            "• «kasr nima?»\n"
+            "• «matematika misol ber»\n"
+            "• «masala yechishni o'rgat»\n"
+            "• «test ber»\n"
+            "• «dars boshlash»\n\n"
+            "O'zbek, rus yoki ingliz tilida gaplashsangiz bo'ladi 👇"
+        )
+        return
+
     if message.text == "🧪 Bilimni sinash":
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
@@ -3686,6 +3700,7 @@ def _mk_ts_kb(st2, cnt_total):
 
 
 @dp.callback_query()
+
 
 
 
