@@ -1932,6 +1932,29 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
             return
 
+    elif message.text == "📖 Kitob yaratish":
+        if user_id not in ADMINS: return
+        # Kitoblar ro'yxati
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT id, title, fan, sinf FROM books ORDER BY id DESC LIMIT 10")
+        books = cur2.fetchall(); cur2.close(); conn2.close()
+        if not books:
+            await message.answer("❌ Hali kitob yuklanmagan.\n«📖 Kitob yuklash» dan boshlang.")
+            return
+        rows = []
+        for b in books:
+            rows.append([InlineKeyboardButton(
+                text=f"📖 {b[1][:25]} ({b[2]}, {b[3]}-sinf)",
+                callback_data=f"book_make:{b[0]}"
+            )])
+        rows.append([InlineKeyboardButton(text="📦 To'liq paket (ZIP)", callback_data="book_full_pkg")])
+        await message.answer(
+            "📖 Kitob yaratish\n\nQaysi kitobdan Word fayl yasaymiz?\n"
+            "(15 betlik bo'laklarga bo'linadi, ZIP arxivda yuboriladi)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
     elif message.text == "📊 Hisobotlar":
         if user_id not in ADMINS: return
         from jadval_generator import test_results_text, weak_analysis_text
@@ -2039,7 +2062,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                              reply_markup=InlineKeyboardMarkup(inline_keyboard=kbs[:10]))
         return
 
-    elif message.text in ("🆘 Xatolar", ) or message.text.startswith("🆘 Xatolar"):
+    elif message.text and ("🆘 Xatolar" in message.text):
         if user_id not in ADMINS:
             return
         conn2 = psycopg2.connect(DATABASE_URL)
@@ -3804,6 +3827,36 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         except Exception: pass
         return
 
+    if call.data.startswith("book_make:"):
+        book_id3 = int(call.data.split(":")[1])
+        await call.answer()
+        status3 = await call.message.answer("⏳ Word fayllar tayyorlanmoqda...")
+        async def do_make():
+            try:
+                from hujjat_generator import create_book_archive
+                zip_buf, info = create_book_archive(book_id3, pages_per_chunk=15)
+                if not zip_buf:
+                    await status3.edit_text("❌ " + info); return
+                from aiogram.types import BufferedInputFile
+                await call.message.answer_document(
+                    BufferedInputFile(zip_buf.read(), f"kitob_{book_id3}.zip"),
+                    caption=info
+                )
+                await status3.delete()
+            except Exception as e:
+                await status3.edit_text(f"❌ Xato: {e}")
+        asyncio.create_task(do_make())
+        return
+
+    if call.data == "book_full_pkg":
+        await call.answer()
+        admin_state[user_id] = "full_pkg"
+        await call.message.answer(
+            "📦 To'liq paket\n\nSinf va fanni yozing:\n<code>1 | Ingliz tili</code>",
+            parse_mode="HTML"
+        )
+        return
+
     if call.data.startswith("train_book:"):
         parts2 = call.data.split(":")
         book_id2 = int(parts2[1])
@@ -4883,8 +4936,9 @@ async def _health_server():
 async def brain_handler(message: Message, state: FSMContext):
     uid = message.from_user.id if message.from_user else 0
     if uid in ADMINS: return
+    if not message.text: return  # Rasm, video va h.k. — o'tkazib yuborish
     if user_state.get(uid) in ("text_answer", "in_test"): return
-    if not message.text or message.text.startswith("/"): return
+    if message.text.startswith("/"): return
     # Tugmalar (menyu) — brain ga kirmasin
     menu_buttons = {
         "🎯 Bugungi reja","📚 Bilimni mustahkamlash","🧪 Bilimni sinash",
