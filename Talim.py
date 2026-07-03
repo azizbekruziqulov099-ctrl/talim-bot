@@ -1813,6 +1813,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         async def do_process_kitob():
             try:
                 import kitob_bazasi as _kb
+                from io import BytesIO
                 buf_k = BytesIO()
                 await message.bot.download(fid, destination=buf_k)
                 buf_k.seek(0)
