@@ -2026,6 +2026,45 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
+    elif message.text and message.text.startswith("📊 Hisobotlar"):
+        if user_id not in ADMINS: return
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        # O'qilmagan xatolar
+        cur2.execute("SELECT COUNT(*) FROM error_log WHERE is_read=FALSE")
+        unread = cur2.fetchone()[0] or 0
+        # O'qilgan xatolar
+        cur2.execute("SELECT COUNT(*) FROM error_log WHERE is_read=TRUE")
+        read_cnt = cur2.fetchone()[0] or 0
+        cur2.close(); conn2.close()
+
+        rows = [
+            [InlineKeyboardButton(text="📊 Test natijalari (Excel)", callback_data="rep_test")],
+            [InlineKeyboardButton(text="📈 O'quvchi taraqqiyoti (Excel)", callback_data="rep_prog")],
+            [InlineKeyboardButton(text="📅 Dars rejasi", callback_data="rep_plan")],
+        ]
+        # Xatolar — aniq ajratilgan
+        if unread > 0:
+            rows.append([InlineKeyboardButton(
+                text=f"🔴 O'qilmagan xatolar: {unread} ta — KO'RISH",
+                callback_data="err_unread"
+            )])
+        rows.append([InlineKeyboardButton(
+            text=f"✅ O'qilgan xatolar: {read_cnt} ta",
+            callback_data="err_read"
+        )])
+        rows.append([InlineKeyboardButton(
+            text="🗑 Barcha xatolarni tozalash",
+            callback_data="err_clear"
+        )])
+
+        txt = (
+            f"📊 Hisobotlar & Xatolar\n\n"
+            f"🔴 O'qilmagan: {unread} ta\n"
+            f"✅ O'qilgan: {read_cnt} ta"
+        )
+        await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
     elif message.text == "📊 Hisobotlar":
         if user_id not in ADMINS: return
         from jadval_generator import test_results_text, weak_analysis_text
@@ -2079,6 +2118,30 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             "Bo'sh shablon Excel faylini yuboring.\n"
             "Bot DB dagi savollardan avtomatik to'ldiradi.\n\n"
             "Agar DB da savol yo'q bo'lsa — 2-fayl (savol fayli) ham yuborasiz."
+        )
+        return
+
+    elif message.text == "📚 Kitoblar ▾":
+        if user_id not in ADMINS: return
+        await message.answer(
+            "📚 Kitoblar bo'limi:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📖 Kitob yuklash",    callback_data="menu_kitob_yuklash")],
+                [InlineKeyboardButton(text="🎓 Kitobni o'qit (AI)", callback_data="menu_kitob_oqit")],
+                [InlineKeyboardButton(text="📦 Kitobdan Word",    callback_data="menu_kitob_word")],
+            ])
+        )
+        return
+
+    elif message.text == "🧠 Bilimlar ▾":
+        if user_id not in ADMINS: return
+        await message.answer(
+            "🧠 Bilimlar bo'limi:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔍 Bilim qidirish",          callback_data="menu_bilim_qidir")],
+                [InlineKeyboardButton(text="📚 Bilimni mustahkamlash",   callback_data="menu_bilim_must")],
+                [InlineKeyboardButton(text="🧪 Bilimni sinash (test)",   callback_data="menu_bilim_sin")],
+            ])
         )
         return
 
@@ -3782,6 +3845,133 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="mustah_back")])
         await call.message.edit_text("📖 Sinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
+
+    if call.data == "err_unread":
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""SELECT id,user_id,username,error_text,created_at FROM error_log WHERE is_read=FALSE ORDER BY created_at DESC LIMIT 10""")
+        rows2 = cur2.fetchall()
+        cur2.execute("UPDATE error_log SET is_read=TRUE WHERE is_read=FALSE")
+        conn2.commit(); cur2.close(); conn2.close()
+        if not rows2:
+            await call.answer("O'qilmagan xato yo'q!", show_alert=True); return
+        await call.answer()
+        for row2 in rows2:
+            uid2, uname, etxt, cat = row2[1], row2[2], row2[3], row2[4]
+            d = cat.strftime('%d.%m %H:%M') if cat else ""
+            await call.message.answer(f"🔴 Xato\n👤 {uname or uid2}\n🕐 {d}\n❌ {str(etxt)[:300]}")
+        return
+
+    if call.data == "err_read":
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""SELECT username,error_text,created_at FROM error_log WHERE is_read=TRUE ORDER BY created_at DESC LIMIT 10""")
+        rows2 = cur2.fetchall(); cur2.close(); conn2.close()
+        await call.answer()
+        if not rows2:
+            await call.message.answer("O'qilgan xatolar yo'q."); return
+        lines2 = ["O'qilgan xatolar:\n"]
+        for uname, etxt, cat in rows2:
+            d = cat.strftime('%d.%m') if cat else ""
+            lines2.append(f"• {uname}: {str(etxt)[:60]}... [{d}]")
+        await call.message.answer("\n".join(lines2))
+        return
+
+    if call.data == "err_clear":
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("DELETE FROM error_log WHERE is_read=TRUE")
+        deleted = cur2.rowcount; conn2.commit(); cur2.close(); conn2.close()
+        await call.answer(f"{deleted} ta o'qilgan xato o'chirildi", show_alert=True)
+        return
+
+    if call.data == "rep_test":
+        await call.answer()
+        from jadval_generator import test_results_text, test_results_excel
+        from aiogram.types import BufferedInputFile
+        await call.message.answer(test_results_text())
+        try:
+            buf = test_results_excel()
+            await call.message.answer_document(
+                BufferedInputFile(buf.read(), "test_natijalari.xlsx"),
+                caption="📊 Test natijalari"
+            )
+        except: pass
+        return
+
+    if call.data == "rep_prog":
+        await call.answer()
+        from jadval_generator import student_progress_text, student_progress_excel
+        from aiogram.types import BufferedInputFile
+        await call.message.answer(student_progress_text())
+        try:
+            buf = student_progress_excel()
+            await call.message.answer_document(
+                BufferedInputFile(buf.read(), "taraqqiyot.xlsx"),
+                caption="📈 Taraqqiyot"
+            )
+        except: pass
+        return
+
+    if call.data == "rep_plan":
+        await call.answer()
+        admin_state[user_id] = "dars_rejasi"
+        await call.message.answer(
+            "📅 Sinf va fanni yozing:\n<code>1 | Ingliz tili</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    if call.data == "menu_kitob_yuklash":
+        admin_state[user_id] = "kitob_yuklash"
+        await call.answer()
+        await call.message.answer(
+            "📖 Kitob yuklash\n\nFormat: Kitob nomi | Fan | Sinf | Muallif\n"
+            "Masalan: <code>Matematika 1 | Matematika | 1 | Mirzayev</code>",
+            parse_mode="HTML"
+        ); return
+
+    if call.data == "menu_kitob_oqit":
+        await call.answer()
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
+        books2 = cur2.fetchall(); cur2.close(); conn2.close()
+        if not books2:
+            await call.message.answer("❌ Hali kitob yuklanmagan."); return
+        rows2 = [[InlineKeyboardButton(
+            text=f"📖 {b[1][:25]} ({b[2]}, {b[3]}-sinf)",
+            callback_data=f"train_book:{b[0]}:{b[2]}:{b[3]}"
+        )] for b in books2]
+        await call.message.answer(
+            "🎓 Qaysi kitobni o'qitamiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        ); return
+
+    if call.data == "menu_kitob_word":
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
+        books2 = cur2.fetchall(); cur2.close(); conn2.close()
+        if not books2:
+            await call.message.answer("❌ Hali kitob yuklanmagan."); return
+        rows2 = [[InlineKeyboardButton(
+            text=f"📖 {b[1][:25]}",
+            callback_data=f"book_make:{b[0]}"
+        )] for b in books2]
+        await call.answer()
+        await call.message.answer(
+            "📦 Qaysi kitobdan Word yasaymiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        ); return
+
+    if call.data == "menu_bilim_qidir":
+        await call.answer()
+        admin_state[user_id] = "kitob_qidirish"
+        await call.message.answer("🔍 Qidiruv so'zini yozing:"); return
+
+    if call.data == "menu_bilim_must":
+        await call.answer()
+        await call.message.answer("📚 Bilimni mustahkamlash — o'quvchi menyusida."); return
+
+    if call.data == "menu_bilim_sin":
+        await call.answer()
+        await call.message.answer("🧪 Bilimni sinash — o'quvchi menyusida."); return
 
     if call.data == "mustah_back":
         await call.message.delete()
