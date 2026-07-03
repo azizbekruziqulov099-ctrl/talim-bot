@@ -1734,6 +1734,31 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     except:
         pass
 
+    # ── Kitob yuklash matn handler ──
+    if admin_state.get(user_id) == "kitob_yuklash" and message.text:
+        txt = message.text.strip().strip("`").strip()
+        parts = [x.strip() for x in txt.split("|")]
+        if len(parts) < 2:
+            await message.answer(
+                "❌ Format:\n<code>Kitob nomi | Fan | Sinf | Muallif</code>",
+                parse_mode="HTML"
+            )
+            return
+        admin_state[f"{user_id}_kitob_info"] = {
+            "title":   parts[0],
+            "fan":     parts[1] if len(parts)>1 else "",
+            "sinf":    parts[2] if len(parts)>2 else "",
+            "muallif": " | ".join(parts[3:]) if len(parts)>3 else "",
+        }
+        admin_state[user_id] = "kitob_yuklash_pdf"
+        info = admin_state[f"{user_id}_kitob_info"]
+        await message.answer(
+            f"✅ Saqlandi:\n📖 {info['title']}\n"
+            f"📚 {info['fan']} | 🏫 {info['sinf']}-sinf\n"
+            f"✍️ {info['muallif']}\n\nPDF faylni yuboring 👇"
+        )
+        return
+
     if (
         admin_state.get(user_id) == "dts_import"
         and message.document
@@ -2350,7 +2375,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer("\n".join(lines))
         return
 
-    elif message.text.endswith("-sinf"):
+    elif message.text and message.text.endswith("-sinf"):
 
         grade = message.text.replace("-sinf", "")
 
