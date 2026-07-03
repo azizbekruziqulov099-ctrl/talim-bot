@@ -1,3 +1,4 @@
+from auto_trainer import auto_train_scheduler, train_all_profiles
 from admin_handlers import *
 from learning import *
 from generator_handlers import *
@@ -4073,6 +4074,28 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "📦 Qaysi kitobdan Word yasaymiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         ); return
+
+    if call.data == "menu_ai_train":
+        await call.answer()
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")):
+            await call.message.answer("❌ GEMINI_API_KEY yoki OPENAI_API_KEY kerak!\nRailway → Variables ga qo'shing.")
+            return
+        status_at = await call.message.answer(
+            "🤖 Universal ekspert o'qitish boshlandi...\n"
+            "5 profil: pedagog, metodist, huquqshunos, psixolog, professor"
+        )
+        async def do_train_all():
+            try:
+                async def prog(msg):
+                    try: await status_at.edit_text(msg)
+                    except: pass
+                result = await train_all_profiles(prog)
+                total = sum(result.values())
+                await call.message.answer(f"🎉 Tayyor! {total} ta yangi bilim qo'shildi.")
+            except Exception as e:
+                await call.message.answer(f"❌ {e}")
+        asyncio.create_task(do_train_all())
+        return
 
     if call.data == "menu_bilim_qidir":
         await call.answer()
