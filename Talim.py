@@ -492,7 +492,6 @@ def init_db():
         language TEXT, life_level TEXT, age_group TEXT, time_limit INTEGER
     )
     """)
-    cur.execute("""
     # Kitob va bilim jadvallari
     for _tbl in [
         "CREATE TABLE IF NOT EXISTS books (id SERIAL PRIMARY KEY, title TEXT, fan TEXT, sinf TEXT, muallif TEXT, file_id TEXT, created_at TIMESTAMP DEFAULT NOW())",
@@ -504,7 +503,7 @@ def init_db():
     ]:
         try: cur.execute(_tbl); conn.commit()
         except: conn.rollback()
-
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS test_corrections (
         id SERIAL PRIMARY KEY,
         test_id INTEGER,
