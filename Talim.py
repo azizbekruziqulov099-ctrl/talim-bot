@@ -1932,6 +1932,51 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
             return
 
+    elif message.text == "📊 Hisobotlar":
+        if user_id not in ADMINS: return
+        from jadval_generator import test_results_text, weak_analysis_text
+        text2  = test_results_text(days=30)
+        text3  = weak_analysis_text()
+        await message.answer(text2)
+        await message.answer(text3)
+        # Excel ham yuboramiz
+        from jadval_generator import test_results_excel
+        from aiogram.types import BufferedInputFile
+        try:
+            buf = test_results_excel(days=30)
+            await message.answer_document(
+                BufferedInputFile(buf.read(), "test_natijalari.xlsx"),
+                caption="📊 Test natijalari (Excel)"
+            )
+        except Exception as e:
+            await message.answer(f"Excel xato: {e}")
+        return
+
+    elif message.text == "📅 Dars rejasi":
+        if user_id not in ADMINS: return
+        admin_state[user_id] = "dars_rejasi"
+        await message.answer(
+            "📅 Dars rejasi\n\nSinf va fanni yozing:\n<code>1 | Ingliz tili</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    elif message.text == "📈 Taraqqiyot":
+        if user_id not in ADMINS: return
+        from jadval_generator import student_progress_text, student_progress_excel
+        from aiogram.types import BufferedInputFile
+        text2 = student_progress_text()
+        await message.answer(text2)
+        try:
+            buf = student_progress_excel()
+            await message.answer_document(
+                BufferedInputFile(buf.read(), "taraqqiyot.xlsx"),
+                caption="📈 O'quvchi taraqqiyoti (Excel)"
+            )
+        except Exception as e:
+            await message.answer(f"Excel xato: {e}")
+        return
+
     elif message.text == "📖 Kitob yuklash":
         if user_id not in ADMINS: return
         admin_state[user_id] = "kitob_yuklash"
