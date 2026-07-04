@@ -1795,7 +1795,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         pass
 
     # ── Kitob yuklash matn handler ──
-    if admin_state.get(user_id) == "ai_rasm_custom" and message.text:
+    if (admin_state.get(user_id,"").startswith("ai_rasm_custom") and message.text):
+        parts_s = admin_state[user_id].split(":")
+        style = parts_s[1] if len(parts_s)>1 else "multik"
         tavsif = message.text.strip()
         admin_state.pop(user_id, None)
         status_r = await message.answer(f"🤔 Tushunmoqda...\n«{tavsif[:60]}»")
@@ -1976,24 +1978,19 @@ Qoidalar:
             if "RASMLAR" in _wb.sheetnames:
                 _wb.close()
                 buf_check.seek(0)
-                xl_bytes = buf_check.read()
-                status_rx = await message.answer(
-                    "🖼 RASMLAR varog'i topildi!\n"
-                    "Rasmlar avtomatik yaratiladi..."
+                xl_bytes2 = buf_check.read()
+                admin_state[f"{user_id}_rasm_xl"] = xl_bytes2
+                await message.answer(
+                    "🖼 RASMLAR varog\'i topildi!\n\nQaysi uslubda chizilsin?",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🎠 Multik — bolalarga mos (tavsiya)", callback_data="xl_style:multik")],
+                        [InlineKeyboardButton(text="📸 Hayotiy — realistik",              callback_data="xl_style:hayotiy")],
+                        [InlineKeyboardButton(text="✏️ Chizma — darslik uslubi",          callback_data="xl_style:chizma")],
+                        [InlineKeyboardButton(text="📚 Darslik — ta\'lim diagramma",     callback_data="xl_style:darslik")],
+                        [InlineKeyboardButton(text="🎮 3D — hajmli",                      callback_data="xl_style:3d")],
+                        [InlineKeyboardButton(text="⚡ Avto (multik) — hoziroq",          callback_data="xl_style:multik_auto")],
+                    ])
                 )
-                async def do_rasm_xl():
-                    try:
-                        from rasim_generator import generate_from_excel
-                        async def pg(msg):
-                            try: await status_rx.edit_text(msg)
-                            except: pass
-                        result = await generate_from_excel(xl_bytes, message.bot,
-                                                           message.chat.id, pg)
-                        if result.get("error"):
-                            await message.answer(f"❌ {result['error']}")
-                    except Exception as e:
-                        await message.answer(f"❌ Rasm xato: {e}")
-                asyncio.create_task(do_rasm_xl())
                 return
             _wb.close()
         except: pass
@@ -4331,11 +4328,64 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "ai_rasm_custom":
         await call.answer()
-        admin_state[user_id] = "ai_rasm_custom"
         await call.message.answer(
-            "✏️ Rasm tavsifini yozing (ingliz yoki o'zbek tilida):\n\n"
-            "Masalan: «3 ta olma va 2 ta nok, ular daraxtda osig'liq»\n"
-            "Yoki: «A teacher explaining math on blackboard»"
+            "🎨 Uslub tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎠 Multik (bolalar uchun)", callback_data="rasm_style:multik")],
+                [InlineKeyboardButton(text="📸 Hayotiy (realistik)",     callback_data="rasm_style:hayotiy")],
+                [InlineKeyboardButton(text="✏️ Chizma (qo'lda)",         callback_data="rasm_style:chizma")],
+                [InlineKeyboardButton(text="🎨 Akvarel (bo'yoq)",        callback_data="rasm_style:akvarell")],
+                [InlineKeyboardButton(text="📚 Darslik (ta'lim)",        callback_data="rasm_style:darslik")],
+                [InlineKeyboardButton(text="🎮 3D (hajmli)",             callback_data="rasm_style:3d")],
+                [InlineKeyboardButton(text="💬 Komiks (qiziqarli)",      callback_data="rasm_style:komiks")],
+            ])
+        )
+        return
+
+    if call.data.startswith("xl_style:"):
+        style2 = call.data.split(":")[1].replace("_auto","")
+        xl_bytes2 = admin_state.pop(f"{user_id}_rasm_xl", None)
+        if not xl_bytes2:
+            await call.answer("❌ Fayl topilmadi, qayta yuboring", show_alert=True); return
+        await call.answer()
+        style_names = {
+            "multik":"🎠 Multik","hayotiy":"📸 Hayotiy","chizma":"✏️ Chizma",
+            "akvarell":"🎨 Akvarel","darslik":"📚 Darslik","3d":"🎮 3D"
+        }
+        status_xl = await call.message.answer(
+            f"✅ Uslub: {style_names.get(style2,style2)}\n"
+            f"⏳ Rasmlar yaratilmoqda..."
+        )
+        async def do_xl_rasm():
+            try:
+                from rasim_generator import generate_from_excel
+                async def pg(msg):
+                    try: await status_xl.edit_text(msg)
+                    except: pass
+                result = await generate_from_excel(
+                    xl_bytes2, call.message.bot,
+                    call.message.chat.id, pg, style=style2
+                )
+                if result.get("error"):
+                    await call.message.answer(f"❌ {result['error']}")
+            except Exception as e:
+                await call.message.answer(f"❌ {e}")
+        asyncio.create_task(do_xl_rasm())
+        return
+
+    if call.data.startswith("rasm_style:"):
+        style = call.data.split(":")[1]
+        admin_state[user_id] = f"ai_rasm_custom:{style}"
+        await call.answer()
+        style_names = {
+            "multik":"🎠 Multik","hayotiy":"📸 Hayotiy","chizma":"✏️ Chizma",
+            "akvarell":"🎨 Akvarel","darslik":"📚 Darslik","3d":"🎮 3D","komiks":"💬 Komiks"
+        }
+        await call.message.answer(
+            f"✅ Uslub: {style_names.get(style,style)}\n\n"
+            f"Endi rasm tavsifini yozing:\n"
+            f"Masalan: «bola onasiga gul berayapti»\n"
+            f"yoki «teacher writing on blackboard»"
         )
         return
 
