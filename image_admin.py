@@ -32,41 +32,44 @@ async def show_image_panel(message):
     cur.close(); conn.close()
 
     if not groups:
-        await message.answer(f"🖼 Rasmlar: {total} ta\nHali guruhlanmagan.")
+        await message.answer(f"🖼 Rasmlar yo'q hali.")
         return
 
-    # DTS dan sinf/fan ma'lumotini olamiz
+    # DTS dan sinf/fan
     tcs = [g[0] for g in groups]
+    dts_map = {}
     try:
         conn2 = db(); cur2 = conn2.cursor()
         ph = ",".join(["%s"]*len(tcs))
-        cur2.execute(f"""
-            SELECT topic_code, grade, subject_name, kichik_name
-            FROM dts_tree WHERE topic_code IN ({ph})
-        """, tcs)
+        cur2.execute(f"SELECT topic_code,grade,subject_name,kichik_name FROM dts_tree WHERE topic_code IN ({ph})", tcs)
         dts_map = {r[0]:r for r in cur2.fetchall()}
         cur2.close(); conn2.close()
-    except: dts_map = {}
+    except: pass
 
-    # Sinf bo'yicha guruhlash
+    # Sinf + DTS bo'lmaganlar alohida
     by_grade = {}
+    no_dts = 0
     for tc, cnt in groups:
         info = dts_map.get(tc)
-        grade = info[1] if info else "?"
-        if grade not in by_grade: by_grade[grade] = 0
-        by_grade[grade] += cnt
+        if info:
+            gr = str(info[1])
+            by_grade[gr] = by_grade.get(gr, 0) + cnt
+        else:
+            no_dts += cnt
 
     rows = []
-    for gr in sorted(by_grade.keys(),
-                     key=lambda x: int(x) if str(x).isdigit() else 99):
-        lbl = f"{gr}-sinf" if str(gr).isdigit() else str(gr)
+    for gr in sorted(by_grade.keys(), key=lambda x: int(x) if x.isdigit() else 99):
+        lbl = f"{gr}-sinf" if gr.isdigit() else gr
         rows.append([InlineKeyboardButton(
             text=f"🏫 {lbl} ({by_grade[gr]} rasm)",
             callback_data=f"img_gr:{gr}"
         )])
-    rows.append([
-        InlineKeyboardButton(text="📋 Barchasi", callback_data="img_all:0"),
-    ])
+    if no_dts:
+        rows.append([InlineKeyboardButton(
+            text=f"📁 Mavzusiz rasmlar ({no_dts} ta)",
+            callback_data="img_no_dts:0"
+        )])
+    rows.append([InlineKeyboardButton(text="📋 Barchasi", callback_data="img_all:0")])
     await message.answer(
         f"🖼 Rasmlar boshqaruvi\n📊 Jami: {total} ta\n\nSinf tanlang:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
@@ -260,6 +263,41 @@ async def handle_img_callback(call, user_id):
         cur.execute("DELETE FROM images WHERE name LIKE %s", (f"{tc}-%",))
         n = cur.rowcount; conn.commit(); cur.close(); conn.close()
         await call.answer(f"🗑 {n} ta o'chirildi", show_alert=True)
+        return
+
+    # MAVZUSIZ RASMLAR
+    if data.startswith("img_no_dts:"):
+        page = int(data[11:]); PAGE = 10
+        conn = db(); cur = conn.cursor()
+        # DTS da bo'lmagan topic_code lar
+        cur.execute("""
+            SELECT SUBSTRING(name FROM '^(.+)-[0-9]+$') as tc, COUNT(*) as cnt,
+                   MIN(name) as sample
+            FROM images WHERE name ~ '^.+-[0-9]+$'
+              AND SUBSTRING(name FROM '^(.+)-[0-9]+$') NOT IN (SELECT topic_code FROM dts_tree)
+            GROUP BY tc ORDER BY tc LIMIT %s OFFSET %s
+        """, (PAGE, page*PAGE))
+        rows2 = cur.fetchall()
+        cur.execute("""
+            SELECT COUNT(DISTINCT SUBSTRING(name FROM '^(.+)-[0-9]+$'))
+            FROM images WHERE name ~ '^.+-[0-9]+$'
+              AND SUBSTRING(name FROM '^(.+)-[0-9]+$') NOT IN (SELECT topic_code FROM dts_tree)
+        """)
+        total2 = cur.fetchone()[0]; cur.close(); conn.close()
+
+        rows = []
+        for tc, cnt, _ in rows2:
+            rows.append([InlineKeyboardButton(
+                text=f"📁 {tc[-20:]} ({cnt})",
+                callback_data=f"img_tc:{tc}:0"
+            )])
+        nav = []
+        if page > 0: nav.append(InlineKeyboardButton(text="◀️", callback_data=f"img_no_dts:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page*PAGE+1}-{min((page+1)*PAGE,total2)}/{total2}", callback_data="noop"))
+        if (page+1)*PAGE < total2: nav.append(InlineKeyboardButton(text="▶️", callback_data=f"img_no_dts:{page+1}"))
+        if nav: rows.append(nav)
+        rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="img_panel")])
+        await safe_edit(call, f"📁 Mavzusiz rasmlar ({total2} ta topic):", InlineKeyboardMarkup(inline_keyboard=rows))
         return
 
     # BARCHASI
