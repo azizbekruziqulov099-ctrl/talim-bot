@@ -1,4 +1,9 @@
-from auto_trainer import auto_train_scheduler, train_all_profiles
+try:
+    from auto_trainer import auto_train_scheduler, train_all_profiles
+except Exception as _ate:
+    print(f"auto_trainer import xato: {_ate}")
+    async def auto_train_scheduler(): pass
+    async def train_all_profiles(*a, **k): return {}
 from admin_handlers import *
 from learning import *
 from generator_handlers import *
@@ -2082,14 +2087,14 @@ Qoidalar:
                 else:
                     admin_state[first_key] = file1_bytes
                     await st.edit_text(
-                        f"📎 {message.document.file_name or "fayl"} saqlandi.\n"
+                        f"📎 {message.document.file_name or 'fayl'} saqlandi.\n"
                         f"DB da savol topilmadi.\n\n"
                         f"2-fayl yuboring (savol fayli) — birlashtiraman!"
                     )
             except Exception as e:
                 admin_state[first_key] = file1_bytes
                 await st.edit_text(
-                    f"📎 {message.document.file_name or "fayl"} saqlandi.\n"
+                    f"📎 {message.document.file_name or 'fayl'} saqlandi.\n"
                     f"2-fayl yuboring — birlashtiraman!"
                 )
         return
