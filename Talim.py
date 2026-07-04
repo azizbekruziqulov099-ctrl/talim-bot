@@ -1795,7 +1795,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         pass
 
     # ── Kitob yuklash matn handler ──
-    if (admin_state.get(user_id,"").startswith("ai_rasm_custom") and message.text):
+    if (str(admin_state.get(user_id) or "").startswith("ai_rasm_custom") and message.text):
         parts_s = admin_state[user_id].split(":")
         style = parts_s[1] if len(parts_s)>1 else "multik"
         tavsif = message.text.strip()
@@ -1888,7 +1888,7 @@ Qoidalar:
         asyncio.create_task(do_custom_rasm())
         return
 
-    if (admin_state.get(user_id,"").startswith("save_rasm:") and message.text):
+    if (str(admin_state.get(user_id) or "").startswith("save_rasm:") and message.text):
         fid = admin_state[user_id].split(":",1)[1]
         name = message.text.strip()
         admin_state.pop(user_id, None)
@@ -2073,7 +2073,7 @@ Qoidalar:
                 res_bytes, info = fill_from_db(file1_bytes)
                 if res_bytes and "To'ldirildi" in info:
                     from aiogram.types import BufferedInputFile
-                    fname_out = "toldiriilgan_" + message.document.file_name
+                    fname_out = "toldiriilgan_" + (message.document.file_name or "shablon.xlsx")
                     await message.answer_document(
                         BufferedInputFile(res_bytes, fname_out),
                         caption=info
@@ -2082,14 +2082,14 @@ Qoidalar:
                 else:
                     admin_state[first_key] = file1_bytes
                     await st.edit_text(
-                        f"📎 {message.document.file_name} saqlandi.\n"
+                        f"📎 {message.document.file_name or "fayl"} saqlandi.\n"
                         f"DB da savol topilmadi.\n\n"
                         f"2-fayl yuboring (savol fayli) — birlashtiraman!"
                     )
             except Exception as e:
                 admin_state[first_key] = file1_bytes
                 await st.edit_text(
-                    f"📎 {message.document.file_name} saqlandi.\n"
+                    f"📎 {message.document.file_name or "fayl"} saqlandi.\n"
                     f"2-fayl yuboring — birlashtiraman!"
                 )
         return
@@ -2402,6 +2402,33 @@ Qoidalar:
                 [InlineKeyboardButton(text="📚 Bilimni mustahkamlash",   callback_data="menu_bilim_must")],
                 [InlineKeyboardButton(text="🧪 Bilimni sinash (test)",   callback_data="menu_bilim_sin")],
             ])
+        )
+        return
+
+    elif message.text == "🚀 Mavzu tayyorla":
+        if user_id not in ADMINS: return
+        # Sinf tanlash
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT grade FROM (
+                SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE
+            ) _g ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
+        """)
+        grades = [r[0] for r in cur2.fetchall()]
+        cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(
+            text=f"🏫 {gr}-sinf" if str(gr).isdigit() else f"📚 {gr}",
+            callback_data=f"mtt_gr:{gr}"
+        )] for gr in grades]
+        await message.answer(
+            "🚀 Mavzu tayyorlash\n\n"
+            "Bot avtomatik qiladi:\n"
+            "✅ Test shablon (to'ldirilgan)\n"
+            "✅ Dars shablon (to'ldirilgan)\n"
+            "✅ Rasm tavsif varag'i\n"
+            "✅ ZIP arxivda yuboradi\n\n"
+            "Sinf tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         )
         return
 
@@ -4286,6 +4313,59 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             f"📚 {fan2} — Mavzu tanlang:\n🖼=rasm bor ❌=rasm yo'q",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         ); return
+
+    if call.data.startswith("mtt_gr:"):
+        gr = call.data[7:]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name", (gr,))
+        fans = [r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(text=f"📚 {f}", callback_data=f"mtt_fan:{gr}:{f}")] for f in fans]
+        rows2.append([InlineKeyboardButton(text="⬅️", callback_data="mtt_back")])
+        await call.answer()
+        await call.message.edit_text(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("mtt_fan:"):
+        parts2 = call.data[8:].split(":",1); gr,fan2 = parts2[0],parts2[1]
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT DISTINCT kichik_name, topic_code,
+            EXISTS(SELECT 1 FROM generated_tests g WHERE g.topic_code=d.topic_code) as has_test
+            FROM dts_tree d WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
+            ORDER BY topic_code
+        """, (gr,fan2))
+        mavzular = cur2.fetchall(); cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(
+            text=f"{'✅' if m[2] else '📝'} {m[0][:40]}",
+            callback_data=f"mtt_do:{m[1]}"
+        )] for m in mavzular[:20]]
+        rows2.append([InlineKeyboardButton(text="⬅️", callback_data=f"mtt_gr:{gr}")])
+        await call.answer()
+        await call.message.edit_text(f"📚 {fan2} — Mavzu (✅=test bor, 📝=yo'q):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("mtt_do:"):
+        tc = call.data[7:]
+        await call.answer()
+        status3 = await call.message.answer(f"⏳ {tc} tayyorlanmoqda...")
+        async def do_mtt():
+            try:
+                from mavzu_tayyorlovchi import tayyorla_mavzu
+                async def pg(msg):
+                    try: await status3.edit_text(msg)
+                    except: pass
+                result = await tayyorla_mavzu(tc, call.message.bot, call.message.chat.id, pg)
+                if result.get("error"):
+                    await call.message.answer(f"❌ {result['error']}")
+                else:
+                    await status3.delete()
+            except Exception as e:
+                await status3.edit_text(f"❌ {e}")
+        asyncio.create_task(do_mtt())
+        return
+
+    if call.data == "mtt_back":
+        await call.answer(); await call.message.delete(); return
 
     if call.data == "rasm_back":
         await call.answer(); await call.message.delete(); return
