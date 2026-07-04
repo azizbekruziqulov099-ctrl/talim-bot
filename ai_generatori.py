@@ -38,10 +38,18 @@ def _gen_settings_kb(groups):
             ),
         ])
     total = sum(g["count"] for g in groups)
-    rows.append([InlineKeyboardButton(
-        text=f"🤖 AI bilan yaratish → {total} ta savol/mavzu",
-        callback_data="gen_go"
-    )])
+    rows.append([
+        InlineKeyboardButton(
+            text=f"📥 Shablon yuklab olish ({total}ta/mavzu)",
+            callback_data="gen_template"
+        )
+    ])
+    rows.append([
+        InlineKeyboardButton(
+            text=f"🤖 AI bilan to'ldirish ({total}ta/mavzu)",
+            callback_data="gen_go"
+        )
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
   # user_id -> {grade, subject, selected_topics, ...}
@@ -265,8 +273,13 @@ async def run_generator(call, user_id):
         return
 
     await call.answer()
-    # Shablon rejimi — AI emas, bo'sh shablon
-    await _generate_template(call, user_id, selected, topics_list, grade, subject)
+
+    # Faqat shablon — AI ishlamaydi
+    if call.data == "gen_template":
+        await _generate_template(call, user_id, selected, topics_list, grade, subject)
+        return
+
+    # AI bilan to'ldirish — shablon YOQILMAGAN
 
     conn = db(); cur = conn.cursor()
     total_saved = 0
