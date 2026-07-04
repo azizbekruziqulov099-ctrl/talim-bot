@@ -39,7 +39,7 @@ def _gen_settings_kb(groups):
         ])
     total = sum(g["count"] for g in groups)
     rows.append([InlineKeyboardButton(
-        text=f"🤖 AI bilan yaratish (jami: {total} ta mavzuga)",
+        text=f"🤖 AI bilan yaratish → {total} ta savol/mavzu",
         callback_data="gen_go"
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
