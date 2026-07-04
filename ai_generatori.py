@@ -365,6 +365,26 @@ async def _generate_template(call, user_id, selected, topics_list, grade, subjec
     from openpyxl.styles import Font, PatternFill, Alignment
     from aiogram.types import BufferedInputFile
 
+    # Sozlamalardan qiyinlik va tur olish
+    state = gen_state.get(user_id, {})
+    groups = state.get("gen_groups", state.get("groups", [
+        {"diff":"oson",    "type":"single_choice","count":5},
+        {"diff":"orta",    "type":"single_choice","count":5},
+        {"diff":"qiyin",   "type":"single_choice","count":5},
+        {"diff":"murakkab","type":"single_choice","count":5},
+    ]))
+
+    # Qiyinlik ro'yxatini sozlamalardan yasaymiz
+    difficulties = []
+    for g in groups:
+        d = g["diff"]
+        d_label = "o'rta" if d == "orta" else d
+        tp = g["type"]
+        for _ in range(g["count"]):
+            difficulties.append((d_label, tp))
+
+    total_per = len(difficulties)
+
     wb = openpyxl.Workbook()
     ws1 = wb.active
     ws1.title = "TESTLAR"
@@ -387,7 +407,6 @@ async def _generate_template(call, user_id, selected, topics_list, grade, subjec
         "qiyin": "FFD7C4", "murakkab": "F5C6CB"
     }
     diff_times = {"oson": 60, "o'rta": 55, "qiyin": 50, "murakkab": 45}
-    difficulties = ["oson"]*5 + ["o'rta"]*5 + ["qiyin"]*5 + ["murakkab"]*5
 
     conn = db(); cur = conn.cursor()
     row_num = 2
@@ -398,16 +417,14 @@ async def _generate_template(call, user_id, selected, topics_list, grade, subjec
         g = r[0] if r else grade
         age = _age_group(g)
 
-        for i, diff in enumerate(difficulties):
-            n = i + 1
-            img_url = f"{code}-{n}"  # Hammaga rasm
-
+        for n, (diff, qtype) in enumerate(difficulties, 1):
+            img_url = f"{code}-{n}"
             ws1.append([
                 code, diff, "oddiy", "", "", "", "", "",
-                "", "", "single_choice", False,
-                img_url, "", "uz", 1, age, diff_times[diff]
+                "", "", qtype, False,
+                img_url, "", "uz", 1, age, diff_times.get(diff, 55)
             ])
-            color = diff_colors[diff]
+            color = diff_colors.get(diff, "FFFFFF")
             for col in range(1, 19):
                 ws1.cell(row_num, col).fill = PatternFill("solid", fgColor=color)
             row_num += 1
@@ -452,15 +469,22 @@ async def _generate_template(call, user_id, selected, topics_list, grade, subjec
     buf = io.BytesIO()
     wb.save(buf); buf.seek(0)
 
+    def _sozlama(g):
+        d = "o'rta" if g["diff"]=="orta" else g["diff"]
+        t = "T" if g["type"]=="single_choice" else "Y"
+        return f"{d}:{g['count']}ta({t})"
+    sozlama_txt = " | ".join([_sozlama(g) for g in groups if g["count"] > 0])
+
     fname = f"shablon_{grade}sinf_{len(selected)}mavzu.xlsx"
     await call.message.answer_document(
         BufferedInputFile(buf.read(), filename=fname),
         caption=(
-            "✅ Shablon tayyor!\n"
-            + f"📚 {len(selected)} mavzu x 20 qator\n"
-            + f"📊 Jami: {len(selected)*20} qator\n\n"
-            + "Bo\'sh: savol, javoblar, izoh\n"
-            + "To\'ldirib import qiling!"
+            f"✅ Shablon tayyor!\n"
+            f"📚 {len(selected)} mavzu × {total_per} qator\n"
+            f"📊 Jami: {len(selected)*total_per} qator\n"
+            f"⚙️ {sozlama_txt}\n\n"
+            f"Bo'sh: savol, javoblar, izoh\n"
+            f"To'ldirib import qiling!"
         )
     )
 
