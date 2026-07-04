@@ -77,33 +77,38 @@ async def build_prompt(question: str, fan: str) -> str:
 # HUGGING FACE BILAN RASM
 # ══════════════════════════════════════
 async def generate_hf(prompt: str) -> bytes | None:
-    """Hugging Face FLUX bilan rasm yaratadi — BEPUL."""
-    headers = {"Content-Type": "application/json"}
+    """Pollinations.ai — BEPUL, API kerak emas, DNS muammosi yo'q."""
+    import urllib.parse
+    clean = prompt.replace(",","").replace(".","")[:200]
+    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(clean)}?width=768&height=768&nologo=true&model=flux"
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                if r.status == 200:
+                    data = await r.read()
+                    if len(data) > 10000:
+                        print(f"✅ Pollinations: {len(data)//1024}KB")
+                        return data
+    except Exception as e:
+        print(f"Pollinations: {e}")
+    
+    # HF zaxira (token bo'lsa)
     if HF_TOKEN:
-        headers["Authorization"] = f"Bearer {HF_TOKEN}"
-
-    for model in MODELS:
-        url = f"https://api-inference.huggingface.co/models/{model}"
-        try:
-            async with aiohttp.ClientSession() as s:
-                async with s.post(
-                    url,
-                    json={"inputs": prompt,
-                          "parameters": {"num_inference_steps": 4}},
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=60)
-                ) as r:
-                    if r.status == 200:
-                        data = await r.read()
-                        if data[:4] in (b'\x89PNG', b'\xff\xd8\xff', b'RIFF'):
-                            return data
-                    elif r.status == 503:
-                        # Model yuklanmoqda — kutamiz
-                        await asyncio.sleep(10)
-                        continue
-        except Exception as e:
-            print(f"HF {model}: {e}")
-            continue
+        headers = {"Authorization": f"Bearer {HF_TOKEN}", "Content-Type": "application/json"}
+        for model in MODELS:
+            hf_url = f"https://api-inference.huggingface.co/models/{model}"
+            try:
+                async with aiohttp.ClientSession() as s2:
+                    async with s2.post(hf_url,
+                        json={"inputs": prompt, "parameters": {"num_inference_steps": 4}},
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=60)) as r2:
+                        if r2.status == 200:
+                            data = await r2.read()
+                            if len(data) > 10000: return data
+            except Exception as e2:
+                print(f"HF {model}: {e2}")
+                continue
     return None
 
 # ══════════════════════════════════════
