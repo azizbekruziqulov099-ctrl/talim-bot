@@ -29,46 +29,76 @@ def get_quality_suffix(style: str = "multik") -> str:
 # O'ZBEK → INGLIZ LEKSIKA
 # ══════════════════════════════════════
 UZ_EN = {
-    # Fasllar
+    # Ranglar
+    "och ko'k":"light blue","to'q ko'k":"dark blue","och yashil":"light green",
+    "to'q yashil":"dark green","och sariq":"light yellow","yorqin":"bright",
+    "och":"light","to'q":"dark","rangdagi":"colored","kulrang":"gray",
+    "jigarrang":"brown","binafsha":"purple","qizil":"red","ko'k":"blue",
+    "yashil":"green","sariq":"yellow","oq":"white","qora":"black",
+    "pushti":"pink","to'q sariq":"orange","oltin":"golden",
+    # Fon/joy
+    "fon":"background","maydon":"field","osmon":"sky","dalada":"in field",
+    "o'rtada":"in the center","pastda":"below","yuqorida":"above",
+    "o'ng tomonda":"on the right","chap tomonda":"on the left",
+    # Tabiat
+    "quyosh":"sun","oy":"moon","yulduz":"star","bulut":"cloud",
+    "yomg'ir":"rain","qor":"snow","shamol":"wind","tog'":"mountain",
+    "daryo":"river","dengiz":"sea","ko'l":"lake","o'rmon":"forest",
+    "daraxt":"tree","gul":"flower","o't":"grass","barg":"leaf",
+    "plyaj":"beach","qumli":"sandy",
+    # Fasl
     "yoz":"summer","qish":"winter","bahor":"spring","kuz":"autumn",
-    "issiq":"hot","sovuq":"cold","yomg'ir":"rain","qor":"snow",
-    # Odam
-    "bola":"child","o'quvchi":"student","o'qituvchi":"teacher",
+    "issiq":"hot","sovuq":"cold",
+    # Odam/harakatlar
+    "bola":"child","bolalar":"children","qiz":"girl","o'g'il":"boy",
+    "o'quvchi":"student","o'qituvchi":"teacher","odam":"person",
     "ona":"mother","ota":"father","oila":"family",
-    "yugurmoqda":"running","o'tirmoqda":"sitting","turmoqda":"standing",
-    "o'qimoqda":"reading","yozmoqda":"writing","gapirmoqda":"talking",
+    "o'tirmoqda":"sitting","turmoqda":"standing","yugurmoqda":"running",
+    "o'ynamoqda":"playing","o'qimoqda":"reading","yozmoqda":"writing",
+    "gapirmoqda":"talking","kulib":"smiling","charaqlab":"shining",
+    "turibdi":"is standing","o'tiribo":"sitting",
     # Hayvon
     "mushuk":"cat","it":"dog","baliq":"fish","qush":"bird",
     "ot":"horse","sigir":"cow","qo'y":"sheep","tovuq":"chicken",
+    "kapalak":"butterfly","hasharot":"insect",
+    # Ob-havo
+    "qorli":"snowy","yomg'irli":"rainy","quyoshli":"sunny",
+    "bulutli":"cloudy","sovuq":"cold","issiq":"hot",
+    # Maktab
+    "maktab":"school","sinf":"classroom","dars":"lesson",
+    "kitob":"book","qalam":"pencil","daftar":"notebook","doska":"blackboard",
     # Meva/sabzavot
     "olma":"apple","banan":"banana","uzum":"grapes","nok":"pear",
     "tarvuz":"watermelon","sabzi":"carrot","pomidor":"tomato",
-    # Maktab
-    "maktab":"school","sinf":"classroom","dars":"lesson",
-    "kitob":"book","qalam":"pencil","daftar":"notebook",
-    # Tabiat
-    "daraxt":"tree","gul":"flower","quyosh":"sun","oy":"moon",
-    "dengiz":"sea","tog'":"mountain","daryo":"river",
-    # Ranglar
-    "qizil":"red","ko'k":"blue","yashil":"green","sariq":"yellow",
-    "oq":"white","qora":"black","binafsha":"purple",
-    # Raqamlar
-    "bir":"one","ikki":"two","uch":"three","to'rt":"four","besh":"five",
     # Boshqa
-    "uy":"house","oziq-ovqat":"food","transport":"transport",
+    "uy":"house","shahar":"city","ko'cha":"street",
     "velosiped":"bicycle","mashina":"car","avtobus":"bus",
     "sport":"sports","futbol":"football","suzish":"swimming",
+    "ikkita":"two","uchta":"three","to'rtta":"four","bitta":"one",
+    "katta":"big","kichik":"small","baland":"tall","past":"short",
+    # Ko'makchi so'zlar (o'chirish)
+    "bilan":"","va":"","ham":"","ning":"","uchun":"","da":"","ga":"",
+    "ni":"","dan":"","lar":"","ta":"","tadi":"","moqda":"","yotibdi":"",
 }
 
 def uz_to_en_prompt(tavsif: str) -> str:
     """Uzb tavsifni inglizcha promptga o'giradi."""
     t = tavsif.lower()
-    # Kalit so'zlarni almashtirish
-    result = t
+    # Avval ko'p so'zli iboralarni
     for uz, en in UZ_EN.items():
-        result = result.replace(uz, en)
-    # Tozalash
-    result = re.sub(r'[^\w\s,.-]', ' ', result)
+        if " " in uz:
+            t = t.replace(uz, en)
+    # Keyin yakka so'zlarni
+    words = t.split()
+    result_words = []
+    for w in words:
+        clean = re.sub(r"[^a-zA-Z0\u2018\u2019'-]", "", w)
+        translated = UZ_EN.get(clean, UZ_EN.get(w, w))
+        if translated:  # bo'sh string bo'lsa o'tkazib yuborish
+            result_words.append(translated)
+    result = " ".join(result_words)
+    # Uzb harflarini olib tashlaymiz
+    result = re.sub(r"[o'ʻgʻ]", "", result)
     result = re.sub(r'\s+', ' ', result).strip()
     return result
 
@@ -180,7 +210,8 @@ async def generate_and_save(topic_code, question, fan, sinf,
     return None
 
 async def generate_from_excel(excel_bytes, bot, chat_id,
-                              progress_cb=None, style="multik") -> dict:
+                              progress_cb=None, style="multik",
+                              force=False) -> dict:
     import openpyxl
     from io import BytesIO
 
@@ -226,8 +257,8 @@ async def generate_from_excel(excel_bytes, bot, chat_id,
         cur.close(); conn.close()
     except: pass
 
-    todo = [it for it in items if it["kod"] not in existing]
-    skipped = len(existing)
+    todo = items if force else [it for it in items if it["kod"] not in existing]
+    skipped = 0 if force else len(existing)
     await p(f"📊 Jami: {len(items)} | Yangi: {len(todo)} | O'tkazildi: {skipped}")
 
     created = errors = 0
