@@ -273,39 +273,33 @@ async def generate_from_excel(excel_bytes, bot, chat_id,
     skipped = 0 if force else len(existing)
     await p(f"📊 Jami: {len(items)} | Yangi: {len(todo)} | O'tkazildi: {skipped}")
 
+
     created = errors = 0
-    for i in range(0, len(todo), 2):
-        batch = todo[i:i+2]
-        tasks = []
-        for item in batch:
-            async def one(it):
-                nonlocal created, errors
-                try:
-                    prompt = await _tavsif_to_prompt(it["tavsif"],it["fan"],it["sinf"],style)
-                    img = await generate_hf(prompt, style)
-                    if img:
-                        from aiogram.types import BufferedInputFile
-                        sent = await bot.send_photo(
-                            chat_id, BufferedInputFile(img,f"{it['kod']}.png"),
-                            caption=f"🖼 {it['kod']}"
-                        )
-                        fid = sent.photo[-1].file_id
-                        c2=psycopg2.connect(DATABASE_URL);cu2=c2.cursor()
-                        cu2.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
-                            ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
-                            (it["kod"],fid))
-                        c2.commit();cu2.close();c2.close()
-                        created += 1
-                    else: errors += 1
-                except Exception as e:
-                    errors += 1
-                    print(f"rasm xato {it['kod']}: {e}")
-            tasks.append(one(item))
-        await asyncio.gather(*tasks)
-        done = min(i+3, len(todo))
-        pct = round(done*100/len(todo)) if todo else 100
-        await p(f"⏳ {pct}% ({done}/{len(todo)}) | ✅{created} | ❌{errors}")
-        await asyncio.sleep(4)
+    for i, item in enumerate(todo, 1):
+        try:
+            prompt = await _tavsif_to_prompt(item["tavsif"],item["fan"],item["sinf"],style)
+            img = await generate_hf(prompt, style)
+            if img:
+                from aiogram.types import BufferedInputFile
+                sent = await bot.send_photo(
+                    chat_id, BufferedInputFile(img,f"{item['kod']}.png"),
+                    caption=f"🖼 {item['kod']}"
+                )
+                fid = sent.photo[-1].file_id
+                c2=psycopg2.connect(DATABASE_URL);cu2=c2.cursor()
+                cu2.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                    ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                    (item["kod"],fid))
+                c2.commit();cu2.close();c2.close()
+                created += 1
+            else: errors += 1
+        except Exception as e:
+            errors += 1
+            print(f"rasm xato {item['kod']}: {e}")
+        if i % 5 == 0 or i == len(todo):
+            pct = round(i*100/len(todo))
+            await p(f"⏳ {pct}% ({i}/{len(todo)}) | ✅{created} | ❌{errors}")
+        await asyncio.sleep(3)
 
     await p(f"🎉 Tayyor!\n✅ {created} ta | ⏭ {skipped} ta | ❌ {errors} ta")
     return {"created":created,"skipped":skipped,"errors":errors}
