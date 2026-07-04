@@ -2220,10 +2220,10 @@ Qoidalar:
         return
 
     elif message.text in ("📚 DTS boshqaruvi", "🧭 DTS topik boshqaruvi"):
-
-        await dts_menu(
-                message
-            )
+        # Shablon state ni tozalamiz
+        from shablon_yaratish import shablon_state
+        shablon_state.pop(user_id, None)
+        await dts_menu(message)
         return
 
     elif message.text == "📊 Test statistikasi":
