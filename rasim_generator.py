@@ -307,3 +307,160 @@ async def auto_generate_subject_images(fan: str, bot, chat_id: int, progress_cb=
 
     await p(f"\n🎉 {created} ta rasm yaratildi va saqlandi!")
     return created
+
+
+# ══════════════════════════════════════
+# EXCEL DAN RASM YARATISH
+# ══════════════════════════════════════
+async def generate_from_excel(
+    excel_bytes: bytes,
+    bot,
+    chat_id: int,
+    progress_cb=None
+) -> dict:
+    """
+    RASMLAR varog'i bor Excel dan:
+    Kod-N | Mavzu | Rasm tavsifi
+    → Har birini chizib DB ga saqlaydi
+    """
+    import openpyxl
+    from io import BytesIO
+
+    async def p(msg):
+        if progress_cb: await progress_cb(msg)
+
+    wb = openpyxl.load_workbook(BytesIO(excel_bytes), data_only=True)
+
+    if "RASMLAR" not in wb.sheetnames:
+        return {"error": "RASMLAR varog'i topilmadi!"}
+
+    ws_r = wb["RASMLAR"]
+
+    # MALUMOT varaqdan sinf/fan info
+    topic_info = {}
+    if "MALUMOT" in wb.sheetnames:
+        ws_m = wb["MALUMOT"]
+        for r in range(2, ws_m.max_row+1):
+            tc   = ws_m.cell(r,2).value
+            sinf = ws_m.cell(r,3).value
+            fan  = ws_m.cell(r,4).value
+            mav  = ws_m.cell(r,9).value
+            if tc: topic_info[str(tc)] = {"sinf":str(sinf or "1"),"fan":str(fan or "ta'lim"),"mavzu":str(mav or "")}
+
+    # Rasm ro'yxatini yig'amiz
+    items = []
+    for r in range(2, ws_r.max_row+1):
+        kod  = ws_r.cell(r,1).value
+        mav  = ws_r.cell(r,2).value
+        tavs = ws_r.cell(r,3).value
+        if kod and tavs:
+            tc   = "-".join(str(kod).split("-")[:-1])
+            info = topic_info.get(tc, {})
+            items.append({
+                "kod":   str(kod),
+                "tavsif": str(tavs),
+                "mavzu":  str(mav or ""),
+                "sinf":   info.get("sinf","1"),
+                "fan":    info.get("fan","ta'lim"),
+            })
+
+    if not items:
+        return {"error": "RASMLAR varog'ida ma'lumot yo'q!"}
+
+    await p(f"🖼 {len(items)} ta rasm yaratiladi...\n⏱ Taxminan {len(items)*8//60} daqiqa")
+
+    created = skipped = errors = 0
+
+    for i, item in enumerate(items, 1):
+        kod   = item["kod"]
+        tavs  = item["tavsif"]
+        sinf  = item["sinf"]
+        fan   = item["fan"]
+
+        # DB da bormi?
+        try:
+            conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+            cur.execute("SELECT file_id FROM images WHERE name=%s", (kod,))
+            row = cur.fetchone(); cur.close(); conn.close()
+            if row:
+                skipped += 1
+                continue
+        except: pass
+
+        # Prompt yasash — o'zbek tavsifdan ingliz promtga
+        prompt = await _tavsif_to_prompt(tavs, fan, sinf)
+        await p(f"⏳ {i}/{len(items)}: {tavs[:40]}...")
+
+        # Rasm yaratish
+        img = await generate_hf(prompt)
+        if not img and OPENAI_KEY:
+            img = await generate_dalle(prompt)
+
+        if img:
+            try:
+                from aiogram.types import BufferedInputFile
+                sent = await bot.send_photo(
+                    chat_id,
+                    BufferedInputFile(img, f"{kod}.png"),
+                    caption=f"🖼 {kod}\n{tavs[:50]}"
+                )
+                fid = sent.photo[-1].file_id
+                conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+                cur.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                               ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                           (kod, fid))
+                conn.commit(); cur.close(); conn.close()
+                created += 1
+            except Exception as e:
+                errors += 1
+                print(f"Saqlash: {e}")
+        else:
+            errors += 1
+
+        await asyncio.sleep(3)  # Rate limit
+
+        if i % 10 == 0:
+            await p(f"📊 {i}/{len(items)} | ✅{created} | ⏭{skipped} | ❌{errors}")
+
+    await p(
+        f"🎉 Tayyor!\n"
+        f"✅ Yaratildi: {created} ta\n"
+        f"⏭ O'tkazildi: {skipped} ta (allaqachon bor)\n"
+        f"❌ Xato: {errors} ta"
+    )
+    return {"created": created, "skipped": skipped, "errors": errors}
+
+
+async def _tavsif_to_prompt(tavsif: str, fan: str, sinf: str) -> str:
+    """O'zbek tavsifdan ingliz prompt yasaydi."""
+    # Gemini bilan tarjima
+    if GEMINI_KEY:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+            req = f"""Translate this Uzbek image description to English for AI image generation.
+Make it suitable for a {sinf}st grade {fan} educational illustration.
+Keep it simple, cartoon style, child-friendly.
+Uzbek: {tavsif}
+Return ONLY the English prompt, max 30 words."""
+            async with aiohttp.ClientSession() as sess:
+                async with sess.post(url,
+                    json={{"contents":[{{"parts":[{{"text":req}}]}}],
+                          "generationConfig":{{"maxOutputTokens":80}}}},
+                    timeout=aiohttp.ClientTimeout(total=10)) as r:
+                    if r.status == 200:
+                        d = await r.json()
+                        return d["candidates"][0]["content"]["parts"][0]["text"].strip() + ", educational cartoon, white background, colorful, child-friendly, no text"
+        except: pass
+
+    # Fallback — oddiy tarjima qoidalari
+    t = tavsif.lower()
+    words_map = {
+        "bola":"child","ona":"mother","ota":"father","tinglayapti":"listening",
+        "yordam":"helping","deyapti":"saying","o'qituvchi":"teacher",
+        "sinfdosh":"classmate","do'st":"friend","o'yin":"playing",
+        "maktab":"school","dars":"lesson","kitob":"book",
+    }
+    eng = tavsif
+    for uz, en in words_map.items():
+        eng = eng.replace(uz, en)
+    return f"{eng}, grade {sinf} educational illustration, cartoon style, white background, colorful, no text"
