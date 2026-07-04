@@ -1643,18 +1643,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         _gr = cur2.fetchone()
         _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
 
-        # Faqat TEST bor fanlar (o'z sinfi + raqamsiz sinflar)
+        # Barcha fanlar (sinf filtrsiz)
         cur2.execute("""
             SELECT DISTINCT d.subject_name,
                    COUNT(DISTINCT g.topic_code) as cnt,
                    d.grade
             FROM generated_tests g
             JOIN dts_tree d ON d.topic_code = g.topic_code
-            WHERE (d.grade = %s OR d.grade !~ '^[0-9]+$')
-              AND d.is_deleted = FALSE
+            WHERE d.is_deleted = FALSE
             GROUP BY d.subject_name, d.grade
             ORDER BY d.grade, d.subject_name
-        """, (_my_grade,))
+        """)
         subjects = cur2.fetchall()
         cur2.close(); conn2.close()
 
@@ -4032,10 +4031,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                    COUNT(g.id) as test_cnt
             FROM dts_tree d
             JOIN generated_tests g ON g.topic_code = d.topic_code
-            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            WHERE d.subject_name=%s AND d.is_deleted=FALSE
             GROUP BY d.kichik_name, d.topic_code
             ORDER BY d.topic_code
-        """, (grade2, subj2))
+        """, (subj2,))
         topics2 = cur2.fetchall()
         cur2.close(); conn2.close()
 
