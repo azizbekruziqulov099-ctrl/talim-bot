@@ -276,6 +276,12 @@ async def run_generator(call, user_id):
 
     # Faqat shablon — AI ishlamaydi
     if call.data == "gen_template":
+        if not selected:
+            await call.message.answer(
+                "❌ Mavzu topilmadi!\n"
+                "Qayta: Mavzu tanlang → Sozlamalar → Shablon yuklab olish"
+            )
+            return
         await _generate_template(call, user_id, selected, topics_list, grade, subject)
         return
 
