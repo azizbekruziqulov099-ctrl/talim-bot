@@ -15,14 +15,41 @@ OPENAI_KEY   = os.getenv("OPENAI_API_KEY","")
 # USLUBLAR
 # ══════════════════════════════════════
 STYLES = {
-    "multik":   "cute cartoon style, Disney animation style, colorful, child-friendly",
-    "hayotiy":  "realistic photo style, photorealistic, natural lighting, detailed",
-    "chizma":   "hand-drawn sketch style, pencil drawing, educational diagram",
-    "akvarell": "watercolor painting style, soft colors, artistic",
-    "flat":     "flat design style, simple shapes, minimal, modern illustration",
-    "3d":       "3D render style, vibrant colors, smooth surfaces, professional",
-    "komiks":   "comic book style, bold outlines, expressive, fun",
-    "darslik":  "textbook illustration style, clean lines, educational, labeled diagram",
+    "multik":   {
+        "prompt": "cute cartoon style, Disney Pixar animation, vibrant colors, child-friendly, smooth lines",
+        "model": "flux",
+        "seed": 42
+    },
+    "hayotiy":  {
+        "prompt": "ultra realistic photography style, photorealistic, DSLR camera, natural lighting, 8k",
+        "model": "flux-realism",
+        "seed": 100
+    },
+    "chizma":   {
+        "prompt": "hand-drawn pencil sketch, detailed line art, black and white, educational diagram style",
+        "model": "flux",
+        "seed": 200
+    },
+    "akvarell": {
+        "prompt": "watercolor painting, soft pastel colors, artistic brush strokes, dreamy atmosphere",
+        "model": "flux",
+        "seed": 300
+    },
+    "darslik":  {
+        "prompt": "textbook scientific illustration, clean technical diagram, labeled, professional educational",
+        "model": "flux",
+        "seed": 400
+    },
+    "3d":       {
+        "prompt": "3D render, Blender CGI, volumetric lighting, vibrant colors, smooth surfaces, professional",
+        "model": "flux",
+        "seed": 500
+    },
+    "komiks":   {
+        "prompt": "comic book style, bold black outlines, flat bright colors, manga inspired, expressive",
+        "model": "flux",
+        "seed": 600
+    },
 }
 
 DEFAULT_STYLE = "multik"  # Bolalar uchun default
@@ -50,8 +77,12 @@ SUBJECT_STYLE = {
 }
 
 def get_quality_suffix(style: str = "multik") -> str:
-    style_desc = STYLES.get(style, STYLES["multik"])
-    return f", {style_desc}, high quality, white background, no text"
+    style_cfg = STYLES.get(style, STYLES["multik"])
+    if isinstance(style_cfg, dict):
+        style_desc = style_cfg.get("prompt","")
+    else:
+        style_desc = str(style_cfg)
+    return f"{style_desc}, high quality, white background, no text"
 
 async def build_prompt(question: str, fan: str, style: str = "multik") -> str:
     """Savol va fan asosida inglizcha prompt yasaydi."""
@@ -95,11 +126,14 @@ async def build_prompt(question: str, fan: str, style: str = "multik") -> str:
 # ══════════════════════════════════════
 # HUGGING FACE BILAN RASM
 # ══════════════════════════════════════
-async def generate_hf(prompt: str) -> bytes | None:
+async def generate_hf(prompt: str, style: str = "multik") -> bytes | None:
     """Pollinations.ai — BEPUL, API kerak emas, DNS muammosi yo'q."""
     import urllib.parse
-    clean = prompt.replace(",","").replace(".","")[:200]
-    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(clean)}?width=768&height=768&nologo=true&model=flux"
+    style_cfg = STYLES.get(style, STYLES["multik"])
+    model = style_cfg.get("model", "flux")
+    seed  = style_cfg.get("seed", 42)
+    clean = prompt[:300]
+    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(clean)}?width=768&height=768&nologo=true&model={model}&seed={seed}"
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
@@ -197,7 +231,7 @@ async def generate_and_save(
         if row: return row[0]
     except: pass
 
-    img_bytes = await generate_image(question, fan, sinf)
+    img_bytes = await generate_image(question, fan, sinf, style=style if 'style' in dir() else 'multik')
     if not img_bytes: return None
 
     try:
@@ -419,7 +453,7 @@ async def generate_from_excel(
             prompt = await _tavsif_to_prompt(tavs, fan, sinf)
             if style != "multik":
                 prompt += f", {get_quality_suffix(style)}"
-            img = await generate_hf(prompt)
+            img = await generate_hf(prompt, style=style)
             if img:
                 from aiogram.types import BufferedInputFile
                 sent = await bot.send_photo(
