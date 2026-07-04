@@ -1368,8 +1368,19 @@ async def import_tests_excel(target, path, user_id):
     success = 0
     duplicates = 0
     errors = 0
-
     error_rows = []
+
+    # Fayldagi barcha topik kodlarni olish
+    _all_tcs = df["topic_code"].dropna().astype(str).str.strip()
+    _all_tcs = [tc for tc in _all_tcs.unique() if tc not in ("","nan")]
+
+    # Har topik uchun eskiyi o'chiramiz (qayta import)
+    if _all_tcs:
+        import psycopg2 as _pg0
+        _c0 = _pg0.connect(os.getenv("DATABASE_URL")); _cu0 = _c0.cursor()
+        for _tc in _all_tcs:
+            _cu0.execute("DELETE FROM generated_tests WHERE topic_code=%s", (_tc,))
+        _c0.commit(); _cu0.close(); _c0.close()
 
     for index, row in df.iterrows():
 
@@ -1999,6 +2010,7 @@ Qoidalar:
                         [InlineKeyboardButton(text="📚 Darslik — ta\'lim diagramma",     callback_data="xl_style:darslik")],
                         [InlineKeyboardButton(text="🎮 3D — hajmli",                      callback_data="xl_style:3d")],
                         [InlineKeyboardButton(text="⚡ Avto (multik) — hoziroq",          callback_data="xl_style:multik_auto")],
+                        [InlineKeyboardButton(text="🔄 Qayta yaratish (eskilarni o\'chir)", callback_data="xl_style:multik_force")],
                     ])
                 )
                 return
@@ -4507,7 +4519,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("xl_style:"):
-        style2 = call.data.split(":")[1].replace("_auto","")
+        _raw = call.data.split(":")[1]
+        force2 = "force" in _raw
+        style2 = _raw.replace("_auto","").replace("_force","")
         xl_bytes2 = admin_state.pop(f"{user_id}_rasm_xl", None)
         if not xl_bytes2:
             await call.answer("❌ Fayl topilmadi, qayta yuboring", show_alert=True); return
@@ -4528,7 +4542,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                     except: pass
                 result = await generate_from_excel(
                     xl_bytes2, call.message.bot,
-                    call.message.chat.id, pg, style=style2
+                    call.message.chat.id, pg, style=style2, force=force2
                 )
                 if result.get("error"):
                     await call.message.answer(f"❌ {result['error']}")
