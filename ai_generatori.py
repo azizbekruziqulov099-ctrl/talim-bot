@@ -893,7 +893,17 @@ async def handle_gen_callback(call, user_id):
         if not selected or total_per == 0:
             await call.answer("❌ Mavzu yoki son tanlanmagan!", show_alert=True); return
         await call.answer()
-        # gen_groups ni gen_state ga saqlash
         state["groups"] = groups
         gen_state[user_id] = state
         await run_generator(call, user_id)
+
+    elif data == "gen_template":
+        state = gen_state.get(user_id, {})
+        selected = state.get("selected", [])
+        topics_list = state.get("topics", {})
+        grade   = state.get("grade", "1")
+        subject = state.get("subject", "")
+        if not selected:
+            await call.answer("❌ Mavzu tanlanmagan!", show_alert=True); return
+        await call.answer()
+        await _generate_template(call, user_id, selected, topics_list, grade, subject)
