@@ -210,43 +210,31 @@ async def handle_shablon_message(message, user_id):
             await message.answer("❌ Mavzular topilmadi! Qayta yozing.")
             return
 
-        # Multi-difficulty sozlamalar
+        # To'g'ridan shablon yaratib yuborish — settings ekrani yo'q
         shablon_state[user_id]["mavzular"] = mavzular
-        shablon_state[user_id]["step"] = "settings"
-        groups = shablon_state[user_id].setdefault("groups",[
-            {"diff":"oson",    "type":"single_choice","count":0},
-            {"diff":"orta",    "type":"single_choice","count":0},
-            {"diff":"qiyin",   "type":"single_choice","count":0},
-            {"diff":"murakkab","type":"single_choice","count":0},
-        ])
-        DIFFS = [("oson","🟢"),("orta","🟡"),("qiyin","🔴"),("murakkab","⚫")]
-        rows = []
-        for g in groups:
-            d = g["diff"]; icon = next(em for df,em in DIFFS if df==d)
-            cnt = g["count"]; tp = g["type"]
-            rows.append([
-                InlineKeyboardButton(text=f"{icon} {d.capitalize()}", callback_data="noop"),
-                InlineKeyboardButton(text="✅0" if cnt==0  else "0",  callback_data=f"shb_cnt_{d}_0"),
-                InlineKeyboardButton(text="✅5" if cnt==5  else "5",  callback_data=f"shb_cnt_{d}_5"),
-                InlineKeyboardButton(text="✅10" if cnt==10 else "10", callback_data=f"shb_cnt_{d}_10"),
-                InlineKeyboardButton(text="✅15" if cnt==15 else "15", callback_data=f"shb_cnt_{d}_15"),
-                InlineKeyboardButton(text="✅20" if cnt==20 else "20", callback_data=f"shb_cnt_{d}_20"),
-            ])
-            rows.append([
-                InlineKeyboardButton(
-                    text="✅ 🔘 Tugmali" if tp=="single_choice" else "🔘 Tugmali",
-                    callback_data=f"shb_tp_{d}_choice"
-                ),
-                InlineKeyboardButton(
-                    text="✅ ✍️ Yozuvli" if tp=="write_answer" else "✍️ Yozuvli",
-                    callback_data=f"shb_tp_{d}_write"
-                ),
-            ])
-        rows.append([InlineKeyboardButton(text="📥 Shablon yuklab olish (0 ta)", callback_data="sh_download")])
-        await message.answer(
-            f"⚙️ Sozlamalar — har qiyinlikdan nechta?\n📚 {len(mavzular)} ta mavzu\nSon tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        sinf  = shablon_state[user_id].get("sinf","1")
+        fan   = shablon_state[user_id].get("fan","Fan")
+        
+        # Default: 20 ta aralash savol
+        groups = [
+            {"diff":"oson",    "type":"single_choice","count":5},
+            {"diff":"orta",    "type":"single_choice","count":5},
+            {"diff":"qiyin",   "type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ]
+        
+        buf = await _create_test_shablon_multi(sinf, fan, mavzular, groups)
+        fname = f"shablon_{sinf}sinf_{fan[:10].replace(' ','_')}.xlsx"
+        from aiogram.types import BufferedInputFile
+        await message.answer_document(
+            BufferedInputFile(buf.read(), filename=fname),
+            caption=(
+                f"✅ Shablon tayyor!\n🏫 {sinf}-sinf | {fan}\n"
+                f"📚 {len(mavzular)} ta mavzu × 20 ta = {len(mavzular)*20} qator\n"
+                f"🎯 oson:5 | o'rta:5 | qiyin:5 | murakkab:5"
+            )
         )
+        shablon_state.pop(user_id, None)
 
     # Import
     elif step == "import_wait":
