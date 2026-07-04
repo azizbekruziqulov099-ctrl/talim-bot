@@ -494,10 +494,12 @@ async def generate_from_excel(
 
 async def _tavsif_to_prompt(tavsif: str, fan: str, sinf: str) -> str:
     """O'zbek tavsifdan ingliz prompt yasaydi."""
+    import os as _os
+    _gemini_key = _os.getenv("GEMINI_API_KEY","")
     # Gemini bilan tarjima
-    if GEMINI_KEY:
+    if _gemini_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={_gemini_key}"
             req = f"""Translate this Uzbek image description to English for AI image generation.
 Make it suitable for a {sinf}st grade {fan} educational illustration.
 Keep it simple, cartoon style, child-friendly.
