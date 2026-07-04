@@ -1973,6 +1973,7 @@ Qoidalar:
             message.document.file_name and
             (message.document.file_name or "").endswith(".xlsx")):
         # RASMLAR varog'i borligini tekshiramiz
+        from io import BytesIO
         buf_check = BytesIO()
         await message.bot.download(message.document.file_id, destination=buf_check)
         buf_check.seek(0)
