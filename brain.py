@@ -1,226 +1,240 @@
 """
-quality_control.py — Xatolarni oldini olish va o'z-o'zini yaxshilash
+brain.py — Aqlli pedagogik yordamchi
+- Fuzzy matching (imlo xatolarni tushunadi)
+- Gemini API (aqlli javob)
+- Ko'p tilli (uz/ru/en)
+- Bilim bazasidan qidirish
 """
 import re, os, psycopg2, asyncio
+from difflib import SequenceMatcher
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+GEMINI_KEY   = os.getenv("GEMINI_API_KEY","")
 
 # ══════════════════════════════════════
 # TIL ANIQLASH
 # ══════════════════════════════════════
 def detect_lang(text: str) -> str:
-    """Matn tilini aniqlaydi: uz | ru | en
-    Default: uz (o'zbek)"""
     if not text: return "uz"
     t = text.lower().strip()
-    # Rus kirill harflari ko'p bo'lsa — ru
     ru_chars = set("абвгдежзийклмнопрстуфхцчшщъыьэюяё")
-    ru_count = sum(1 for c in t if c in ru_chars)
-    if ru_count > 2: return "ru"
-    # Ingliz so'zlari aniq bo'lsa — en
-    en_words = {"what","how","where","when","why","this","for","the",
-                "is","are","hello","hi","tell","me","teach","explain",
-                "give","show","can","you","do","know","about"}
-    words = set(re.findall(r"\b[a-zA-Z]+\b", t))
-    en_score = len(words & en_words)
-    if en_score >= 2: return "en"
-    # Qolgan hamma narsa o'zbek (default)
+    if sum(1 for c in t if c in ru_chars) > 2: return "ru"
+    en_words = {"what","how","where","when","why","the","is","are",
+                "hello","hi","teach","explain","give","know","about"}
+    if len(set(re.findall(r"[a-zA-Z]+", t)) & en_words) >= 2: return "en"
     return "uz"
 
 # ══════════════════════════════════════
-# KO'P TIL PROMPTLARI
+# FUZZY MATCHING — imlo xatolarni tushunish
 # ══════════════════════════════════════
-LANG_PROMPTS = {
-    "uz": {
-        "system": "Sen o'zbek tilida gapiradigan mutaxassis pedagogsan.",
-        "answer": "O'zbek tilida javob ber.",
-        "greet":  "Salom! Men ta'lim yordamchisiman.",
-        "notfound": "Kechirasiz, bu mavzu bo'yicha ma'lumot topa olmadim.",
-        "explain_5_7": "5-7 yoshli bolaga oddiy misol bilan tushuntir:",
-        "explain_8_11": "8-11 yoshli o'quvchiga tushunarli tarzda tushuntir:",
-        "explain_12plus": "12+ yoshga ilmiy, to'liq tushuntir:",
-    },
-    "ru": {
-        "system": "Ты профессиональный педагог, говоришь по-русски.",
-        "answer": "Отвечай на русском языке.",
-        "greet":  "Привет! Я образовательный помощник.",
-        "notfound": "Извините, информация по этой теме не найдена.",
-        "explain_5_7": "Объясни для ребёнка 5-7 лет с простым примером:",
-        "explain_8_11": "Объясни для ученика 8-11 лет понятно:",
-        "explain_12plus": "Объясни научно и полно для 12+ лет:",
-    },
-    "en": {
-        "system": "You are a professional educator who speaks English.",
-        "answer": "Answer in English.",
-        "greet":  "Hello! I am an educational assistant.",
-        "notfound": "Sorry, I couldn't find information on this topic.",
-        "explain_5_7": "Explain for a 5-7 year old child with a simple example:",
-        "explain_8_11": "Explain for an 8-11 year old student clearly:",
-        "explain_12plus": "Explain scientifically and fully for 12+ years:",
-    }
+UZ_CORRECTIONS = {
+    # Umumiy xatolar
+    "matimatika":"matematika","matim":"matematik","matem":"matematik",
+    "fizika":"fizika","kimiya":"kimyo","biyologiya":"biologiya",
+    "ingliz":"ingliz tili","inglizha":"inglizcha","inglisha":"inglizcha",
+    "ars":"dars","tist":"test","tisd":"test","savil":"savol",
+    "bilay":"biladi","bilamam":"bilmayman","bilasan":"bilasanmi",
+    "misil":"misol","masila":"masala","kasr":"kasr","kars":"kasr",
+    "qushish":"qo'shish","ayirish":"ayirish","kupaytirilish":"ko'paytirish",
+    "bulish":"bo'lish","teng":"teng","son":"son","raqam":"raqam",
+    "gapir":"gapir","ayt":"ayt","tushuntir":"tushuntir","urgatr":"o'rgat",
+    "nima":"nima","qantay":"qanday","qanha":"qancha","niga":"nima uchun",
 }
 
-def get_prompt(lang: str, key: str) -> str:
-    return LANG_PROMPTS.get(lang, LANG_PROMPTS["uz"]).get(key, "")
+def fix_typos(text: str) -> str:
+    """Imlo xatolarini tuzatadi."""
+    words = text.lower().split()
+    fixed = []
+    for w in words:
+        # To'g'ridan lug'atdan
+        if w in UZ_CORRECTIONS:
+            fixed.append(UZ_CORRECTIONS[w]); continue
+        # Fuzzy matching — 80%+ o'xshashlik
+        best, best_score = w, 0
+        for wrong, correct in UZ_CORRECTIONS.items():
+            score = SequenceMatcher(None, w, wrong).ratio()
+            if score > 0.8 and score > best_score:
+                best, best_score = correct, score
+        fixed.append(best)
+    return " ".join(fixed)
 
 # ══════════════════════════════════════
-# SIFAT NAZORATI
+# NIYAT ANIQLASH
 # ══════════════════════════════════════
-async def validate_answer(question: str, answer1: str, answer2: str, lang="uz") -> dict:
-    """
-    2 ta AI javobini taqqoslaydi.
-    Agar mos kelsa → ishonchli
-    Agar farq katta bo'lsa → tekshirish kerak
-    """
-    if not answer1 and not answer2:
-        return {"quality": 0, "answer": "", "reliable": False}
-    if not answer1: return {"quality": 5, "answer": answer2, "reliable": True}
-    if not answer2: return {"quality": 5, "answer": answer1, "reliable": True}
+INTENTS = {
+    "GREET":    [r"^(salom|assalom|hi|hello|привет|ало|aloo)"],
+    "HELP":     [r"(yordam|nima qilolasan|help|pomogi|справка|nima bilasan)"],
+    "TEST":     [r"(test|sinov|imtihon|тест|quiz|exam)\s*(ber|boshlash|ishlash)?"],
+    "LESSON":   [r"(dars|mavzu|o.rgan|tushuntir|урок|объясни|lesson|explain)"],
+    "MISOL":    [r"(misol|mashq|пример|example|exercise)"],
+    "MASALA":   [r"(masala|задача|problem|hisoblash|solve)"],
+    "STATS":    [r"(natija|statistika|результат|results|progress)"],
+    "QUESTION": [r"\?\s*$", r"(nima|qanday|qachon|necha|что|как|what|how)"],
+}
 
-    # Uzunlikni taqqoslaymiz
-    len1, len2 = len(answer1), len(answer2)
-    # Kalit so'zlarni taqqoslaymiz
-    words1 = set(re.findall(r'\b\w{4,}\b', answer1.lower()))
-    words2 = set(re.findall(r'\b\w{4,}\b', answer2.lower()))
-    overlap = len(words1 & words2) / max(len(words1 | words2), 1)
-
-    if overlap > 0.4:
-        # Mos keladi — yaxshiroqni olish
-        best = answer1 if len1 > len2 else answer2
-        return {"quality": 9, "answer": best, "reliable": True, "overlap": overlap}
-    elif overlap > 0.2:
-        # Qisman mos
-        best = answer1 if len1 > len2 else answer2
-        return {"quality": 6, "answer": best, "reliable": True, "overlap": overlap}
-    else:
-        # Farq katta — ikkalasini birlashtirish
-        combined = f"{answer1}\n\n---\n\n{answer2}"
-        return {"quality": 4, "answer": combined, "reliable": False, "overlap": overlap}
-
-def check_answer_quality(answer: str) -> dict:
-    """Javob sifatini tekshiradi."""
-    if not answer or len(answer) < 20:
-        return {"ok": False, "reason": "Juda qisqa"}
-    if answer.strip().startswith("{") or answer.strip().startswith("["):
-        return {"ok": False, "reason": "JSON formatda (xato)"}
-    if len(answer) > 5000:
-        return {"ok": False, "reason": "Juda uzun"}
-    return {"ok": True}
+def detect_intent(text: str) -> str:
+    t = text.lower()
+    for intent, patterns in INTENTS.items():
+        for p in patterns:
+            if re.search(p, t, re.I): return intent
+    return "UNKNOWN"
 
 # ══════════════════════════════════════
-# XATOLARDAN O'RGANISH
+# MAVZU QIDIRISH (fuzzy)
 # ══════════════════════════════════════
-def init_feedback_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur  = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS answer_feedback (
-            id          SERIAL PRIMARY KEY,
-            question    TEXT,
-            answer_given TEXT,
-            correct_answer TEXT,
-            was_correct BOOLEAN,
-            user_id     BIGINT,
-            knowledge_id INT,
-            created_at  TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS weak_topics (
-            id          SERIAL PRIMARY KEY,
-            mavzu       TEXT,
-            fan         TEXT,
-            error_count INT DEFAULT 1,
-            last_error  TIMESTAMP DEFAULT NOW(),
-            UNIQUE(mavzu, fan)
-        )
-    """)
-    conn.commit(); cur.close(); conn.close()
-
-def record_mistake(question: str, given: str, correct: str,
-                   user_id: int, mavzu: str, fan: str):
-    """Xatoni qayd etadi va zaif mavzularni belgilaydi."""
+def find_topic(text: str, grade: str = None):
+    t = fix_typos(text).lower()
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur  = conn.cursor()
-        cur.execute("""
-            INSERT INTO answer_feedback(question,answer_given,correct_answer,
-                                        was_correct,user_id)
-            VALUES(%s,%s,%s,FALSE,%s)
-        """, (question, given, correct, user_id))
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        gf = "AND grade=%s" if grade else ""
+        cur.execute(f"""
+            SELECT topic_code, kichik_name, subject_name, grade
+            FROM dts_tree
+            WHERE is_deleted=FALSE AND (
+                LOWER(kichik_name) LIKE %s OR
+                LOWER(mavzu_name) LIKE %s OR
+                LOWER(subject_name) LIKE %s)
+            {gf} LIMIT 5
+        """, [f"%{t}%"]*3 + ([grade] if grade else []))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        if not rows: return None
+        words = t.split()
+        best, bs = None, 0
+        for tc,kn,sn,gr in rows:
+            sc = max(SequenceMatcher(None,w,kn.lower()).ratio() for w in words)
+            if sc > bs: bs, best = sc, {"topic_code":tc,"kichik_name":kn,"subject_name":sn,"grade":gr}
+        return best if bs > 0.3 else {"topic_code":rows[0][0],"kichik_name":rows[0][1],"subject_name":rows[0][2],"grade":rows[0][3]}
+    except: return None
 
-        # Zaif mavzuni belgilash
-        cur.execute("""
-            INSERT INTO weak_topics(mavzu,fan,error_count)
-            VALUES(%s,%s,1)
-            ON CONFLICT(mavzu,fan) DO UPDATE
-            SET error_count = weak_topics.error_count + 1,
-                last_error  = NOW()
-        """, (mavzu, fan))
+# ══════════════════════════════════════
+# BILIM BAZASIDAN QIDIRISH
+# ══════════════════════════════════════
+def search_db(text: str, yosh: int = 10):
+    original = text
+    text = fix_typos(text)
+    words = re.findall(r'\w{3,}', text.lower())
+    if not words: return None
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        like = " OR ".join(["keywords ILIKE %s OR savol ILIKE %s OR mavzu ILIKE %s"]*len(words))
+        params = [f"%{w}%" for w in words for _ in range(3)]
+        cur.execute(f"""
+            SELECT mavzu, savol, javob, izoh, yosh_5_7, yosh_8_11, yosh_12plus, quality
+            FROM knowledge_facts
+            WHERE ({like})
+            ORDER BY quality DESC LIMIT 3
+        """, params)
+        rows = cur.fetchall(); cur.close(); conn.close()
+        if not rows: return None
+        best = rows[0]
+        javob = (best[4] if yosh<=7 else best[5] if yosh<=11 else best[6]) or best[2]
+        return {"mavzu":best[0],"savol":best[1],"javob":javob,"izoh":best[3]}
+    except: return None
 
-        # Shu mavzudagi bilimning sifatini tushirish
-        cur.execute("""
-            UPDATE knowledge_facts
-            SET quality = GREATEST(quality - 1, 1)
-            WHERE mavzu=%s AND fan=%s
-        """, (mavzu, fan))
+# ══════════════════════════════════════
+# GEMINI API
+# ══════════════════════════════════════
+async def ask_gemini(question: str, context: str = "", lang: str = "uz") -> str:
+    if not GEMINI_KEY: return ""
+    lang_map = {"uz":"O'zbek tilida javob ber.","ru":"Отвечай по-русски.","en":"Answer in English."}
+    prompt = f"""{lang_map.get(lang,'')}
+Sen ta'lim sohasidagi mutaxassis pedagogsan.
+Quyidagi savol o'quvchidan keldi.
 
-        conn.commit(); cur.close(); conn.close()
+{f"Kontekst:{context}" if context else ""}
+
+Savol: {question}
+
+Qisqa, tushunarli, yoshga mos javob ber. Agar formula bo'lsa LaTeX formatida yoz."""
+    try:
+        import aiohttp
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+        body = {"contents":[{"parts":[{"text":prompt}]}],
+                "generationConfig":{"maxOutputTokens":500,"temperature":0.3}}
+        async with aiohttp.ClientSession() as sess:
+            async with sess.post(url, json=body, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
-        print(f"record_mistake xato: {e}")
+        print(f"Gemini: {e}")
+    return ""
 
-def get_weak_topics(fan: str = None, limit: int = 10) -> list:
-    """Eng ko'p xato qilingan mavzular."""
-    conn = psycopg2.connect(DATABASE_URL)
-    cur  = conn.cursor()
-    fan_f = "WHERE fan=%s" if fan else ""
-    params = ([fan] if fan else []) + [limit]
-    cur.execute(f"""
-        SELECT mavzu, fan, error_count
-        FROM weak_topics
-        {fan_f}
-        ORDER BY error_count DESC
-        LIMIT %s
-    """, params)
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return [{"mavzu":r[0],"fan":r[1],"xato":r[2]} for r in rows]
+# ══════════════════════════════════════
+# JAVOB MATNI
+# ══════════════════════════════════════
+SALOM = {
+    "uz": "👋 Salom! Men ta'lim yordamchisiman.\n\nIstalgan savolni yozing — matematika, ingliz tili, fizika, pedagog qonunlari — hamma narsaga javob beraman!",
+    "ru": "👋 Привет! Я образовательный помощник. Задавайте любые вопросы!",
+    "en": "👋 Hello! I'm your educational assistant. Ask me anything!",
+}
+YORDAM = {
+    "uz": "🆘 Nima qila olaman:\n\n📚 Mavzu tushuntirish: «kasr nima?», «qo'shish qoidasi»\n📐 Misol: «misol ber», «masala yech»\n🧪 Test: «test ber», «5 ta savol»\n📖 Dars: «greetings darsini ber»\n\nImlo xatosi bo'lsa ham tushunaman 😊",
+    "ru": "🆘 Могу:\n📚 Объяснить тему\n📐 Дать примеры\n🧪 Тест\n📖 Урок",
+    "en": "🆘 I can:\n📚 Explain topics\n📐 Give examples\n🧪 Tests\n📖 Lessons",
+}
+NOT_FOUND = {
+    "uz": "🤔 Bu haqda bilim bazamda ma'lumot yo'q.\n\nAniqroq yozing:\n• «{q} nima?»\n• «{q} misol»",
+    "ru": "🤔 Информация не найдена. Попробуйте переформулировать.",
+    "en": "🤔 No info found. Try rephrasing.",
+}
 
-async def retrain_weak_topics(fan: str, sinf: str, progress_cb=None):
-    """Zaif mavzularni qayta o'qitadi."""
-    weak = get_weak_topics(fan)
-    if not weak:
-        return {"message": "Zaif mavzu yo'q — tizim yaxshi ishlayapti!"}
+# ══════════════════════════════════════
+# ASOSIY FUNKSIYA
+# ══════════════════════════════════════
+async def process_message(text: str, user_id: int,
+                          grade: str = None, yosh: int = 10) -> dict:
+    lang    = detect_lang(text)
+    fixed   = fix_typos(text)
+    intent  = detect_intent(fixed)
+    topic   = find_topic(fixed, grade)
+    result  = {"intent":intent,"topic":topic,"action":None,"message":None,"lang":lang}
 
-    if progress_cb:
-        await progress_cb(f"🔄 {len(weak)} ta zaif mavzu qayta o'qitilmoqda...")
+    if intent == "GREET":
+        result["message"] = SALOM.get(lang, SALOM["uz"])
+        return result
 
-    from pedagog_trainer import ask_best, make_analysis_prompt
-    conn = psycopg2.connect(DATABASE_URL)
-    cur  = conn.cursor()
-    fixed = 0
-    for w in weak[:5]:  # Eng muhim 5 tasini
-        cur.execute("""
-            SELECT chunk_text FROM knowledge_facts
-            WHERE mavzu=%s AND fan=%s LIMIT 1
-        """, (w["mavzu"], fan))
-        row = cur.fetchone()
-        if not row: continue
+    if intent == "HELP":
+        result["message"] = YORDAM.get(lang, YORDAM["uz"])
+        return result
 
-        # Qayta tahlil
-        prompt = make_analysis_prompt(row[0], fan, sinf)
-        new_answer, ai = await ask_best(prompt)
-        if new_answer:
-            cur.execute("""
-                UPDATE knowledge_facts
-                SET javob=%s, source_ai=%s, quality=8
-                WHERE mavzu=%s AND fan=%s
-            """, (new_answer, ai, w["mavzu"], fan))
-            # Zaif mavzu hisoblagichini nolga tushirish
-            cur.execute("""
-                UPDATE weak_topics SET error_count=0 WHERE mavzu=%s AND fan=%s
-            """, (w["mavzu"], fan))
-            fixed += 1
+    if intent == "STATS":
+        result["action"]  = "SHOW_STATS"
+        result["message"] = {"uz":"📊 Statistikangizni yuklamoqdaman...","ru":"📊 Загружаю...","en":"📊 Loading..."}.get(lang)
+        return result
 
-    conn.commit(); cur.close(); conn.close()
-    return {"fixed": fixed, "total": len(weak)}
+    if intent == "TEST" and topic:
+        result["action"]  = "START_TEST"
+        result["message"] = f"🧪 {topic['kichik_name']} — test boshlanmoqda..."
+        return result
+
+    if intent == "LESSON" and topic:
+        result["action"]  = "START_LESSON"
+        result["message"] = f"📖 {topic['kichik_name']} darsi boshlanmoqda..."
+        return result
+
+    # Savol yoki noma'lum → avval DB, keyin Gemini
+    kb = search_db(fixed, yosh)
+    if kb:
+        izoh = kb.get("izoh","")
+        msg  = f"📖 {kb['mavzu']}\n\n{kb['javob']}"
+        if izoh: msg += f"\n\n💡 {izoh}"
+        result["message"] = msg
+        return result
+
+    # DB da yo'q → Gemini ga yuboramiz
+    if GEMINI_KEY:
+        gemini_ans = await ask_gemini(text, lang=lang)
+        if gemini_ans:
+            result["message"] = f"🤖 {gemini_ans}"
+            return result
+
+    # Hech narsa topilmadi
+    if topic:
+        result["action"]  = "START_LESSON"
+        result["message"] = f"📖 {topic['kichik_name']} bo'yicha dars boshlayman..."
+    else:
+        q = fixed[:20]
+        result["message"] = NOT_FOUND.get(lang, NOT_FOUND["uz"]).format(q=q)
+
+    return result
