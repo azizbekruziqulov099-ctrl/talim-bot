@@ -186,12 +186,29 @@ async def _render_topics(message, user_id, selected, grade, subject, edit=False)
 
     bottom = [InlineKeyboardButton(text="◀️ Fan", callback_data="gen_subj_back")]
     if selected:
-        bottom.append(InlineKeyboardButton(text="❌", callback_data="gen_clear"))
-        bottom.append(InlineKeyboardButton(
-            text=f"🚀 Boshlash ({len(selected)})",
-            callback_data="gen_run"
-        ))
+        bottom.append(InlineKeyboardButton(text="❌ Tozalash", callback_data="gen_clear"))
     rows.append(bottom)
+
+    # Barchasini tanlash + Sozlamalar + Boshlash
+    action_row = []
+    if filt == "empty" and empty_cnt > 0:
+        action_row.append(InlineKeyboardButton(
+            text=f"☑️ Barcha bo'shlarni ({empty_cnt})",
+            callback_data="gen_select_all"
+        ))
+    elif filt != "empty":
+        action_row.append(InlineKeyboardButton(
+            text=f"☑️ Barchasini ({all_cnt})",
+            callback_data="gen_select_all"
+        ))
+    if action_row:
+        rows.append(action_row)
+
+    if selected:
+        rows.append([InlineKeyboardButton(
+            text=f"⚙️ Sozlamalar → 🚀 Boshlash ({len(selected)} mavzu)",
+            callback_data="gen_settings"
+        )])
 
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -750,4 +767,88 @@ async def handle_gen_callback(call, user_id):
         await call.answer()
 
     elif data == "gen_run":
+        await run_generator(call, user_id)
+    elif data == "gen_select_all":
+        state = gen_state.get(user_id, {})
+        grade   = state.get("grade", "1")
+        subject = state.get("subject", "")
+        filt    = state.get("filter", "empty")
+        # DB dan barcha mavzularni olamiz
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT d.topic_code,
+                COUNT(g.id) as cnt
+            FROM dts_tree d
+            LEFT JOIN generated_tests g ON g.topic_code=d.topic_code
+            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            GROUP BY d.topic_code
+        """, (grade, subject))
+        rows2 = cur2.fetchall(); cur2.close(); conn2.close()
+        if filt == "empty":
+            all_codes = [r[0] for r in rows2 if r[1] == 0]
+        else:
+            all_codes = [r[0] for r in rows2]
+        state["selected"] = all_codes
+        gen_state[user_id] = state
+        await _render_topics(call.message, user_id, all_codes, grade, subject, edit=True)
+        await call.answer(f"✅ {len(all_codes)} ta tanlandi")
+
+    elif data == "gen_settings":
+        state = gen_state.get(user_id, {})
+        selected = state.get("selected", [])
+        if not selected:
+            await call.answer("❌ Mavzu tanlanmagan!", show_alert=True); return
+        state.setdefault("gen_groups", [
+            {"diff":"oson",    "type":"single_choice","count":5},
+            {"diff":"orta",    "type":"single_choice","count":5},
+            {"diff":"qiyin",   "type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ])
+        gen_state[user_id] = state
+        await call.answer()
+        await call.message.answer(
+            f"⚙️ Sozlamalar\n📚 {len(selected)} ta mavzu tanlangan\n\n"
+            f"Har qiyinlikdan nechta va qanday turdagi savol?",
+            reply_markup=_gen_settings_kb(state["gen_groups"])
+        )
+
+    elif data.startswith("gg_cnt_") or data.startswith("gg_tp_"):
+        state = gen_state.setdefault(user_id, {})
+        groups = state.setdefault("gen_groups", [
+            {"diff":"oson",    "type":"single_choice","count":5},
+            {"diff":"orta",    "type":"single_choice","count":5},
+            {"diff":"qiyin",   "type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ])
+        if data.startswith("gg_cnt_"):
+            parts2 = data[7:].rsplit("_",1)
+            d2, cnt2 = parts2[0], int(parts2[1])
+            for g in groups:
+                if g["diff"] == d2: g["count"] = cnt2
+        elif data.startswith("gg_tp_"):
+            parts2 = data[6:].rsplit("_",1)
+            d2, tp2 = parts2[0], parts2[1]
+            for g in groups:
+                if g["diff"] == d2:
+                    g["type"] = "single_choice" if tp2=="choice" else "write_answer"
+        await call.answer("✅")
+        try: await call.message.edit_reply_markup(reply_markup=_gen_settings_kb(groups))
+        except: pass
+
+    elif data == "gen_go":
+        state = gen_state.get(user_id, {})
+        selected = state.get("selected", [])
+        groups   = state.get("gen_groups", [
+            {"diff":"oson","type":"single_choice","count":5},
+            {"diff":"orta","type":"single_choice","count":5},
+            {"diff":"qiyin","type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ])
+        total_per = sum(g["count"] for g in groups)
+        if not selected or total_per == 0:
+            await call.answer("❌ Mavzu yoki son tanlanmagan!", show_alert=True); return
+        await call.answer()
+        # gen_groups ni gen_state ga saqlash
+        state["groups"] = groups
+        gen_state[user_id] = state
         await run_generator(call, user_id)
