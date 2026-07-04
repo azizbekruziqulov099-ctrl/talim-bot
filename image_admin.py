@@ -35,12 +35,14 @@ async def show_image_panel(message):
     total = cur.fetchone()[0]
     # Sinflar
     cur.execute("""
-        SELECT DISTINCT d.grade, COUNT(i.id) as cnt
-        FROM images i
-        JOIN dts_tree d ON d.topic_code = SUBSTRING(i.name FROM '^(.+)-[0-9]+$')
-        WHERE i.name ~ '^.+-[0-9]+$'
-        GROUP BY d.grade
-        ORDER BY CASE WHEN d.grade ~ '^[0-9]+$' THEN d.grade::int ELSE 99 END
+        SELECT grade, cnt FROM (
+            SELECT d.grade, COUNT(i.id) as cnt
+            FROM images i
+            JOIN dts_tree d ON d.topic_code = SUBSTRING(i.name FROM '^(.+)-[0-9]+$')
+            WHERE i.name ~ '^.+-[0-9]+$'
+            GROUP BY d.grade
+        ) _g
+        ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
     """)
     grades = cur.fetchall()
     cur.close(); conn.close()
