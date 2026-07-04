@@ -210,28 +210,19 @@ async def handle_shablon_message(message, user_id):
             await message.answer("❌ Mavzular topilmadi! Qayta yozing.")
             return
 
-        # To'g'ridan shablon yaratib yuborish — settings ekrani yo'q
-        shablon_state[user_id]["mavzular"] = mavzular
-        sinf  = shablon_state[user_id].get("sinf","1")
-        fan   = shablon_state[user_id].get("fan","Fan")
-        
-        # Default: 20 ta aralash savol
-        groups = [
-            {"diff":"oson",    "type":"single_choice","count":5},
-            {"diff":"orta",    "type":"single_choice","count":5},
-            {"diff":"qiyin",   "type":"single_choice","count":5},
-            {"diff":"murakkab","type":"single_choice","count":5},
-        ]
-        
-        buf = await _create_test_shablon_multi(sinf, fan, mavzular, groups)
-        fname = f"shablon_{sinf}sinf_{fan[:10].replace(' ','_')}.xlsx"
+        # DTS import shabloni — 7 ustun, 2 qator (kichik mavzu)
+        buf = await _create_shablon(sinf, fan, mavzular)
+        fname = f"shablon_{sinf}sinf_{fan.replace(' ','_')}.xlsx"
         from aiogram.types import BufferedInputFile
         await message.answer_document(
             BufferedInputFile(buf.read(), filename=fname),
             caption=(
-                f"✅ Shablon tayyor!\n🏫 {sinf}-sinf | {fan}\n"
-                f"📚 {len(mavzular)} ta mavzu × 20 ta = {len(mavzular)*20} qator\n"
-                f"🎯 oson:5 | o'rta:5 | qiyin:5 | murakkab:5"
+                f"✅ Shablon tayyor!\n"
+                f"📚 {sinf}-sinf | {fan}\n"
+                f"📝 {len(mavzular)} ta mavzu × 2 qator\n"
+                f"📊 Jami: {len(mavzular)*2} ta qator\n\n"
+                f"Bo'sh ustunlar: Bob, Bo'lim, Kichik mavzu\n"
+                f"To'ldirib import qiling ✅"
             )
         )
         shablon_state.pop(user_id, None)
@@ -439,7 +430,12 @@ async def _create_test_shablon_multi(sinf, fan, mavzular, groups):
         cell.alignment = Alignment(horizontal="center")
 
     row_num = 2
-    for topic_code, chorak, mavzu_name in mavzular:
+    for item in mavzular:
+        if len(item) == 3:
+            topic_code, chorak, mavzu_name = item
+        else:
+            chorak, mavzu_name = item
+            topic_code = mavzu_name
         for g in groups:
             if g["count"] == 0: continue
             color = colors.get(g["diff"], "F2F2F2")
