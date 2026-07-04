@@ -10,6 +10,23 @@ HF_TOKEN     = os.getenv("HF_TOKEN","")
 OPENAI_KEY   = os.getenv("OPENAI_API_KEY","")
 
 # Modellar (yaxshidan oddiyga)
+
+# ══════════════════════════════════════
+# USLUBLAR
+# ══════════════════════════════════════
+STYLES = {
+    "multik":   "cute cartoon style, Disney animation style, colorful, child-friendly",
+    "hayotiy":  "realistic photo style, photorealistic, natural lighting, detailed",
+    "chizma":   "hand-drawn sketch style, pencil drawing, educational diagram",
+    "akvarell": "watercolor painting style, soft colors, artistic",
+    "flat":     "flat design style, simple shapes, minimal, modern illustration",
+    "3d":       "3D render style, vibrant colors, smooth surfaces, professional",
+    "komiks":   "comic book style, bold outlines, expressive, fun",
+    "darslik":  "textbook illustration style, clean lines, educational, labeled diagram",
+}
+
+DEFAULT_STYLE = "multik"  # Bolalar uchun default
+
 MODELS = [
     "black-forest-labs/FLUX.1-schnell",   # Eng yaxshi, tez, bepul
     "stabilityai/stable-diffusion-3.5-large",  # Alternativ
@@ -32,9 +49,11 @@ SUBJECT_STYLE = {
     "default":     "educational illustration, colorful, school textbook style",
 }
 
-QUALITY_SUFFIX = ", high quality, professional, white background, no text, 4k"
+def get_quality_suffix(style: str = "multik") -> str:
+    style_desc = STYLES.get(style, STYLES["multik"])
+    return f", {style_desc}, high quality, white background, no text"
 
-async def build_prompt(question: str, fan: str) -> str:
+async def build_prompt(question: str, fan: str, style: str = "multik") -> str:
     """Savol va fan asosida inglizcha prompt yasaydi."""
     fan_lower = fan.lower()
     style = next((v for k,v in SUBJECT_STYLE.items() if k in fan_lower),
@@ -71,7 +90,7 @@ async def build_prompt(question: str, fan: str) -> str:
         words = [w for w in re.findall(r'\w{4,}', question) if not w.isdigit()]
         obj = f"educational illustration about {' '.join(words[:5])}" if words else "educational diagram"
 
-    return f"{obj}, {style}{QUALITY_SUFFIX}"
+    return f"{obj}, {get_quality_suffix(style)}"
 
 # ══════════════════════════════════════
 # HUGGING FACE BILAN RASM
@@ -316,7 +335,8 @@ async def generate_from_excel(
     excel_bytes: bytes,
     bot,
     chat_id: int,
-    progress_cb=None
+    progress_cb=None,
+    style: str = "multik"
 ) -> dict:
     """
     RASMLAR varog'i bor Excel dan:
@@ -369,40 +389,43 @@ async def generate_from_excel(
 
     await p(f"🖼 {len(items)} ta rasm yaratiladi...\n⏱ Taxminan {len(items)*8//60} daqiqa")
 
-    created = skipped = errors = 0
+    # DB da allaqachon bor bo'lganlarni o'tkazib yuboramiz
+    existing = set()
+    try:
+        kods = [item["kod"] for item in items]
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        ph = ",".join(["%s"]*len(kods))
+        cur.execute(f"SELECT name FROM images WHERE name IN ({ph})", kods)
+        existing = {r[0] for r in cur.fetchall()}
+        cur.close(); conn.close()
+    except: pass
 
-    for i, item in enumerate(items, 1):
-        kod   = item["kod"]
-        tavs  = item["tavsif"]
-        sinf  = item["sinf"]
-        fan   = item["fan"]
+    todo = [item for item in items if item["kod"] not in existing]
+    skipped = len(existing)
+    created = errors = 0
 
-        # DB da bormi?
+    await p(f"📊 Jami: {len(items)} | Yangi: {len(todo)} | O\'tkazildi: {skipped}")
+
+    # Parallel — 3 ta bir vaqtda
+    BATCH = 3
+
+    async def process_one(item, idx):
+        nonlocal created, errors
+        kod  = item["kod"]
+        tavs = item["tavsif"]
+        sinf = item["sinf"]
+        fan  = item["fan"]
         try:
-            conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
-            cur.execute("SELECT file_id FROM images WHERE name=%s", (kod,))
-            row = cur.fetchone(); cur.close(); conn.close()
-            if row:
-                skipped += 1
-                continue
-        except: pass
-
-        # Prompt yasash — o'zbek tavsifdan ingliz promtga
-        prompt = await _tavsif_to_prompt(tavs, fan, sinf)
-        await p(f"⏳ {i}/{len(items)}: {tavs[:40]}...")
-
-        # Rasm yaratish
-        img = await generate_hf(prompt)
-        if not img and OPENAI_KEY:
-            img = await generate_dalle(prompt)
-
-        if img:
-            try:
+            prompt = await _tavsif_to_prompt(tavs, fan, sinf)
+            if style != "multik":
+                prompt += f", {get_quality_suffix(style)}"
+            img = await generate_hf(prompt)
+            if img:
                 from aiogram.types import BufferedInputFile
                 sent = await bot.send_photo(
                     chat_id,
                     BufferedInputFile(img, f"{kod}.png"),
-                    caption=f"🖼 {kod}\n{tavs[:50]}"
+                    caption=f"🖼 {kod}"
                 )
                 fid = sent.photo[-1].file_id
                 conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
@@ -411,16 +434,20 @@ async def generate_from_excel(
                            (kod, fid))
                 conn.commit(); cur.close(); conn.close()
                 created += 1
-            except Exception as e:
+            else:
                 errors += 1
-                print(f"Saqlash: {e}")
-        else:
+        except Exception as e:
             errors += 1
+            print(f"Rasm {kod}: {e}")
 
-        await asyncio.sleep(3)  # Rate limit
-
-        if i % 10 == 0:
-            await p(f"📊 {i}/{len(items)} | ✅{created} | ⏭{skipped} | ❌{errors}")
+    for i in range(0, len(todo), BATCH):
+        batch = todo[i:i+BATCH]
+        tasks = [process_one(item, i+j+1) for j,item in enumerate(batch)]
+        await asyncio.gather(*tasks)
+        done = min(i+BATCH, len(todo))
+        pct  = round(done*100/len(todo)) if todo else 100
+        await p(f"⏳ {pct}% ({done}/{len(todo)}) | ✅{created} | ❌{errors}")
+        await asyncio.sleep(1)
 
     await p(
         f"🎉 Tayyor!\n"
