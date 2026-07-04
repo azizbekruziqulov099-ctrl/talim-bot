@@ -302,6 +302,56 @@ async def generate_from_excel(excel_bytes, bot, chat_id,
         await asyncio.sleep(3)
 
     await p(f"🎉 Tayyor!\n✅ {created} ta | ⏭ {skipped} ta | ❌ {errors} ta")
+
+    # Xatolarni avtomatik qayta urinish (max 2 marta)
+    for attempt in range(2):
+        if errors == 0: break
+        # DB da yo'q qolganlarni topamiz
+        try:
+            all_kods = [it["kod"] for it in todo]
+            conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+            ph = ",".join(["%s"]*len(all_kods))
+            cur.execute(f"SELECT name FROM images WHERE name IN ({ph})", all_kods)
+            done_kods = {r[0] for r in cur.fetchall()}
+            cur.close(); conn.close()
+            retry_list = [it for it in todo if it["kod"] not in done_kods]
+        except: break
+
+        if not retry_list: break
+        await p(f"🔄 {attempt+2}-urinish: {len(retry_list)} ta qayta chizilmoqda...")
+        await asyncio.sleep(5)
+
+        r_created = r_errors = 0
+        for i, item in enumerate(retry_list, 1):
+            try:
+                prompt = await _tavsif_to_prompt(item["tavsif"],item["fan"],item["sinf"],style)
+                img = await generate_hf(prompt, style)
+                if img:
+                    from aiogram.types import BufferedInputFile
+                    sent = await bot.send_photo(
+                        chat_id, BufferedInputFile(img, f"{item['kod']}.png"),
+                        caption=f"🖼 {item['kod']}"
+                    )
+                    fid = sent.photo[-1].file_id
+                    c2=psycopg2.connect(DATABASE_URL);cu2=c2.cursor()
+                    cu2.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                        (item["kod"],fid))
+                    c2.commit();cu2.close();c2.close()
+                    r_created += 1; created += 1
+                else: r_errors += 1
+            except Exception as e:
+                r_errors += 1
+                print(f"retry xato: {e}")
+            if i % 5 == 0 or i == len(retry_list):
+                pct = round(i*100/len(retry_list))
+                await p(f"🔄{attempt+2}: {pct}% ({i}/{len(retry_list)}) | ✅{r_created} | ❌{r_errors}")
+            await asyncio.sleep(3)
+
+        errors = r_errors
+        await p(f"🔄{attempt+2} tugadi: ✅{r_created} yangi | ❌{r_errors} qoldi")
+
+    await p(f"🏁 Hammasi tugadi!\n✅ {created} ta saqlandi | ❌ {errors} ta qoldi")
     return {"created":created,"skipped":skipped,"errors":errors}
 
 async def generate_topic_images(topic_code, fan, sinf, count=20,
