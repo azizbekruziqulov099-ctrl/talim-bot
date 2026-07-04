@@ -1374,6 +1374,11 @@ async def import_tests_excel(target, path, user_id):
     for index, row in df.iterrows():
 
         try:
+            # Bo'sh qatorni o'tkazib yuborish
+            _tc = row.get("topic_code","")
+            _q  = row.get("question","")
+            if pd.isna(_tc) or pd.isna(_q) or str(_tc).strip() in ("","nan") or str(_q).strip() in ("","nan"):
+                continue
 
             test_data = {
                 "topic_code": str(row["topic_code"]).strip(),
@@ -2856,34 +2861,40 @@ Qoidalar:
                         f"⏱ Taxminan {len(rasm_items)//3} daqiqa"
                     )
                     async def do_auto_rasm(items, status):
-                        from rasim_generator import generate_hf, generate_dalle, _tavsif_to_prompt
+                        from rasim_generator import generate_hf, _tavsif_to_prompt
                         created = 0; errors = 0
+
+                        async def proc_one(item):
+                            try:
+                                prompt = await _tavsif_to_prompt(item["tavsif"], "ta'lim", "3")
+                                img = await generate_hf(prompt)
+                                if img:
+                                    from aiogram.types import BufferedInputFile
+                                    from io import BytesIO
+                                    sent = await message.bot.send_photo(
+                                        message.chat.id,
+                                        BufferedInputFile(img, f"{item['kod']}.png"),
+                                        caption=f"🖼 {item['kod']}"
+                                    )
+                                    fid = sent.photo[-1].file_id
+                                    _cn=psycopg2.connect(DATABASE_URL);_cu=_cn.cursor()
+                                    _cu.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                                        (item["kod"],fid))
+                                    _cn.commit();_cu.close();_cn.close()
+                                    return True
+                                return False
+                            except Exception as _e:
+                                print(f"rasm xato: {_e}")
+                                return False
+
                         for i in range(0, len(items), 3):
                             batch = items[i:i+3]
-                            async def proc(item):
-                                nonlocal created, errors
-                                try:
-                                    prompt = await _tavsif_to_prompt(item["tavsif"], "ta'lim", "3")
-                                    img = await generate_hf(prompt)
-                                    if img:
-                                        from aiogram.types import BufferedInputFile
-                                        sent = await message.bot.send_photo(
-                                            message.chat.id,
-                                            BufferedInputFile(img, f"{item['kod']}.png"),
-                                            caption=f"🖼 {item['kod']}"
-                                        )
-                                        fid = sent.photo[-1].file_id
-                                        _cn=psycopg2.connect(DATABASE_URL);_cu=_cn.cursor()
-                                        _cu.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
-                                            ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
-                                            (item["kod"],fid))
-                                        _cn.commit();_cu.close();_cn.close()
-                                        created += 1
-                                    else: errors += 1
-                                except: errors += 1
-                            await asyncio.gather(*[proc(b) for b in batch])
+                            results = await asyncio.gather(*[proc_one(b) for b in batch])
+                            created += sum(1 for r in results if r)
+                            errors  += sum(1 for r in results if not r)
                             done = min(i+3, len(items))
-                            pct = round(done*100/len(items))
+                            pct  = round(done*100/len(items))
                             try:
                                 await status.edit_text(
                                     f"🖼 Rasmlar chizilmoqda...\n"
