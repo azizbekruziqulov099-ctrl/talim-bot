@@ -2867,7 +2867,9 @@ Qoidalar:
                         async def proc_one(item):
                             try:
                                 prompt = await _tavsif_to_prompt(item["tavsif"], "ta'lim", "3")
+                                print(f"Prompt: {prompt[:60]}")
                                 img = await generate_hf(prompt)
+                                print(f"Img: {len(img) if img else 'None'}")
                                 if img:
                                     from aiogram.types import BufferedInputFile
                                     from io import BytesIO
@@ -2885,7 +2887,7 @@ Qoidalar:
                                     return True
                                 return False
                             except Exception as _e:
-                                print(f"rasm xato: {_e}")
+                                print(f"proc_one xato: {_e}")
                                 return False
 
                         for i in range(0, len(items), 3):
