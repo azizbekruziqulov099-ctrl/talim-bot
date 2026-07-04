@@ -253,6 +253,12 @@ async def run_generator(call, user_id):
     topics_list = state.get("topics", {})
     grade = state.get("grade", "1")
     subject = state.get("subject", "")
+    groups = state.get("gen_groups", state.get("groups", [
+        {"diff":"oson",    "type":"single_choice","count":5},
+        {"diff":"orta",    "type":"single_choice","count":5},
+        {"diff":"qiyin",   "type":"single_choice","count":5},
+        {"diff":"murakkab","type":"single_choice","count":5},
+    ]))
 
     if not selected:
         await call.answer("❌ Mavzu tanlanmagan!", show_alert=True)
@@ -285,8 +291,8 @@ async def run_generator(call, user_id):
                 f"⏳ Hozir: {kichik[:40]}"
             )
 
-            # AI dan savol olish
-            questions = await _generate_questions(grade, subject, mavzu, kichik, code)
+            # AI dan savol olish — sozlamalar bilan
+            questions = await _generate_questions(grade, subject, mavzu, kichik, code, groups=groups)
 
             if questions:
                 # DBga saqlash
@@ -581,8 +587,15 @@ async def _export_to_excel(selected, topics_list, grade, subject):
     return buf.read()
 
 
-async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
-    """OpenAI API orqali 20 ta savol yaratish"""
+async def _generate_questions(grade, subject, mavzu, kichik, topic_code, groups=None):
+    """OpenAI API orqali savol yaratish — sozlamalar bo'yicha"""
+    if groups is None:
+        groups = [
+            {"diff":"oson",    "type":"single_choice","count":5},
+            {"diff":"orta",    "type":"single_choice","count":5},
+            {"diff":"qiyin",   "type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ]
 
     # Yosh guruhi
     age = _age_group(grade)
@@ -592,28 +605,17 @@ async def _generate_questions(grade, subject, mavzu, kichik, topic_code):
     pedagogy_note = get_pedagogy(grade, subject)
     tag_examples = get_tag_examples(grade, subject)
 
-    # Darajaga mos qiyinlik tavsifi
-    grade_int = int(grade) if str(grade).isdigit() else 1
+    # Sozlamalardan qiyinlik va tur
+    level_lines = []
+    time_map = {"oson":60,"orta":55,"qiyin":50,"murakkab":45}
+    for g in groups:
+        if g["count"] == 0: continue
+        tp_label = "yozma (write_answer)" if g["type"] == "write_answer" else "tugmali (single_choice)"
+        level_lines.append(f"- {g['diff']} ({g['count']} ta, {time_map.get(g['diff'],55)}s, {tp_label})")
+    level_desc = f"DARAJALAR ({grade}-sinf):\n" + "\n".join(level_lines)
+    total_q = sum(g["count"] for g in groups if g["count"] > 0)
 
-    if grade_int <= 2:
-        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — boshlang'ich):
-- oson (5 ta, 60s): Rasmga qarab bitta so'z tanish. Eng oddiy. Masalan: "Qaysi bola baland?"
-- o'rta (5 ta, 55s): Oddiy jumla to'ldirish yoki tarjima. Masalan: "Tom ... bo'yli." 
-- qiyin (5 ta, 50s): 2-3 so'zli savol, tushunish kerak. Masalan: "Who has long hair?"
-- murakkab (5 ta, 50s): Qisqa gap tuzish yoki tanlash. Masalan: "What does she look like?"
-ESLATMA: {grade}-sinf uchun MURAKKAB ham oddiy bo'lsin — faqat 1-2 ta tushuncha birlashtirilsin!"""
-    elif grade_int <= 5:
-        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — o'rta bosqich):
-- oson (5 ta, 60s): Asosiy tushunchani aniqlash
-- o'rta (5 ta, 55s): Qo'llash, to'ldirish, oddiy tahlil
-- qiyin (5 ta, 50s): Qoidani qo'llash, tushunish
-- murakkab (5 ta, 50s): Amaliy vaziyat, sintez"""
-    else:
-        level_desc = f"""DARAJALAR ({grade}-sinf, {age} yosh — yuqori bosqich):
-- oson (5 ta, 60s): Asosiy bilim
-- o'rta (5 ta, 55s): Tushunish va qo'llash
-- qiyin (5 ta, 50s): Tahlil va baholash
-- murakkab (5 ta, 50s): Sintez, tanqidiy fikrlash"""
+    grade_int = int(grade) if str(grade).isdigit() else 1
 
     prompt = f"""Siz {grade}-sinf {subject} fani o\'qituvchisisiz.
 Fan: {subject} | Mavzu: {mavzu} | Kichik mavzu: {kichik}
@@ -653,7 +655,7 @@ FAQAT JSON (markdown, izoh, boshqa matn yozma):
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Faqat to'g'ri JSON array qaytargin. AYNAN 20 ta element bo'lsin — kam bo'lmasin! Boshqa hech narsa yozma. Markdown, izoh, ```json kabi belgilar ishlatma."},
+                {"role": "system", "content": f"Faqat to'g'ri JSON array qaytargin. AYNAN {total_q} ta element bo'lsin — kam bo'lmasin! Boshqa hech narsa yozma. Markdown, izoh, ```json kabi belgilar ishlatma."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=8000,
