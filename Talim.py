@@ -2374,44 +2374,25 @@ Qoidalar:
 
     elif message.text == "🎨 AI Rasm yaratish":
         if user_id not in ADMINS: return
-        if not os.getenv("OPENAI_API_KEY"):
-            await message.answer(
-                "❌ OPENAI_API_KEY kerak!\n"
-                "Railway → Variables → OPENAI_API_KEY = ..."
-            ); return
-        admin_state[user_id] = "ai_rasm"
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         cur2.execute("""
-            SELECT DISTINCT d.topic_code, d.kichik_name, d.subject_name, d.grade
-            FROM dts_tree d
+            SELECT DISTINCT d.grade FROM dts_tree d
             JOIN generated_tests g ON g.topic_code=d.topic_code
             WHERE d.is_deleted=FALSE
-            ORDER BY d.grade, d.subject_name
-            LIMIT 20
+            ORDER BY CASE WHEN d.grade ~ '^[0-9]+$' THEN d.grade::int ELSE 99 END
         """)
-        topics = cur2.fetchall(); cur2.close(); conn2.close()
-        if not topics:
-            await message.answer("❌ Testlar yo'q — avval test qo'shing."); return
+        grades = [r[0] for r in cur2.fetchall()]
+        cur2.close(); conn2.close()
         rows = [[InlineKeyboardButton(
-            text=f"📝 {t[1][:30]} ({t[2]})",
-            callback_data=f"ai_rasm:{t[0]}:{t[2]}:{t[3]}"
-        )] for t in topics]
-        rows.insert(0,[InlineKeyboardButton(
-            text="✏️ O'zimdan tavsif beraman (har narsa)",
-            callback_data="ai_rasm_custom"
-        )])
-        rows.append([InlineKeyboardButton(
-            text="📚 Fan bo'yicha barcha rasmlar",
-            callback_data="ai_rasm_auto"
-        )])
+            text=f"🏫 {gr}-sinf" if str(gr).isdigit() else f"📚 {gr}",
+            callback_data=f"rasm_grade:{gr}"
+        )] for gr in grades]
+        rows.append([InlineKeyboardButton(text="✏️ O'zim tavsif beraman", callback_data="ai_rasm_custom")])
         await message.answer(
-            "🎨 AI Rasm yaratish\n"
-            "⚡ Hugging Face FLUX.1 — BEPUL\n\n"
-            "Nima chizishni xohlaysiz?",
+            "🎨 AI Rasm yaratish (BEPUL)\n\nSinf tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
-
     elif message.text == "📖 Kitob yuklash":
         if user_id not in ADMINS: return
         admin_state[user_id] = "kitob_yuklash"
@@ -4228,6 +4209,51 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "📦 Qaysi kitobdan Word yasaymiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         ); return
+
+    if call.data.startswith("rasm_grade:"):
+        gr = call.data.split(":")[1]
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT DISTINCT d.subject_name FROM dts_tree d
+            JOIN generated_tests g ON g.topic_code=d.topic_code
+            WHERE d.grade=%s AND d.is_deleted=FALSE ORDER BY d.subject_name""", (gr,))
+        fans = [r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(
+            text=f"📚 {f}", callback_data=f"rasm_fan:{gr}:{f}"
+        )] for f in fans]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="rasm_back")])
+        await call.answer()
+        await call.message.edit_text(
+            f"🏫 {gr}-sinf — Fan tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        ); return
+
+    if call.data.startswith("rasm_fan:"):
+        parts2=call.data.split(":",2); gr,fan2=parts2[1],parts2[2]
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT DISTINCT d.kichik_name, d.topic_code,
+            COUNT(g.id) as cnt,
+            EXISTS(SELECT 1 FROM images i WHERE i.name LIKE d.topic_code||'-%') as has_img
+            FROM dts_tree d
+            JOIN generated_tests g ON g.topic_code=d.topic_code
+            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            GROUP BY d.kichik_name, d.topic_code ORDER BY d.topic_code""", (gr,fan2))
+        topics2=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[]
+        for kname,tc,cnt,has_img in topics2:
+            icon = "🖼" if has_img else "❌"
+            rows2.append([InlineKeyboardButton(
+                text=f"{icon} {kname[:35]} ({cnt}ta test)",
+                callback_data=f"ai_rasm:{tc}:{fan2}:{gr}"
+            )])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"rasm_grade:{gr}")])
+        await call.answer()
+        await call.message.edit_text(
+            f"📚 {fan2} — Mavzu tanlang:\n🖼=rasm bor ❌=rasm yo'q",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        ); return
+
+    if call.data == "rasm_back":
+        await call.answer(); await call.message.delete(); return
 
     if call.data == "ai_rasm_auto":
         await call.answer()
