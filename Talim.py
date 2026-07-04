@@ -2861,6 +2861,8 @@ Qoidalar:
                         f"⏱ Taxminan {len(rasm_items)//3} daqiqa"
                     )
                     async def do_auto_rasm(items, status):
+                        import os as _os
+                        _GEMINI_KEY = _os.getenv("GEMINI_API_KEY","")
                         from rasim_generator import generate_hf, _tavsif_to_prompt
                         created = 0; errors = 0
 
