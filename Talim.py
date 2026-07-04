@@ -5094,7 +5094,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         return
 
-    if call.data.startswith("gen_"):
+    if call.data.startswith("gen_") or call.data.startswith("gg_cnt_") or call.data.startswith("gg_tp_") or call.data == "gen_go":
         from ai_generatori import handle_gen_callback
         await handle_gen_callback(call, user_id)
         return
