@@ -504,9 +504,11 @@ Keep it simple, cartoon style, child-friendly.
 Uzbek: {tavsif}
 Return ONLY the English prompt, max 30 words."""
             async with aiohttp.ClientSession() as sess:
-                async with sess.post(url,
-                    json={{"contents":[{{"parts":[{{"text":req}}]}}],
-                          "generationConfig":{{"maxOutputTokens":80}}}},
+                body = {
+                    "contents": [{"parts": [{"text": req}]}],
+                    "generationConfig": {"maxOutputTokens": 80}
+                }
+                async with sess.post(url, json=body,
                     timeout=aiohttp.ClientTimeout(total=10)) as r:
                     if r.status == 200:
                         d = await r.json()
