@@ -2376,10 +2376,12 @@ Qoidalar:
         if user_id not in ADMINS: return
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         cur2.execute("""
-            SELECT DISTINCT d.grade FROM dts_tree d
-            JOIN generated_tests g ON g.topic_code=d.topic_code
-            WHERE d.is_deleted=FALSE
-            ORDER BY CASE WHEN d.grade ~ '^[0-9]+$' THEN d.grade::int ELSE 99 END
+            SELECT grade FROM (
+                SELECT DISTINCT d.grade FROM dts_tree d
+                JOIN generated_tests g ON g.topic_code=d.topic_code
+                WHERE d.is_deleted=FALSE
+            ) _g
+            ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
         """)
         grades = [r[0] for r in cur2.fetchall()]
         cur2.close(); conn2.close()
