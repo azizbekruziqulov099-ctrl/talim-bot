@@ -1962,6 +1962,42 @@ Qoidalar:
 
 
 
+    # ── Excel RASMLAR varog'i bo'lsa — avtomatik rasm yaratish ──
+    if (message.document and user_id in ADMINS and
+            message.document.file_name and
+            (message.document.file_name or "").endswith(".xlsx")):
+        # RASMLAR varog'i borligini tekshiramiz
+        buf_check = BytesIO()
+        await message.bot.download(message.document.file_id, destination=buf_check)
+        buf_check.seek(0)
+        try:
+            import openpyxl as _opx
+            _wb = _opx.load_workbook(buf_check, data_only=True)
+            if "RASMLAR" in _wb.sheetnames:
+                _wb.close()
+                buf_check.seek(0)
+                xl_bytes = buf_check.read()
+                status_rx = await message.answer(
+                    "🖼 RASMLAR varog'i topildi!\n"
+                    "Rasmlar avtomatik yaratiladi..."
+                )
+                async def do_rasm_xl():
+                    try:
+                        from rasim_generator import generate_from_excel
+                        async def pg(msg):
+                            try: await status_rx.edit_text(msg)
+                            except: pass
+                        result = await generate_from_excel(xl_bytes, message.bot,
+                                                           message.chat.id, pg)
+                        if result.get("error"):
+                            await message.answer(f"❌ {result['error']}")
+                    except Exception as e:
+                        await message.answer(f"❌ Rasm xato: {e}")
+                asyncio.create_task(do_rasm_xl())
+                return
+            _wb.close()
+        except: pass
+
     # ── Kitob PDF yuklash ──
     if (message.document and user_id in ADMINS and
             admin_state.get(user_id) == "kitob_yuklash_pdf"):
