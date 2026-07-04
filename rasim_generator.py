@@ -136,20 +136,32 @@ async def _tavsif_to_prompt(tavsif: str, fan: str, sinf: str, style: str = "mult
 # POLLINATIONS.AI — BEPUL
 # ══════════════════════════════════════
 async def generate_hf(prompt: str, style: str = "multik") -> bytes | None:
-    """Pollinations.ai FLUX bilan rasm yaratadi."""
-    clean = prompt[:300].replace('"',"'")
+    """Pollinations.ai FLUX bilan rasm yaratadi. 3 marta urinadi."""
+    # Faqat ASCII qoldirish
+    clean = re.sub(r'[^\x00-\x7F]', '', prompt)
+    clean = re.sub(r'\s+', ' ', clean).strip()[:250]
+    
     url = (f"https://image.pollinations.ai/prompt/"
            f"{urllib.parse.quote(clean)}"
-           f"?width=768&height=768&nologo=true&model=flux&seed=42")
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
-                if r.status == 200:
-                    data = await r.read()
-                    if len(data) > 5000:
-                        return data
-    except Exception as e:
-        print(f"Pollinations xato: {e}")
+           f"?width=768&height=512&nologo=true&model=flux")
+    
+    for attempt in range(3):
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(url, timeout=aiohttp.ClientTimeout(total=45)) as r:
+                    if r.status == 200:
+                        data = await r.read()
+                        if len(data) > 1000:  # 1KB dan katta bo'lsa rasm
+                            return data
+                    elif r.status == 429:  # Rate limit
+                        await asyncio.sleep(10)
+                        continue
+        except asyncio.TimeoutError:
+            await asyncio.sleep(5)
+        except Exception as e:
+            print(f"Pollinations urinish {attempt+1}: {e}")
+            await asyncio.sleep(3)
+    
     return None
 
 async def generate_dalle(prompt: str) -> bytes | None:
@@ -262,8 +274,8 @@ async def generate_from_excel(excel_bytes, bot, chat_id,
     await p(f"📊 Jami: {len(items)} | Yangi: {len(todo)} | O'tkazildi: {skipped}")
 
     created = errors = 0
-    for i in range(0, len(todo), 3):
-        batch = todo[i:i+3]
+    for i in range(0, len(todo), 2):
+        batch = todo[i:i+2]
         tasks = []
         for item in batch:
             async def one(it):
@@ -293,7 +305,7 @@ async def generate_from_excel(excel_bytes, bot, chat_id,
         done = min(i+3, len(todo))
         pct = round(done*100/len(todo)) if todo else 100
         await p(f"⏳ {pct}% ({done}/{len(todo)}) | ✅{created} | ❌{errors}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(4)
 
     await p(f"🎉 Tayyor!\n✅ {created} ta | ⏭ {skipped} ta | ❌ {errors} ta")
     return {"created":created,"skipped":skipped,"errors":errors}
