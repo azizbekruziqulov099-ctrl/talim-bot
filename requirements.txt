@@ -1,5 +1,5 @@
-aiogram
-aiogram-calendar
+aiogram==3.7.0
+aiohttp
 edge-tts
 psycopg2-binary
 openpyxl
@@ -8,9 +8,7 @@ rapidfuzz
 pandas
 matplotlib
 pydub==0.25.1
-PyMuPDF
-pytesseract
-python-docx
 Pillow
-aiohttp
 pypdf
+python-docx
+PyMuPDF
