@@ -1551,6 +1551,73 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             except Exception:
                 pass
 
+    if user_state.get(user_id) == "user_rasm" and message.text:
+        tavsif = message.text.strip()
+        user_state[user_id] = None
+
+        # Uzunlik tekshirish
+        words = tavsif.split()
+        if len(words) < 2:
+            await message.answer("❌ Juda qisqa! Kamida 2 so'z yozing.\nMasalan: «qishki manzara, bolalar»")
+            user_state[user_id] = "user_rasm"
+            return
+        if len(words) > 10:
+            await message.answer(f"❌ Juda uzun ({len(words)} so'z)! Maksimal 10 so'z.\nQisqaroq yozing.")
+            user_state[user_id] = "user_rasm"
+            return
+
+        # Limit qayta tekshirish
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        try:
+            cur2.execute("SELECT COUNT(*) FROM images WHERE name LIKE %s AND created_at >= CURRENT_DATE",
+                        (f"user_{user_id}_%",))
+            today_count = cur2.fetchone()[0]
+        except: today_count = 0
+        cur2.close(); conn2.close()
+
+        if today_count >= 2:
+            await message.answer("⏰ Kunlik limit tugadi (2 ta). Ertaga qaytib keling!")
+            return
+
+        status_u = await message.answer(f"🎨 Chizilmoqda... «{tavsif[:50]}»")
+
+        async def do_user_rasm():
+            try:
+                from rasim_generator import _tavsif_to_prompt, generate_hf, generate_dalle
+                prompt = await _tavsif_to_prompt(tavsif, "ta'lim", "1", "multik")
+                img = await generate_hf(prompt)
+                if not img: img = await generate_dalle(prompt)
+                if img:
+                    from aiogram.types import BufferedInputFile
+                    fname = f"user_{user_id}_{int(__import__('time').time())}"
+                    sent = await message.answer_photo(
+                        BufferedInputFile(img, f"{fname}.png"),
+                        caption=f"🎨 {tavsif[:80]}"
+                    )
+                    # DB ga saqlash (limit uchun)
+                    fid = sent.photo[-1].file_id
+                    try:
+                        conn3=psycopg2.connect(DATABASE_URL);cur3=conn3.cursor()
+                        cur3.execute("INSERT INTO images(name,file_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                                    (fname,fid))
+                        conn3.commit();cur3.close();conn3.close()
+                    except: pass
+                    # Qolgan limit
+                    qolgan = 1 - (today_count)
+                    msg = f"✅ Rasm tayyor!"
+                    if qolgan > 0:
+                        msg += f"\n📊 Bugun yana {qolgan} ta yaratish mumkin"
+                    else:
+                        msg += "\n⏰ Bugungi limit tugadi"
+                    await status_u.edit_text(msg)
+                else:
+                    await status_u.edit_text("❌ Rasm yaratilmadi. Qayta urinib ko'ring.")
+            except Exception as e:
+                await status_u.edit_text(f"❌ Xato: {e}")
+
+        asyncio.create_task(do_user_rasm())
+        return
+
     # ═══ BRAIN ═══
     if (user_id not in ADMINS
             and message.text
@@ -1638,6 +1705,38 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
+
+    if message.text == "🎨 Rasm chizdir":
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        try:
+            cur2.execute("SELECT COUNT(*) FROM images WHERE name LIKE %s AND created_at >= CURRENT_DATE",
+                        (f"user_{user_id}_%",))
+            today_count = cur2.fetchone()[0]
+        except: today_count = 0
+        cur2.close(); conn2.close()
+
+        if today_count >= 2:
+            await message.answer(
+                f"⏰ Kunlik limit: 2 ta rasm\n"
+                f"✅ Bugun: {today_count} ta\n\n"
+                "Ertaga yana 2 ta rasm yaratish mumkin!"
+            )
+            return
+
+        qolgan = 2 - today_count
+        user_state[user_id] = "user_rasm"
+        await message.answer(
+            f"🎨 Rasm yaratish\n\n"
+            f"📊 Bugun qolgan: {qolgan} ta\n\n"
+            "Nimani chizishni xohlaysiz?\n"
+            "O'zbek tilida yozing:\n\n"
+            "Masalan:\n"
+            "• «3 ta qizil olma»\n"
+            "• «maktabda dars»\n"
+            "• «qishki manzara»"
+        )
+        return
+
 
     if message.text == "🤖 Yordamchi":
         await message.answer(
