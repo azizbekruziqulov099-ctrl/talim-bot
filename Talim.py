@@ -2371,20 +2371,40 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         async def do_process_kitob():
             try:
                 import kitob_bazasi as _kb
-                import tempfile, os as _os
+                import tempfile, os as _os, aiohttp as _ah
                 from io import BytesIO
-                buf_k = BytesIO()
-                await message.bot.download(fid, destination=buf_k)
-                buf_k.seek(0)
 
-                # Vaqtinchalik fayl
+                await status_k.edit_text("⏳ Fayl yuklanmoqda (23MB)...")
+                print(f"[KITOB] Yuklanmoqda fid={fid}")
+
+                # Katta fayl uchun file_path usuli
+                file_info = await message.bot.get_file(fid)
+                file_path = file_info.file_path
+                token = message.bot.token
+                url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+
                 tmp_k = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-                tmp_k.write(buf_k.read()); tmp_k.close()
+                async with _ah.ClientSession() as sess:
+                    async with sess.get(url, timeout=_ah.ClientTimeout(total=120)) as resp:
+                        chunk_size = 65536
+                        downloaded = 0
+                        while True:
+                            chunk = await resp.content.read(chunk_size)
+                            if not chunk: break
+                            tmp_k.write(chunk)
+                            downloaded += len(chunk)
+                            if downloaded % (1024*1024) == 0:
+                                mb = downloaded // (1024*1024)
+                                print(f"[KITOB] {mb}MB yuklanди")
+                tmp_k.close()
+                print(f"[KITOB] PDF saqlandi: {tmp_k.name}")
 
                 async def upd(msg):
+                    print(f"[KITOB] {msg}")
                     try: await status_k.edit_text(msg)
                     except: pass
 
+                await upd("⏳ Boshlandi...")
                 result = await _kb.load_book_to_db(
                     file_path=tmp_k.name,
                     sinf=sinf, fan=fan, muallif=muallif,
@@ -2397,6 +2417,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     f"🔑 Book ID: {result['book_id']}"
                 )
             except Exception as e:
+                import traceback
+                print(f"[KITOB ERROR] {e}\n{traceback.format_exc()}")
                 await message.answer(f"❌ Xato: {e}")
             finally:
                 admin_state.pop(user_id, None)
