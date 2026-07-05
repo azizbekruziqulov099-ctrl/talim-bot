@@ -1,4 +1,5 @@
-aiogram==3.7.0
+aiogram
+aiogram-calendar
 aiohttp
 edge-tts
 psycopg2-binary
@@ -12,4 +13,3 @@ Pillow
 pypdf
 python-docx
 PyMuPDF
-aiogram-calendar
