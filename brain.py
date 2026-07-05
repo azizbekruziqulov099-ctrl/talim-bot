@@ -48,6 +48,9 @@ def get_intent(text: str) -> str:
     if re.search(r"^(salom|assalom|hi|hello|привет|ало)", t): return "GREET"
     if re.search(r"(nima qilolasan|yordam|help|что умеешь|nima bilasan)", t): return "HELP"
     if re.search(r"(rasm|chiz|draw|расс|сурат)", t): return "DRAW"
+    # Kitob
+    if re.search(r"(\d+[\s-]*bet|mavzular ro'yhati|barcha mavzu|§)", t): return "BOOK"
+    if re.search(r"(misol ber|misol ko'rsat|test ber|kitobdan|masala ber)", t): return "BOOK"
     if re.search(r"(test|sinov|imtihon|тест|quiz)", t): return "TEST"
     if re.search(r"(dars|o.rgan|tushuntir|урок|explain|lesson)", t): return "LESSON"
     if re.search(r"(misol|mashq|пример|example)", t): return "MISOL"
@@ -230,6 +233,10 @@ async def process_message(text: str, user_id: int,
         }.get(lang)
         return result
 
+    # Kitob
+    if intent == "BOOK":
+        return await handle_book_request(text, fixed, lang)
+
     # Test
     topic = find_topic(fixed, grade)
     if intent == "TEST":
@@ -277,5 +284,90 @@ async def process_message(text: str, user_id: int,
             "ru": "🤔 Информация не найдена.",
             "en": "🤔 No information found.",
         }.get(lang)
+
+    return result
+
+
+# ══════════════════════════════════════
+# KITOB HANDLER
+# ══════════════════════════════════════
+async def handle_book_request(text: str, fixed: str, lang: str) -> dict:
+    """Kitobdan mavzu/misol/test so'rash."""
+    result = {"intent":"BOOK","topic":None,"action":None,"message":None,"lang":lang,"book_data":None}
+    t = text.lower()
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+
+        # Bet raqami
+        m = re.search(r'(\d+)\s*-?\s*bet', t)
+        if m:
+            page = int(m.group(1))
+            cur.execute("""
+                SELECT p.page_num, p.section_name, p.full_text, b.id
+                FROM book_pages p JOIN books b ON b.id=p.book_id
+                WHERE p.page_num=%s ORDER BY p.id LIMIT 1
+            """, (page,))
+            row = cur.fetchone()
+            if row:
+                exs = []
+                cur.execute("SELECT savol FROM book_exercises WHERE book_id=%s AND page_num=%s LIMIT 20",
+                           (row[3], page))
+                exs = [r[0] for r in cur.fetchall()]
+                msg = f"📖 Bet {row[0]}"
+                if row[1]: msg += f" — {row[1]}"
+                msg += f"\n\n{row[2][:600]}"
+                if exs:
+                    msg += f"\n\n📐 Misollar ({len(exs)} ta):\n"
+                    for i,e in enumerate(exs[:5],1):
+                        msg += f"{i}. {e[:80]}\n"
+                result["message"] = msg
+                result["book_data"] = {"page":page,"book_id":row[3],"exercises":exs}
+            else:
+                result["message"] = f"❌ {page}-bet topilmadi."
+            cur.close(); conn.close()
+            return result
+
+        # Barcha mavzular
+        if re.search(r"barcha mavzu|mavzular ro.yhat|§ lar|bulimlar", t):
+            cur.execute("""
+                SELECT DISTINCT section_name FROM book_pages
+                WHERE section_name IS NOT NULL AND section_name != ''
+                ORDER BY section_name LIMIT 30
+            """)
+            sections = [r[0] for r in cur.fetchall()]
+            if sections:
+                msg = f"📚 Kitob mavzulari ({len(sections)} ta):\n\n"
+                for i,s in enumerate(sections,1):
+                    msg += f"{i}. {s}\n"
+                result["message"] = msg[:2000]
+            else:
+                result["message"] = "❌ Mavzular topilmadi. Kitob yuklanganmi?"
+            cur.close(); conn.close()
+            return result
+
+        # Mavzu bo'yicha qidiruv
+        cur.execute("""
+            SELECT p.page_num, p.section_name, p.full_text, b.id
+            FROM book_pages p JOIN books b ON b.id=p.book_id
+            WHERE p.full_text ILIKE %s OR p.section_name ILIKE %s
+            ORDER BY p.page_num LIMIT 5
+        """, (f"%{fixed}%", f"%{fixed}%"))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+        if rows:
+            msg = f"🔍 '{text}' bo'yicha ({len(rows)} ta bet):\n\n"
+            for row in rows:
+                msg += f"📄 Bet {row[0]}"
+                if row[1]: msg += f" — {row[1]}"
+                msg += f"\n{row[2][:150]}...\n\n"
+            result["message"] = msg[:2000]
+            result["book_data"] = {"pages":[r[0] for r in rows],"book_id":rows[0][3]}
+        else:
+            result["message"] = f"❌ '{text}' bo'yicha kitobdan hech narsa topilmadi."
+
+    except Exception as e:
+        result["message"] = f"❌ Kitob xato: {e}"
 
     return result
