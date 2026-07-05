@@ -12,7 +12,7 @@ def get_main_keyboard(role=None, unread_errors=0):
             ],
             [
                 KeyboardButton(text="🤖 Yordamchi"),
-                KeyboardButton(text="📈 Rivojlanishim"),
+                KeyboardButton(text="🎨 Rasm chizdir"),
                 KeyboardButton(text="👤 Kabinet"),
             ],
         ]
@@ -23,15 +23,21 @@ def get_main_keyboard(role=None, unread_errors=0):
                 KeyboardButton(text="🧠 Bilimni sinash"),
                 KeyboardButton(text="📊 Bilim darajam"),
             ],
-            [KeyboardButton(text="⚙️ Akkaunt sozlamalari")],
+            [
+                KeyboardButton(text="🎨 Rasm chizdir"),
+                KeyboardButton(text="⚙️ Akkaunt sozlamalari"),
+            ],
         ]
 
     elif "admin" in r:
         err_label = f"🆘 Xatolar ({unread_errors})" if unread_errors > 0 else "🆘 Xatolar"
         keyboard = [
             [
+                KeyboardButton(text="🚀 Mavzu tayyorla"),
                 KeyboardButton(text="📋 Shablonlar"),
                 KeyboardButton(text="📊 Test statistikasi"),
+            ],
+            [
                 KeyboardButton(text="📝 Shablon to'ldirish"),
             ],
             [
