@@ -907,6 +907,84 @@ async def save_image(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
 
+    # ── Collage rasm split handler ──
+    if (message.photo and user_id in ADMINS
+            and f"{user_id}_rasm_kodlar" in admin_state):
+        kodlar = admin_state[f"{user_id}_rasm_kodlar"]
+        idx    = admin_state.get(f"{user_id}_rasm_idx", 0)
+        
+        if idx >= len(kodlar):
+            await message.answer("✅ Barcha rasmlar saqlandi!")
+            admin_state.pop(f"{user_id}_rasm_kodlar", None)
+            admin_state.pop(f"{user_id}_rasm_idx", None)
+            return
+        
+        batch_kodlar = kodlar[idx:idx+30]
+        status_sp = await message.answer(f"✂️ Collage qirqilmoqda... ({len(batch_kodlar)} ta)")
+
+        try:
+            from PIL import Image as PILImage
+            from io import BytesIO
+            from aiogram.types import BufferedInputFile
+
+            # Rasmni yuklab olish
+            photo = message.photo[-1]
+            buf_p = BytesIO()
+            await message.bot.download(photo.file_id, destination=buf_p)
+            buf_p.seek(0)
+            img = PILImage.open(buf_p)
+            W, H = img.size
+
+            COLS, ROWS = 6, 5
+            cw, ch = W // COLS, H // ROWS
+            saved_sp = 0
+
+            for i, kod in enumerate(batch_kodlar):
+                r, c = i // COLS, i % COLS
+                x1, y1 = c * cw, r * ch
+                x2, y2 = x1 + cw, y1 + ch
+                cell = img.crop((x1, y1, x2, y2))
+                buf_c = BytesIO()
+                cell.save(buf_c, format="PNG")
+                buf_c.seek(0)
+                try:
+                    sent_sp = await message.bot.send_photo(
+                        message.chat.id,
+                        BufferedInputFile(buf_c.read(), f"{kod}.png"),
+                        caption=f"🖼 {kod}"
+                    )
+                    fid_sp = sent_sp.photo[-1].file_id
+                    conn_sp = psycopg2.connect(DATABASE_URL); cur_sp = conn_sp.cursor()
+                    cur_sp.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
+                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
+                        (kod, fid_sp))
+                    conn_sp.commit(); cur_sp.close(); conn_sp.close()
+                    saved_sp += 1
+                except Exception as _e:
+                    print(f"cell {kod}: {_e}")
+
+            new_idx = idx + len(batch_kodlar)
+            admin_state[f"{user_id}_rasm_idx"] = new_idx
+            remaining = len(kodlar) - new_idx
+
+            if remaining > 0:
+                await status_sp.edit_text(
+                    f"✅ {saved_sp} ta saqlandi!\n"
+                    f"📊 Qolgan: {remaining} ta\n\n"
+                    f"Keyingi collage yuboring 👇"
+                )
+            else:
+                await status_sp.edit_text(
+                    f"🎉 Hammasi tayyor!\n"
+                    f"✅ {saved_sp} ta + avvalgisi = {new_idx} ta jami saqlandi!"
+                )
+                admin_state.pop(f"{user_id}_rasm_kodlar", None)
+                admin_state.pop(f"{user_id}_rasm_idx", None)
+
+        except Exception as _e:
+            await status_sp.edit_text(f"❌ Split xato: {_e}")
+        return
+
     caption = (message.caption or "").strip()
 
     # Agar caption "split:TOPIC_CODE:rows:cols:prefix" formatida bo'lsa
@@ -1995,6 +2073,40 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(f"✅ Saqlandi! Kod: <code>{name}</code>", parse_mode="HTML")
         return
 
+    if admin_state.get(user_id) == "mtt_sinf_fan" and message.text:
+        txt_sf = message.text.strip()
+        if "|" not in txt_sf:
+            await message.answer("❌ Format: <code>sinf | fan</code>\nMasalan: <code>2 | Ingliz tili</code>", parse_mode="HTML")
+            return
+        parts_sf = txt_sf.split("|", 1)
+        gr_sf  = parts_sf[0].strip()
+        fan_sf = parts_sf[1].strip()
+        admin_state[user_id] = f"mtt_mavzu:{gr_sf}:{fan_sf}"
+        await message.answer(
+            f"✅ {gr_sf}-sinf | {fan_sf}\n\n"
+            f"Endi chorak/mavzularni yozing:\n\n"
+            f"1/ Alphabet review\n"
+            f"1/ Hello Greetings\n"
+            f"2/ My family\n"
+            f"2/ My house\n\n"
+            f"Format: chorak_raqami/ mavzu_nomi"
+        )
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("mtt_fan_input:") and message.text:
+        gr_fi = admin_state[user_id].split(":")[1]
+        fan_fi = message.text.strip()
+        admin_state[user_id] = f"mtt_mavzu:{gr_fi}:{fan_fi}"
+        await message.answer(
+            f"✅ Fan: {fan_fi}\n\n"
+            f"Endi mavzularni yozing:\n\n"
+            f"1/ Alphabet review\n"
+            f"1/ Hello Greetings\n"
+            f"2/ My family\n\n"
+            f"Format: chorak_raqami/ mavzu_nomi"
+        )
+        return
+
     if str(admin_state.get(user_id) or "").startswith("mtt_mavzu:") and message.text:
         parts3 = admin_state[user_id].split(":", 2)
         gr3, fan3 = parts3[1], parts3[2]
@@ -2580,28 +2692,15 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "🚀 Mavzu tayyorla":
         if user_id not in ADMINS: return
-        # Sinf tanlash
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
-        cur2.execute("""
-            SELECT grade FROM (
-                SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE
-            ) _g ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
-        """)
-        grades = [r[0] for r in cur2.fetchall()]
-        cur2.close(); conn2.close()
-        rows2 = [[InlineKeyboardButton(
-            text=f"🏫 {gr}-sinf" if str(gr).isdigit() else f"📚 {gr}",
-            callback_data=f"mtt_gr:{gr}"
-        )] for gr in grades]
+        admin_state[user_id] = "mtt_sinf_fan"
         await message.answer(
             "🚀 Mavzu tayyorlash\n\n"
-            "Bot avtomatik qiladi:\n"
-            "✅ Test shablon (to'ldirilgan)\n"
-            "✅ Dars shablon (to'ldirilgan)\n"
-            "✅ Rasm tavsif varag'i\n"
-            "✅ ZIP arxivda yuboradi\n\n"
-            "Sinf tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+            "Sinf va fanni yozing:\n"
+            "Format: <code>sinf | fan</code>\n\n"
+            "Masalan:\n"
+            "<code>2 | Ingliz tili</code>\n"
+            "<code>3 | Matematika</code>",
+            parse_mode="HTML"
         )
         return
 
@@ -3003,6 +3102,30 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
         await message.answer("⏳ Import qilinmoqda...", reply_markup=get_main_keyboard("Admin"))
         await import_tests_excel(message, path, user_id)
+
+        # RASM_MALUMOTI varaqidagi kodlarni olish
+        try:
+            import openpyxl as _oxr
+            _wbr = _oxr.load_workbook(path, data_only=True)
+            rasm_kodlar = []
+            if "RASM_MALUMOTI" in _wbr.sheetnames:
+                _wsr = _wbr["RASM_MALUMOTI"]
+                for _rr in range(2, _wsr.max_row+1):
+                    _id = _wsr.cell(_rr,1).value
+                    if _id: rasm_kodlar.append(str(_id))
+                _wbr.close()
+            if rasm_kodlar:
+                admin_state[f"{user_id}_rasm_kodlar"] = rasm_kodlar
+                admin_state[f"{user_id}_rasm_idx"] = 0
+                await message.answer(
+                    f"🖼 Rasmlar kutilmoqda!\n\n"
+                    f"📊 Jami: {len(rasm_kodlar)} ta rasm kodi topildi\n\n"
+                    f"Endi har bir COLLAGE yuborasiz (30 ta rasm, 5 qator × 6 ustun)\n"
+                    f"Bot o'zi qirqib saqlaydi.\n\n"
+                    f"1-collage yuboring 👇"
+                )
+        except Exception as _er:
+            pass
 
         try:
             os.remove(path)
@@ -4494,9 +4617,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name", (gr,))
         fans = [r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
         rows2 = [[InlineKeyboardButton(text=f"📚 {f}", callback_data=f"mtt_fan:{gr}:{f}")] for f in fans]
+        rows2.append([InlineKeyboardButton(text="✏️ Fan nomini o'zim yozaman", callback_data=f"mtt_fan_text:{gr}")])
         rows2.append([InlineKeyboardButton(text="⬅️", callback_data="mtt_back")])
         await call.answer()
-        await call.message.edit_text(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        await call.message.edit_text(f"🏫 {gr}-sinf — Fan tanlang yoki o'zingiz yozing:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("mtt_fan_text:"):
+        gr = call.data[13:]
+        await call.answer()
+        admin_state[user_id] = f"mtt_fan_input:{gr}"
+        await call.message.answer(f"🏫 {gr}-sinf\n\nFan nomini yozing:\nMasalan: Ingliz tili")
         return
 
     if call.data.startswith("mtt_fan:"):
