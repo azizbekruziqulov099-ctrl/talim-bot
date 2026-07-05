@@ -1228,7 +1228,7 @@ async def _error_and_home(source, user_id, err, label="Xato"):
         uname = str(user_id)
 
     # Bazaga saqlash
-    _save_error_log(uid_sp, uname, f"{label}: {short}\n{tb[:500]}")
+    _save_error_log(user_id, uname, f"{label}: {short}\n{tb[:500]}")
 
     # Foydalanuvchiga xabar
     try:
@@ -3437,7 +3437,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-    elif "-" in message.text:
+    elif message.text and "-" in message.text:
 
         topic_code = message.text.strip()
 
