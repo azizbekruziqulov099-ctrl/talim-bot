@@ -4912,27 +4912,73 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "menu_bilim_sin":
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
-        cur2.execute("""
-            SELECT d.subject_name, COUNT(DISTINCT g.topic_code) as cnt, d.grade
-            FROM generated_tests g
-            JOIN dts_tree d ON d.topic_code = g.topic_code
-            WHERE d.is_deleted=FALSE
-            GROUP BY d.subject_name, d.grade
-            ORDER BY d.grade::int NULLS LAST, d.subject_name
-        """)
-        subjects = cur2.fetchall(); cur2.close(); conn2.close()
-        if not subjects:
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT grade FROM (
+            SELECT DISTINCT d.grade FROM generated_tests g
+            JOIN dts_tree d ON d.topic_code=g.topic_code WHERE d.is_deleted=FALSE
+        ) _g ORDER BY CASE WHEN grade~'^[0-9]+$' THEN grade::int ELSE 99 END""")
+        grades=[r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
+        if not grades:
             await call.message.answer("❌ Hali test mavjud emas!"); return
-        rows2 = [[InlineKeyboardButton(
-            text=f"📚 {s} — {g}-sinf ({c} mavzu)",
-            callback_data=f"sinash_subj:{g}:{s}"
-        )] for s,c,g in subjects]
-        await call.message.answer(
-            "🧪 Bilimni sinash — Fan tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        )
+        rows2=[[InlineKeyboardButton(
+            text=f"🏫 {g}-sinf" if str(g).isdigit() else f"📚 {g}",
+            callback_data=f"sin_gr:{g}"
+        )] for g in grades]
+        await call.message.answer("🧪 Bilimni sinash\n\nSinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
+    if call.data.startswith("sin_gr:"):
+        gr=call.data[7:]
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT d.subject_name, COUNT(DISTINCT g.topic_code) as cnt
+            FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
+            WHERE d.grade=%s AND d.is_deleted=FALSE
+            GROUP BY d.subject_name ORDER BY d.subject_name""",(gr,))
+        fans=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(text=f"📚 {f} ({c} mavzu)",callback_data=f"sin_fan:{gr}:{f}")] for f,c in fans]
+        rows2.append([InlineKeyboardButton(text="⬅️",callback_data="menu_bilim_sin")])
+        try: await call.message.edit_text(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("sin_fan:"):
+        parts2=call.data[8:].split(":",1); gr,fan2=parts2[0],parts2[1]
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT d.kichik_name, d.topic_code, COUNT(g.id) as cnt
+            FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
+            WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
+            GROUP BY d.kichik_name, d.topic_code ORDER BY d.topic_code""",(gr,fan2))
+        mavzular=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(
+            text=f"📝 {m[0][:40]} ({m[2]}ta)",
+            callback_data=f"sin_mavzu:{m[1]}"
+        )] for m in mavzular]
+        rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"sin_gr:{gr}")])
+        try: await call.message.edit_text(f"📚 {fan2} — Mavzu:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📚 {fan2} — Mavzu:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("sin_mavzu:"):
+        tc2=call.data[10:]
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s",(tc2,))
+        cnt2=cur2.fetchone()[0]
+        cur2.execute("SELECT kichik_name FROM dts_tree WHERE topic_code=%s LIMIT 1",(tc2,))
+        kn2=(cur2.fetchone() or [tc2])[0]; cur2.close(); conn2.close()
+        try: await call.message.edit_text(
+            f"📝 {kn2}\n📊 {cnt2} ta test\n\nQanday boshlash?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⚡ Tez (20 ta aralash)", callback_data=f"ts_start:{tc2}")],
+                [InlineKeyboardButton(text="⚙️ Sozlamalar bilan",    callback_data=f"ts_settings:{tc2}")],
+                [InlineKeyboardButton(text="⬅️", callback_data="menu_bilim_sin")],
+            ])
+        )
+        except: pass
+        return
+
 
     if call.data == "mustah_back":
         await call.message.delete()
@@ -5016,6 +5062,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.message.delete()
         return
     # ════════════════════════════
+
+    if call.data.startswith("ts_settings:"):
+        # ts_start ga yo'naltirish
+        tc_set = call.data.split(":")[1]
+        await call.answer()
+        # ts_start handler ga pass qilamiz
+        call.data = f"ts_start:{tc_set}"
 
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
