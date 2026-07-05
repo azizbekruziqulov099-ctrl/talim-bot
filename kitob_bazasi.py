@@ -8,7 +8,11 @@ import os, re, psycopg2, asyncio
 try:
     from pypdf import PdfReader
 except ImportError:
-    PdfReader = None
+    import subprocess, sys
+    subprocess.run([sys.executable,"-m","pip","install","pypdf","--break-system-packages","-q"])
+    try:
+        from pypdf import PdfReader
+    except: PdfReader = None
 
 DATABASE_URL = os.getenv("DATABASE_URL","")
 def db(): return psycopg2.connect(DATABASE_URL)
