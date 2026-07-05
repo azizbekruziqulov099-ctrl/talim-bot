@@ -1995,6 +1995,70 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(f"✅ Saqlandi! Kod: <code>{name}</code>", parse_mode="HTML")
         return
 
+    if str(admin_state.get(user_id) or "").startswith("mtt_mavzu:") and message.text:
+        parts3 = admin_state[user_id].split(":", 2)
+        gr3, fan3 = parts3[1], parts3[2]
+        admin_state.pop(user_id, None)
+        text3 = message.text.strip()
+
+        # Mavzularni parse qilish
+        mavzular3 = []
+        for line in text3.split("\n"):
+            line = line.strip()
+            if not line: continue
+            if "/" in line:
+                parts_l = line.split("/", 1)
+                chorak_n = parts_l[0].strip()
+                mavzu_n  = parts_l[1].strip()
+                if mavzu_n:
+                    mavzular3.append((chorak_n, mavzu_n))
+
+        if not mavzular3:
+            await message.answer("❌ Format noto'g'ri!\n\nMisol:\n1/ Alphabet review\n1/ Greetings\n2/ My family")
+            admin_state[user_id] = f"mtt_mavzu:{gr3}:{fan3}"
+            return
+
+        await message.answer(f"⏳ DTS shablon yaratilmoqda...\n{len(mavzular3)} ta mavzu")
+
+        # 1-QADAM: DTS shablon yaratish
+        from shablon_yaratish import _create_shablon
+        from aiogram.types import BufferedInputFile
+        buf3 = await _create_shablon(gr3, fan3, mavzular3)
+        fname3 = f"DTS_{gr3}sinf_{fan3[:15].replace(' ','_')}.xlsx"
+        await message.answer_document(
+            BufferedInputFile(buf3.read(), filename=fname3),
+            caption=(
+                f"1️⃣ DTS Shablon tayyor!\n"
+                f"🏫 {gr3}-sinf | 📚 {fan3}\n"
+                f"📝 {len(mavzular3)} ta mavzu x 2 qator\n\n"
+                f"Bu faylni to'ldirib botga yuboring:\n"
+                f"Bob, Bo'lim, Kichik mavzu ustunlarini\n\n"
+                f"To'ldirib yuborilsa — DTS import qilinadi\n"
+                f"va test shabloni tayyorlanadi!"
+            )
+        )
+        # Test sozlamalari — DTS dan keyin
+        admin_state[user_id] = f"mtt_test_sozlama:{gr3}:{fan3}"
+        from ai_generatori import _gen_settings_kb, gen_state
+        state4 = gen_state.get(user_id, {})
+        state4["grade"] = gr3; state4["subject"] = fan3
+        state4["mavzular_text"] = text3
+        state4.setdefault("gen_groups",[
+            {"diff":"oson",    "type":"single_choice","count":5},
+            {"diff":"orta",    "type":"single_choice","count":5},
+            {"diff":"qiyin",   "type":"single_choice","count":5},
+            {"diff":"murakkab","type":"single_choice","count":5},
+        ])
+        gen_state[user_id] = state4
+        await message.answer(
+            f"2️⃣ Test shablon sozlamalari\n"
+            f"🏫 {gr3}-sinf | 📚 {fan3}\n"
+            f"📝 {len(mavzular3)} ta mavzu\n\n"
+            f"Har qiyinlikdan nechta savol?",
+            reply_markup=_gen_settings_kb(state4["gen_groups"])
+        )
+        return
+
     if admin_state.get(user_id) == "kitob_yuklash" and message.text:
         txt = message.text.strip().strip("`").strip()
         parts = [x.strip() for x in txt.split("|")]
@@ -4437,21 +4501,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("mtt_fan:"):
         parts2 = call.data[8:].split(":",1); gr,fan2 = parts2[0],parts2[1]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
-        cur2.execute("""
-            SELECT DISTINCT kichik_name, topic_code,
-            EXISTS(SELECT 1 FROM generated_tests g WHERE g.topic_code=d.topic_code) as has_test
-            FROM dts_tree d WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
-            ORDER BY topic_code
-        """, (gr,fan2))
-        mavzular = cur2.fetchall(); cur2.close(); conn2.close()
-        rows2 = [[InlineKeyboardButton(
-            text=f"{'✅' if m[2] else '📝'} {m[0][:40]}",
-            callback_data=f"mtt_do:{m[1]}"
-        )] for m in mavzular[:20]]
-        rows2.append([InlineKeyboardButton(text="⬅️", callback_data=f"mtt_gr:{gr}")])
         await call.answer()
-        await call.message.edit_text(f"📚 {fan2} — Mavzu (✅=test bor, 📝=yo'q):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        admin_state[user_id] = f"mtt_mavzu:{gr}:{fan2}"
+        await call.message.answer(
+            f"🚀 Mavzu tayyorlash\n"
+            f"🏫 {gr}-sinf | 📚 {fan2}\n\n"
+            f"Chorak va mavzularni yozing:\n\n"
+            f"1/ Alphabet review\n"
+            f"1/ Hello Greetings\n"
+            f"2/ My family\n"
+            f"2/ My house\n"
+            f"...\n\n"
+            f"Har qator: chorak_raqami/ mavzu_nomi"
+        )
         return
 
     if call.data.startswith("mtt_do:"):
@@ -4686,7 +4748,27 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "menu_bilim_sin":
         await call.answer()
-        await call.message.answer("🧪 Bilimni sinash — o'quvchi menyusida."); return
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT d.subject_name, COUNT(DISTINCT g.topic_code) as cnt, d.grade
+            FROM generated_tests g
+            JOIN dts_tree d ON d.topic_code = g.topic_code
+            WHERE d.is_deleted=FALSE
+            GROUP BY d.subject_name, d.grade
+            ORDER BY d.grade::int NULLS LAST, d.subject_name
+        """)
+        subjects = cur2.fetchall(); cur2.close(); conn2.close()
+        if not subjects:
+            await call.message.answer("❌ Hali test mavjud emas!"); return
+        rows2 = [[InlineKeyboardButton(
+            text=f"📚 {s} — {g}-sinf ({c} mavzu)",
+            callback_data=f"sinash_subj:{g}:{s}"
+        )] for s,c,g in subjects]
+        await call.message.answer(
+            "🧪 Bilimni sinash — Fan tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return
 
     if call.data == "mustah_back":
         await call.message.delete()
