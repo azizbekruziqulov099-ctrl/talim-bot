@@ -1824,55 +1824,31 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         async def do_smart_rasm():
             try:
-                # 1. Gemini/GPT dan FLUX promptini olish
-                from auto_trainer import ask_gemini, ask_gpt
-                prompt_req = f"""Siz ta'lim rasmi uchun professional prompt yozuvchisiz.
-
-O'zbek so'rovi: "{tavsif}"
-
-Bu so'rov uchun FLUX/Stable Diffusion uchun inglizcha prompt yoz.
-Qoidalar:
-- Ta'lim rasmi, maktab uchun
-- Aniq, batafsil tavsif
-- Professional uslub
-- Oq fon
-- Matn yo'q
-- Faqat promptni yoz, boshqa hech narsa yozma
-- Maksimal 60 so'z"""
-
-                prompt = await ask_gemini(prompt_req)
-                if not prompt:
-                    prompt = await ask_gpt(prompt_req)
-                if not prompt:
-                    # Oddiy tarjima
-                    prompt = f"Educational illustration: {tavsif}, professional diagram, white background, colorful, school textbook style, no text"
-
+                from rasim_generator import _tavsif_to_prompt, generate_hf, generate_dalle
+                
+                await status_r.edit_text(f"🔄 Tarjima qilinmoqda...\n«{tavsif[:60]}»")
+                prompt = await _tavsif_to_prompt(tavsif, "ta'lim", "1", style)
                 await status_r.edit_text(f"🎨 Chizilmoqda...\n📝 {prompt[:80]}...")
 
-                # 2. FLUX bilan rasm
-                from rasim_generator import generate_hf, generate_dalle
                 img = await generate_hf(prompt)
                 if not img:
                     img = await generate_dalle(prompt)
 
                 if img:
                     from aiogram.types import BufferedInputFile
-                    sent = await status_r.answer_photo(
+                    sent = await message.answer_photo(
                         BufferedInputFile(img, "rasm.png"),
-                        caption=f"🎨 {tavsif[:80]}\n\n📝 Prompt: {prompt[:100]}..."
+                        caption=f"🎨 {tavsif[:80]}"
                     )
                     await status_r.edit_text(
                         f"✅ Tayyor!\n\nDB ga saqlash uchun nom yozing:\n"
-                        f"Masalan: <code>bio-skelet-1</code>",
+                        f"Masalan: <code>1-01-1-01-01-01-001-1</code>",
                         parse_mode="HTML"
                     )
                     fid = sent.photo[-1].file_id
                     admin_state[user_id] = f"save_rasm:{fid}"
                 else:
-                    await status_r.edit_text(
-                        "❌ Rasm yaratilmadi.\n\n"
-                        "HF_TOKEN bormi? Railway → Variables ga qo\'shing."
-                    )
+                    await status_r.edit_text("❌ Rasm yaratilmadi. Qayta urinib ko'ring.")
             except Exception as e:
                 await status_r.edit_text(f"❌ {e}")
 
