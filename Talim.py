@@ -505,6 +505,9 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS book_chunks (id SERIAL PRIMARY KEY, section_id INT, book_id INT, matn TEXT, latex TEXT, chunk_type TEXT, page_num INT, keywords TEXT)",
         "CREATE TABLE IF NOT EXISTS knowledge_facts (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, sinf TEXT, fact_type TEXT, savol TEXT, javob TEXT, izoh TEXT, yosh_5_7 TEXT, yosh_8_11 TEXT, yosh_12plus TEXT, source_ai TEXT, quality INT DEFAULT 5, book_id INT, chunk_text TEXT, keywords TEXT, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS weak_topics (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, error_count INT DEFAULT 1, last_error TIMESTAMP DEFAULT NOW(), UNIQUE(mavzu, fan))",
+        "CREATE TABLE IF NOT EXISTS books (id SERIAL PRIMARY KEY, title TEXT, fan TEXT, sinf TEXT, muallif TEXT, total_pages INT, created_at TIMESTAMP DEFAULT NOW())",
+        "CREATE TABLE IF NOT EXISTS book_pages (id SERIAL PRIMARY KEY, book_id INT, page_num INT, section_name TEXT, full_text TEXT, exercise_count INT DEFAULT 0, UNIQUE(book_id,page_num))",
+        "CREATE TABLE IF NOT EXISTS book_exercises (id SERIAL PRIMARY KEY, book_id INT, page_num INT, mavzu TEXT, fan TEXT, sinf TEXT, ex_type TEXT DEFAULT 'misol', savol TEXT, qiyinlik TEXT DEFAULT 'orta')",
         "CREATE TABLE IF NOT EXISTS rasm_queue (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT, done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS answer_feedback (id SERIAL PRIMARY KEY, question TEXT, answer_given TEXT, correct_answer TEXT, was_correct BOOLEAN, user_id BIGINT, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS book_exercises (id SERIAL PRIMARY KEY, book_id INT, section_id INT, mavzu TEXT, fan TEXT, sinf TEXT, ex_type TEXT, savol TEXT, yechim TEXT, javob TEXT, formula TEXT, qiyinlik TEXT DEFAULT 'orta', source_ai TEXT, created_at TIMESTAMP DEFAULT NOW())",
@@ -1774,15 +1777,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     )
                 except: pass
         await message.answer("✅ Rahmat! Xabaringiz adminlarga yuborildi.\n⏩ Test davom etmoqda...")
-        # Test davom etishi uchun next savol — o'zbekcha
-        from test_engine import test_sessions, render_question
+        from test_engine import test_sessions, _advance
         st2 = test_sessions.get(user_id)
-        if st2:
-            try:
-                await render_question(message, user_id, st2)
-            except Exception as _te:
-                print(f"test davom: {_te}")
+        if st2 and not st2.get("answered"):
+            try: await _advance(user_id)
+            except Exception as _te: print(f"test davom: {_te}")
         return
+
 
     # ═══ BRAIN ═══
     if (user_id not in ADMINS
@@ -2752,6 +2753,19 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             "Bot DB dagi savollardan avtomatik to'ldiradi.\n\n"
             "Agar DB da savol yo'q bo'lsa — 2-fayl (savol fayli) ham yuborasiz."
         )
+        return
+
+    elif message.text == "📚 Kitoblar ▾":
+        if user_id not in ADMINS: return
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        try:
+            cur2.execute("SELECT id,title,sinf,total_pages FROM books ORDER BY id DESC LIMIT 10")
+            books=cur2.fetchall()
+        except: books=[]
+        cur2.close();conn2.close()
+        rows2=[[InlineKeyboardButton(text=f"📖 {b[1]} ({b[3]} bet)",callback_data=f"kitob_info:{b[0]}")] for b in books]
+        rows2.append([InlineKeyboardButton(text="📤 Yangi kitob yuklash",callback_data="kitob_upload")])
+        await message.answer("📚 Kitoblar:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     elif message.text == "📚 Kitoblar ▾":
@@ -5410,12 +5424,14 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             return
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         diff_f = "" if diff=="all" else f"AND difficulty='{diff}'"
-        type_f = "" if write else "AND question_type != 'write_answer'"
+        type_f = "" if write=="mix" else ("" if write else "AND question_type != 'write_answer'")
+        img    = st2.get("ts_img", "mix")
+        img_f  = "" if img=="mix" else ("AND image_url IS NOT NULL AND image_url != ''" if img==True else "AND (image_url IS NULL OR image_url = '')")
         cur2.execute(f"""
             SELECT question,option_a,option_b,option_c,option_d,
                    correct_answer,explanation,question_type,is_latex,
                    image_url,audio_text,language,time_limit
-            FROM generated_tests WHERE topic_code=%s {diff_f} {type_f}
+            FROM generated_tests WHERE topic_code=%s {diff_f} {type_f} {img_f}
             ORDER BY RANDOM() LIMIT %s
         """, (tc, cnt2))
         tests = cur2.fetchall(); cur2.close(); conn2.close()
