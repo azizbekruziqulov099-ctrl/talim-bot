@@ -4,7 +4,11 @@ PDF (kirill) → lotin → DB
 Gemini/GPT kerak emas
 """
 import os, re, psycopg2, asyncio
-from pypdf import PdfReader
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 DATABASE_URL = os.getenv("DATABASE_URL","")
 def db(): return psycopg2.connect(DATABASE_URL)
@@ -61,6 +65,10 @@ def find_section(text: str) -> str:
 async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progress_cb=None):
     async def p(msg):
         if progress_cb: await progress_cb(msg)
+
+    if PdfReader is None:
+        await p("❌ pypdf kutubxonasi o'rnatilmagan!")
+        return {"book_id":0,"pages":0,"exercises":0}
 
     reader = PdfReader(file_path)
     total = len(reader.pages)
