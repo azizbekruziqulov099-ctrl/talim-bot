@@ -99,9 +99,15 @@ async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progres
             """, (book_id, i+1, section or f"Bet {i+1}", fan, sinf, ex[:500]))
             saved_e += 1
 
-        if (i+1) % 50 == 0:
-            conn.commit()
-            await p(f"⏳ {i+1}/{total} bet | {saved_e} misol")
+        if (i+1) % 10 == 0 or i == total-1:
+            pct = round((i+1)*100/total)
+            bar = "█" * (pct//10) + "░" * (10 - pct//10)
+            await p(
+                f"📖 Kitob yuklanmoqda...\n"
+                f"{bar} {pct}%\n"
+                f"📄 {i+1}/{total} bet\n"
+                f"📐 {saved_e} misol topildi"
+            )
 
     conn.commit(); cur.close(); conn.close()
     await p(f"✅ Saqlandi!\n📄 {saved_p} bet | 📐 {saved_e} misol\n🔑 Book ID: {book_id}")
