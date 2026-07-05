@@ -908,19 +908,37 @@ async def save_image(message: types.Message):
         return
 
     # ── Collage rasm split handler ──
-    if (message.photo and user_id in ADMINS
-            and f"{user_id}_rasm_kodlar" in admin_state):
-        kodlar = admin_state[f"{user_id}_rasm_kodlar"]
-        idx    = admin_state.get(f"{user_id}_rasm_idx", 0)
-        
-        if idx >= len(kodlar):
-            await message.answer("✅ Barcha rasmlar saqlandi!")
-            admin_state.pop(f"{user_id}_rasm_kodlar", None)
-            admin_state.pop(f"{user_id}_rasm_idx", None)
+    # Caption: "split:TC:start:rows:cols" yoki "split:TC:start" (default 5x6)
+    # Misol: "split:3-02-3:1:5:6" → TC=3-02-3, start=1, 5 qator, 6 ustun
+    _col_cap = (message.caption or "").strip()
+    if (message.photo and user_id in ADMINS):
+        # rasm_queue da kutayotgan kodlar bormi?
+        try:
+            conn_rq2=psycopg2.connect(DATABASE_URL);cur_rq2=conn_rq2.cursor()
+            cur_rq2.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(user_id,))
+            pending=(cur_rq2.fetchone() or [0])[0]
+            cur_rq2.close();conn_rq2.close()
+        except: pending=0
+    if (message.photo and user_id in ADMINS and (pending>0 or _col_cap.startswith("split:"))):
+        ROWS_sp = 5; COLS_sp = 6
+        total_sp = 30
+
+        # rasm_queue dan keyingi 30 ta kodni olish
+        conn_rq3=psycopg2.connect(DATABASE_URL);cur_rq3=conn_rq3.cursor()
+        cur_rq3.execute("""SELECT id,kod FROM rasm_queue
+            WHERE user_id=%s AND done=FALSE ORDER BY id LIMIT 30""",(user_id,))
+        rows_rq=cur_rq3.fetchall()
+        cur_rq3.close();conn_rq3.close()
+
+        if not rows_rq:
+            await message.answer("✅ Barcha rasmlar allaqachon saqlandi!")
             return
-        
-        batch_kodlar = kodlar[idx:idx+30]
-        status_sp = await message.answer(f"✂️ Collage qirqilmoqda... ({len(batch_kodlar)} ta)")
+
+        batch_ids_rq = [r[0] for r in rows_rq]
+        batch_kodlar = [r[1] for r in rows_rq]
+        ROWS_sp = 5; COLS_sp = 6
+        total_sp = len(batch_kodlar)
+        status_sp = await message.answer(f"✂️ Qirqilmoqda... {len(batch_kodlar)} ta")
 
         try:
             from PIL import Image as PILImage
@@ -935,7 +953,7 @@ async def save_image(message: types.Message):
             img = PILImage.open(buf_p)
             W, H = img.size
 
-            COLS, ROWS = 6, 5
+            COLS, ROWS = COLS_sp, ROWS_sp
             cw, ch = W // COLS, H // ROWS
             saved_sp = 0
 
@@ -956,16 +974,17 @@ async def save_image(message: types.Message):
                     fid_sp = sent_sp.photo[-1].file_id
                     conn_sp = psycopg2.connect(DATABASE_URL); cur_sp = conn_sp.cursor()
                     cur_sp.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
-                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
-                        (kod, fid_sp))
+                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",(kod,fid_sp))
+                    cur_sp.execute("UPDATE rasm_queue SET done=TRUE WHERE user_id=%s AND kod=%s",(user_id,kod))
                     conn_sp.commit(); cur_sp.close(); conn_sp.close()
                     saved_sp += 1
                 except Exception as _e:
                     print(f"cell {kod}: {_e}")
 
-            new_idx = idx + len(batch_kodlar)
-            admin_state[f"{user_id}_rasm_idx"] = new_idx
-            remaining = len(kodlar) - new_idx
+            conn_rq4=psycopg2.connect(DATABASE_URL);cur_rq4=conn_rq4.cursor()
+            cur_rq4.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(user_id,))
+            remaining=(cur_rq4.fetchone() or [0])[0]
+            cur_rq4.close();conn_rq4.close()
 
             if remaining > 0:
                 await status_sp.edit_text(
@@ -3115,13 +3134,19 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     if _id: rasm_kodlar.append(str(_id))
                 _wbr.close()
             if rasm_kodlar:
-                admin_state[f"{user_id}_rasm_kodlar"] = rasm_kodlar
-                admin_state[f"{user_id}_rasm_idx"] = 0
+                # DB ga saqlaymiz (redeploy bo'lsa ham saqlanadi)
+                conn_rq=psycopg2.connect(DATABASE_URL);cur_rq=conn_rq.cursor()
+                cur_rq.execute("""CREATE TABLE IF NOT EXISTS rasm_queue
+                    (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT, done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())""")
+                cur_rq.execute("DELETE FROM rasm_queue WHERE user_id=%s",(user_id,))
+                for kk in rasm_kodlar:
+                    cur_rq.execute("INSERT INTO rasm_queue(user_id,kod) VALUES(%s,%s)",(user_id,kk))
+                conn_rq.commit();cur_rq.close();conn_rq.close()
                 await message.answer(
                     f"🖼 Rasmlar kutilmoqda!\n\n"
-                    f"📊 Jami: {len(rasm_kodlar)} ta rasm kodi topildi\n\n"
-                    f"Endi har bir COLLAGE yuborasiz (30 ta rasm, 5 qator × 6 ustun)\n"
-                    f"Bot o'zi qirqib saqlaydi.\n\n"
+                    f"📊 Jami: {len(rasm_kodlar)} ta rasm kodi saqlandi\n\n"
+                    f"Endi collage rasmlarni yuboring:\n"
+                    f"Har collage = 30 ta rasm (5 qator × 6 ustun)\n\n"
                     f"1-collage yuboring 👇"
                 )
         except Exception as _er:
