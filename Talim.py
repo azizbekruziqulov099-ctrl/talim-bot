@@ -505,6 +505,7 @@ def init_db():
         "CREATE TABLE IF NOT EXISTS book_chunks (id SERIAL PRIMARY KEY, section_id INT, book_id INT, matn TEXT, latex TEXT, chunk_type TEXT, page_num INT, keywords TEXT)",
         "CREATE TABLE IF NOT EXISTS knowledge_facts (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, sinf TEXT, fact_type TEXT, savol TEXT, javob TEXT, izoh TEXT, yosh_5_7 TEXT, yosh_8_11 TEXT, yosh_12plus TEXT, source_ai TEXT, quality INT DEFAULT 5, book_id INT, chunk_text TEXT, keywords TEXT, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS weak_topics (id SERIAL PRIMARY KEY, mavzu TEXT, fan TEXT, error_count INT DEFAULT 1, last_error TIMESTAMP DEFAULT NOW(), UNIQUE(mavzu, fan))",
+        "CREATE TABLE IF NOT EXISTS rasm_queue (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT, done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS answer_feedback (id SERIAL PRIMARY KEY, question TEXT, answer_given TEXT, correct_answer TEXT, was_correct BOOLEAN, user_id BIGINT, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS book_exercises (id SERIAL PRIMARY KEY, book_id INT, section_id INT, mavzu TEXT, fan TEXT, sinf TEXT, ex_type TEXT, savol TEXT, yechim TEXT, javob TEXT, formula TEXT, qiyinlik TEXT DEFAULT 'orta', source_ai TEXT, created_at TIMESTAMP DEFAULT NOW())",
     ]:
@@ -910,23 +911,30 @@ async def save_image(message: types.Message):
     # ── Collage rasm split handler ──
     # Caption: "split:TC:start:rows:cols" yoki "split:TC:start" (default 5x6)
     # Misol: "split:3-02-3:1:5:6" → TC=3-02-3, start=1, 5 qator, 6 ustun
+    uid_sp = message.from_user.id
+
+    # ── Collage rasm split handler ──
     _col_cap = (message.caption or "").strip()
-    if (message.photo and user_id in ADMINS):
+    if True:
         # rasm_queue da kutayotgan kodlar bormi?
         try:
             conn_rq2=psycopg2.connect(DATABASE_URL);cur_rq2=conn_rq2.cursor()
-            cur_rq2.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(user_id,))
+            cur_rq2.execute("""CREATE TABLE IF NOT EXISTS rasm_queue
+                (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT,
+                 done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())""")
+            conn_rq2.commit()
+            cur_rq2.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(uid_sp,))
             pending=(cur_rq2.fetchone() or [0])[0]
             cur_rq2.close();conn_rq2.close()
         except: pending=0
-    if (message.photo and user_id in ADMINS and (pending>0 or _col_cap.startswith("split:"))):
+    if pending>0:
         ROWS_sp = 5; COLS_sp = 6
         total_sp = 30
 
         # rasm_queue dan keyingi 30 ta kodni olish
         conn_rq3=psycopg2.connect(DATABASE_URL);cur_rq3=conn_rq3.cursor()
         cur_rq3.execute("""SELECT id,kod FROM rasm_queue
-            WHERE user_id=%s AND done=FALSE ORDER BY id LIMIT 30""",(user_id,))
+            WHERE user_id=%s AND done=FALSE ORDER BY id LIMIT 30""",(uid_sp,))
         rows_rq=cur_rq3.fetchall()
         cur_rq3.close();conn_rq3.close()
 
@@ -975,14 +983,14 @@ async def save_image(message: types.Message):
                     conn_sp = psycopg2.connect(DATABASE_URL); cur_sp = conn_sp.cursor()
                     cur_sp.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
                         ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",(kod,fid_sp))
-                    cur_sp.execute("UPDATE rasm_queue SET done=TRUE WHERE user_id=%s AND kod=%s",(user_id,kod))
+                    cur_sp.execute("UPDATE rasm_queue SET done=TRUE WHERE user_id=%s AND kod=%s",(uid_sp,kod))
                     conn_sp.commit(); cur_sp.close(); conn_sp.close()
                     saved_sp += 1
                 except Exception as _e:
                     print(f"cell {kod}: {_e}")
 
             conn_rq4=psycopg2.connect(DATABASE_URL);cur_rq4=conn_rq4.cursor()
-            cur_rq4.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(user_id,))
+            cur_rq4.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(uid_sp,))
             remaining=(cur_rq4.fetchone() or [0])[0]
             cur_rq4.close();conn_rq4.close()
 
@@ -1162,14 +1170,14 @@ async def save_image(message: types.Message):
     await message.answer(f"✅ Saqlandi: {name}")
 
 # ====== START ======
-def _save_error_log(user_id, username, error_text):
+def _save_error_log(uid_sp, username, error_text):
     """Xatoni bazaga yozadi (sinxron)."""
     try:
         conn_ = psycopg2.connect(DATABASE_URL)
         cur_  = conn_.cursor()
         cur_.execute(
-            "INSERT INTO error_log(user_id, username, error_text) VALUES(%s,%s,%s)",
-            (user_id, username, error_text[:1000])
+            "INSERT INTO error_log(uid_sp, username, error_text) VALUES(%s,%s,%s)",
+            (uid_sp, username, error_text[:1000])
         )
         conn_.commit(); cur_.close(); conn_.close()
     except Exception:
@@ -1217,7 +1225,7 @@ async def _error_and_home(source, user_id, err, label="Xato"):
         uname = str(user_id)
 
     # Bazaga saqlash
-    _save_error_log(user_id, uname, f"{label}: {short}\n{tb[:500]}")
+    _save_error_log(uid_sp, uname, f"{label}: {short}\n{tb[:500]}")
 
     # Foydalanuvchiga xabar
     try:
@@ -1232,7 +1240,7 @@ async def _error_and_home(source, user_id, err, label="Xato"):
     try:
         conn_ = psycopg2.connect(DATABASE_URL)
         cur_  = conn_.cursor()
-        cur_.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
+        cur_.execute("SELECT role FROM users WHERE user_id=%s", (uid_sp,))
         row_  = cur_.fetchone()
         cur_.close(); conn_.close()
         role_ = row_[0] if row_ else "🧒 O'quvchi"
