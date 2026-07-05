@@ -2371,21 +2371,30 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         async def do_process_kitob():
             try:
                 import kitob_bazasi as _kb
+                import tempfile, os as _os
                 from io import BytesIO
                 buf_k = BytesIO()
                 await message.bot.download(fid, destination=buf_k)
                 buf_k.seek(0)
-                result = await _kb.process_book(
-                    pdf_bytes=buf_k.read(),
-                    title=title, fan=fan, sinf=sinf,
-                    muallif=muallif, file_id=fid,
-                    progress_cb=lambda msg: status_k.edit_text(msg)
+
+                # Vaqtinchalik fayl
+                tmp_k = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                tmp_k.write(buf_k.read()); tmp_k.close()
+
+                async def upd(msg):
+                    try: await status_k.edit_text(msg)
+                    except: pass
+
+                result = await _kb.load_book_to_db(
+                    file_path=tmp_k.name,
+                    sinf=sinf, fan=fan, muallif=muallif,
+                    progress_cb=upd
                 )
+                _os.remove(tmp_k.name)
                 await message.answer(
                     f"✅ Kitob saqlandi!\n📖 {title}\n"
-                    f"📚 {result['sections']} bo'lim | "
-                    f"📝 {result['chunks']} matn | "
-                    f"🔢 {result['formulas']} formula"
+                    f"📄 {result['pages']} bet | 📐 {result['exercises']} misol\n"
+                    f"🔑 Book ID: {result['book_id']}"
                 )
             except Exception as e:
                 await message.answer(f"❌ Xato: {e}")
