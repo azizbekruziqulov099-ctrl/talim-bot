@@ -13,3 +13,4 @@ pytesseract
 python-docx
 Pillow
 aiohttp
+pypdf
