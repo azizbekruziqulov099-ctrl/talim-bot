@@ -12,3 +12,4 @@ Pillow
 pypdf
 python-docx
 PyMuPDF
+aiogram-calendar
