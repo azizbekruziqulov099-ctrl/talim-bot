@@ -2216,6 +2216,18 @@ Qoidalar:
         return
 
     elif message.text == "🖼 Rasmlar boshqaruvi":
+        if user_id not in ADMINS: return
+        # 2 xil rejim
+        await message.answer(
+            "🖼 Rasmlar boshqaruvi",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📤 Rasm yuklash (sinf→fan→mavzu)", callback_data="img_upload_start")],
+                [InlineKeyboardButton(text="📋 Barcha rasmlar", callback_data="img_panel")],
+            ])
+        )
+        return
+
+    elif message.text == "🖼 Rasmlar boshqaruvi":
         if user_id not in ADMINS:
             return
         from image_admin import show_image_panel
@@ -2852,79 +2864,6 @@ Qoidalar:
             return
         await message.answer("⏳ Import qilinmoqda...", reply_markup=get_main_keyboard("Admin"))
         await import_tests_excel(message, path, user_id)
-
-        # RASM_MALUMOTI varagi bormi — avtomatik rasm yaratish
-        try:
-            import openpyxl as _ox
-            _wb = _ox.load_workbook(path, data_only=True)
-            if "RASM_MALUMOTI" in _wb.sheetnames:
-                _ws = _wb["RASM_MALUMOTI"]
-                rasm_items = []
-                for _r in range(2, _ws.max_row+1):
-                    _id   = _ws.cell(_r,1).value
-                    _tc   = _ws.cell(_r,2).value
-                    _tavs = _ws.cell(_r,3).value
-                    if _id and _tavs:
-                        rasm_items.append({"kod":str(_id),"tavsif":str(_tavs),"tc":str(_tc or "")})
-                if rasm_items:
-                    status_rm = await message.answer(
-                        f"🖼 RASM_MALUMOTI topildi!\n"
-                        f"📊 {len(rasm_items)} ta rasm avtomatik chiziladi...\n"
-                        f"⏱ Taxminan {len(rasm_items)//3} daqiqa"
-                    )
-                    async def do_auto_rasm(items, status):
-                        import os as _os
-                        _GEMINI_KEY = _os.getenv("GEMINI_API_KEY","")
-                        from rasim_generator import generate_hf, _tavsif_to_prompt
-                        created = 0; errors = 0
-
-                        async def proc_one(item):
-                            try:
-                                prompt = await _tavsif_to_prompt(item["tavsif"], "ta'lim", "3")
-                                print(f"Prompt: {prompt[:60]}")
-                                img = await generate_hf(prompt)
-                                print(f"Img: {len(img) if img else 'None'}")
-                                if img:
-                                    from aiogram.types import BufferedInputFile
-                                    from io import BytesIO
-                                    sent = await message.bot.send_photo(
-                                        message.chat.id,
-                                        BufferedInputFile(img, f"{item['kod']}.png"),
-                                        caption=f"🖼 {item['kod']}"
-                                    )
-                                    fid = sent.photo[-1].file_id
-                                    _cn=psycopg2.connect(DATABASE_URL);_cu=_cn.cursor()
-                                    _cu.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
-                                        ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
-                                        (item["kod"],fid))
-                                    _cn.commit();_cu.close();_cn.close()
-                                    return True
-                                return False
-                            except Exception as _e:
-                                print(f"proc_one xato: {_e}")
-                                return False
-
-                        for i in range(0, len(items), 3):
-                            batch = items[i:i+3]
-                            results = await asyncio.gather(*[proc_one(b) for b in batch])
-                            created += sum(1 for r in results if r)
-                            errors  += sum(1 for r in results if not r)
-                            done = min(i+3, len(items))
-                            pct  = round(done*100/len(items))
-                            try:
-                                await status.edit_text(
-                                    f"🖼 Rasmlar chizilmoqda...\n"
-                                    f"⏳ {pct}% ({done}/{len(items)})\n"
-                                    f"✅ {created} | ❌ {errors}"
-                                )
-                            except: pass
-                            await asyncio.sleep(2)
-                        await message.answer(
-                            f"✅ Rasmlar tayyor!\n✅ {created} ta | ❌ {errors} ta"
-                        )
-                    asyncio.create_task(do_auto_rasm(rasm_items, status_rm))
-        except Exception as _re:
-            print(f"RASM_MALUMOTI: {_re}")
 
         try:
             os.remove(path)
