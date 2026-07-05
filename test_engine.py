@@ -197,14 +197,33 @@ async def speak_all_question(user_id):
         uz_voice = "uz-UZ-MadinaNeural"
         en_voice = "en-US-AriaNeural"
 
+        # Keng O'zbek so'zlari ro'yxati
+        UZ_WORDS = {
+            "men","sen","u","biz","siz","ular","bu","shu","ha","yo'q",
+            "va","lekin","ham","emas","bor","yo","yoki","uchun","bilan",
+            "nima","qanday","qaysi","qachon","kim","qancha","qayer",
+            "oila","ota","ona","bola","do'st","sinf","maktab","dars",
+            "kitob","qalam","uy","shahar","ko'cha","bog'","daryo",
+            "katta","kichik","yaxshi","yomon","yangi","eski","baland",
+            "olma","non","suv","osh","go'sht","sabzi","tarvuz",
+            "qizil","ko'k","yashil","sariq","oq","qora","ko'p","oz",
+            "bir","ikki","uch","to'rt","besh","olti","yetti","sakkiz",
+        }
+
         def pick_voice(raw_text):
-            """[en] tegli qismlar uchun ingliz, qolganlar uchun o'zbek ovozi."""
             if _has_en(str(raw_text)): return en_voice
-            # Agar matn ko'proq lotin harflardan iborat bo'lsa — ingliz ovozi
-            clean = _tts_clean(str(raw_text))
+            clean = _tts_clean(str(raw_text)).lower()
+            words = set(clean.split())
+            # O'zbek so'zlari ko'p bo'lsa — o'zbek
+            uz_cnt = len(words & UZ_WORDS)
+            if uz_cnt >= 1: return uz_voice
+            # Kirill harflari
+            if any(c in "абвгдежзийклмнопрстуфхцчшщъыьэюя" for c in clean):
+                return "ru-RU-DmitryNeural"
+            # Faqat ingliz so'zlari bo'lsa
             en_chars = sum(1 for c in clean if c.isascii() and c.isalpha())
             all_chars = sum(1 for c in clean if c.isalpha())
-            if all_chars > 0 and en_chars / all_chars > 0.7:
+            if all_chars > 3 and en_chars / all_chars > 0.90:
                 return en_voice
             return uz_voice
 
@@ -481,12 +500,13 @@ async def check_text_answer(user_id, user_answer, message):
     if is_ok:
         s["correct"] += 1
         result_text = f"✅ To'g'ri!"
+        noop_kb = InlineKeyboardMarkup(inline_keyboard=[])
     else:
         s["wrong"] += 1
         result_text = f"❌ Xato!  ✅ To'g'ri: {render_text(test[5])}"
-
-    user_state[user_id] = "in_test"
-    await _show_result(user_id, result_text, noop_kb, photo)
+        noop_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✏️ Xato test bildirish", callback_data=f"report_test:{s['current']}")
+        ]])
 
 # ── O'tkazib yuborish ──
 async def test_skip(user_id):
