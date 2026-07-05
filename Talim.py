@@ -1723,6 +1723,67 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         asyncio.create_task(do_user_rasm())
         return
 
+    # ── Report comment handler ──
+    if str(admin_state.get(user_id) or "").startswith("edit_test_field:") and message.text:
+        parts3 = admin_state[user_id].split(":")
+        tid3 = int(parts3[1]); field3 = parts3[2]
+        val3  = message.text.strip()
+        admin_state.pop(user_id, None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute(f"UPDATE generated_tests SET {field3}=%s WHERE id=%s",(val3,tid3))
+        conn2.commit();cur2.close();conn2.close()
+        await message.answer(f"✅ Test #{tid3} yangilandi!\n🔑 {field3} = {val3[:60]}")
+        return
+
+    if str(user_state.get(user_id) or "").startswith("report_comment:") and message.text:
+        cur_idx = int(str(user_state[user_id]).split(":")[1])
+        comment = message.text.strip()
+        user_state[user_id] = None
+
+        from test_engine import test_sessions
+        st2 = test_sessions.get(user_id) or {}
+        tests = st2.get("questions", [])
+        tc = st2.get("topic_code","")
+
+        if cur_idx < len(tests):
+            q = tests[cur_idx][0]
+            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            cur2.execute("SELECT id FROM generated_tests WHERE question=%s LIMIT 1", (q,))
+            row2 = cur2.fetchone(); tid = row2[0] if row2 else None
+            try:
+                cur2.execute("""INSERT INTO test_corrections(test_id,topic_code,question,user_id,comment,status)
+                    VALUES(%s,%s,%s,%s,%s,'new')
+                    ON CONFLICT DO NOTHING""", (tid, tc, q[:200], user_id, comment))
+                conn2.commit()
+            except: pass
+            cur2.close(); conn2.close()
+            # Admin xabar
+            for aid in ADMINS:
+                try:
+                    await bot.send_message(aid,
+                        f"✏️ Xato test bildirish\n"
+                        f"👤 {user_id}\n"
+                        f"📝 {q[:100]}\n"
+                        f"💬 {comment}",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="🔧 Shu testni tuzatish",
+                                callback_data=f"admin_fix_test:{tid if tid else 0}"
+                            )
+                        ]])
+                    )
+                except: pass
+        await message.answer("✅ Rahmat! Xabaringiz adminlarga yuborildi.\n⏩ Test davom etmoqda...")
+        # Test davom etishi uchun next savol — o'zbekcha
+        from test_engine import test_sessions, render_question
+        st2 = test_sessions.get(user_id)
+        if st2:
+            try:
+                await render_question(message, user_id, st2)
+            except Exception as _te:
+                print(f"test davom: {_te}")
+        return
+
     # ═══ BRAIN ═══
     if (user_id not in ADMINS
             and message.text
@@ -4243,20 +4304,26 @@ def _mk_ts_kb(st2, cnt_total):
     def c(cond): return "✅ " if cond else ""
     cnt   = st2.get("ts_count", 20)
     diff  = st2.get("ts_diff", "all")
-    timed = st2.get("ts_timed", True)
-    write = st2.get("ts_write", False)
+    timed = st2.get("ts_timed", "mix")   # True/False/"mix"
+    write = st2.get("ts_write", "mix")   # True/False/"mix"
+    img   = st2.get("ts_img", "mix")     # True/False/"mix"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{c(cnt==20)}20 ta",    callback_data="ts_cnt_20"),
          InlineKeyboardButton(text=f"{c(cnt==40)}40 ta",    callback_data="ts_cnt_40"),
          InlineKeyboardButton(text=f"{c(cnt==cnt_total)}Barchasi ({cnt_total})", callback_data=f"ts_cnt_{cnt_total}")],
-        [InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",  callback_data="ts_dif_oson"),
-         InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta", callback_data="ts_dif_orta"),
+        [InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",   callback_data="ts_dif_oson"),
+         InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta",  callback_data="ts_dif_orta"),
          InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="ts_dif_qiyin"),
-         InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash", callback_data="ts_dif_all")],
-        [InlineKeyboardButton(text=f"{c(timed)}⏱ Vaqtli",     callback_data="ts_time_1"),
-         InlineKeyboardButton(text=f"{c(not timed)}∞ Vaqtsiz", callback_data="ts_time_0")],
-        [InlineKeyboardButton(text=f"{c(write)}✍️ Yozuvli ham",     callback_data="ts_wr_1"),
-         InlineKeyboardButton(text=f"{c(not write)}🔘 Faqat tugmali", callback_data="ts_wr_0")],
+         InlineKeyboardButton(text=f"{c(diff=='all')}🌈 Aralash",  callback_data="ts_dif_all")],
+        [InlineKeyboardButton(text=f"{c(timed==True)}⏱ Vaqtli",    callback_data="ts_time_1"),
+         InlineKeyboardButton(text=f"{c(timed==False)}∞ Vaqtsiz",  callback_data="ts_time_0"),
+         InlineKeyboardButton(text=f"{c(timed=='mix')}⚡ Aralash",  callback_data="ts_time_mix")],
+        [InlineKeyboardButton(text=f"{c(write==False)}🔘 Tugmali",   callback_data="ts_wr_0"),
+         InlineKeyboardButton(text=f"{c(write==True)}✍️ Yozuvli",   callback_data="ts_wr_1"),
+         InlineKeyboardButton(text=f"{c(write=='mix')}🔀 Aralash",   callback_data="ts_wr_mix")],
+        [InlineKeyboardButton(text=f"{c(img==True)}🖼 Rasimli",      callback_data="ts_img_1"),
+         InlineKeyboardButton(text=f"{c(img==False)}📝 Rasmsiz",     callback_data="ts_img_0"),
+         InlineKeyboardButton(text=f"{c(img=='mix')}🔀 Aralash",     callback_data="ts_img_mix")],
         [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
     ])
 
@@ -4943,21 +5010,46 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("sin_fan:"):
-        parts2=call.data[8:].split(":",1); gr,fan2=parts2[0],parts2[1]
+        # sin_fan:gr:fan  yoki  sin_fan:gr:fan:page
+        raw = call.data[8:]
+        parts2 = raw.rsplit(":", 1)
+        # page oxirida raqam bo'lsa
+        try:
+            page = int(parts2[-1])
+            fan_gr = parts2[0].split(":", 1)
+            gr, fan2 = fan_gr[0], fan_gr[1]
+        except:
+            parts2b = raw.split(":", 1); gr, fan2 = parts2b[0], parts2b[1]
+            page = 0
+
         await call.answer()
+        PAGE = 10
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
         cur2.execute("""SELECT d.kichik_name, d.topic_code, COUNT(g.id) as cnt
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
             GROUP BY d.kichik_name, d.topic_code ORDER BY d.topic_code""",(gr,fan2))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
+
+        total = len(mavzular)
+        page_items = mavzular[page*PAGE:(page+1)*PAGE]
+
         rows2=[[InlineKeyboardButton(
-            text=f"📝 {m[0][:40]} ({m[2]}ta)",
+            text=f"📝 {m[0][:38]} ({m[2]})",
             callback_data=f"sin_mavzu:{m[1]}"
-        )] for m in mavzular]
-        rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"sin_gr:{gr}")])
-        try: await call.message.edit_text(f"📚 {fan2} — Mavzu:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        except: await call.message.answer(f"📚 {fan2} — Mavzu:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        )] for m in page_items]
+
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"sin_fan:{gr}:{fan2}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page*PAGE+1}-{min((page+1)*PAGE,total)}/{total}", callback_data="noop"))
+        if (page+1)*PAGE < total:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"sin_fan:{gr}:{fan2}:{page+1}"))
+        if nav: rows2.append(nav)
+        rows2.append([InlineKeyboardButton(text="⬅️", callback_data=f"sin_gr:{gr}")])
+
+        try: await call.message.edit_text(f"📚 {fan2} — Mavzu ({total} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📚 {fan2} — Mavzu ({total} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("sin_mavzu:"):
@@ -5103,8 +5195,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         elif call.data.startswith("ts_dif_"): st2["ts_diff"]  = call.data.replace("ts_dif_","")
         elif call.data == "ts_wr_1":          st2["ts_write"] = True
         elif call.data == "ts_wr_0":          st2["ts_write"] = False
+        elif call.data == "ts_wr_mix":        st2["ts_write"] = "mix"
         elif call.data == "ts_time_1":        st2["ts_timed"] = True
         elif call.data == "ts_time_0":        st2["ts_timed"] = False
+        elif call.data == "ts_time_mix":      st2["ts_timed"] = "mix"
+        elif call.data == "ts_img_1":         st2["ts_img"]   = True
+        elif call.data == "ts_img_0":         st2["ts_img"]   = False
+        elif call.data == "ts_img_mix":       st2["ts_img"]   = "mix"
         await call.answer("✅")
         # Klaviaturani ✅ bilan yangilaymiz
         cnt_total = st2.get("_ts_cnt_total", 999)
@@ -5173,40 +5270,18 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("report_test:"):
-        from test_engine import test_sessions
-        st2 = test_sessions.get(user_id) or {}
         cur_idx = int(call.data.split(":")[1])
-        tests = st2.get("questions", [])
-        if cur_idx < len(tests):
-            test = tests[cur_idx]
-            tc = st2.get("topic_code","")
-            q  = test[0][:200]
-            # Bazaga saqlash
-            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
-            # test_id ni topish
-            cur2.execute("""
-                SELECT id FROM generated_tests
-                WHERE question=%s
-                LIMIT 1
-            """, (test[0],))
-            row2 = cur2.fetchone()
-            tid = row2[0] if row2 else None
-            cur2.execute("""
-                INSERT INTO test_corrections(test_id, topic_code, question, user_id, comment, status)
-                VALUES(%s,%s,%s,%s,'O''quvchi tomonidan xato deb belgilandi','new')
-            """, (tid, tc, q, user_id))
-            conn2.commit(); cur2.close(); conn2.close()
-            await call.answer("✅ Xabar yuborildi. Admin ko'rib chiqadi!", show_alert=True)
-            # Adminlarga xabar
-            for aid in ADMINS:
-                try:
-                    await bot.send_message(aid,
-                        f"✏️ Xato test #tuzatma\n"
-                        f"👤 User: {user_id}\n"
-                        f"📝 {q[:100]}\n"
-                        f"🔑 test_id={tid}"
-                    )
-                except: pass
+        await call.answer()
+        # Test to'xtatmaymiz — faqat comment so'raymiz
+        user_state[user_id] = f"report_comment:{cur_idx}"
+        await call.message.answer(
+            "✏️ Xato haqida yozing:\n\n"
+            "Masalan:\n"
+            "• «Javob noto'g'ri»\n"
+            "• «Savol tushunarsiz»\n"
+            "• «Rasm mos emas»\n\n"
+            "Yozib yuboring → test davom etadi"
+        )
         return
 
     if call.data.startswith("admin_fix_test:"):
@@ -5245,6 +5320,62 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                  InlineKeyboardButton(text="✅ OK (saqla)", callback_data=f"fix_ok:{tid}")],
             ])
         )
+        return
+
+    if call.data.startswith("edit_q:"):
+        tid=int(call.data.split(":")[1])
+        await call.answer()
+        admin_state[user_id]=f"edit_test_field:{tid}:question"
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT question FROM generated_tests WHERE id=%s",(tid,))
+        row2=cur2.fetchone();cur2.close();conn2.close()
+        await call.message.answer(f"✏️ Yangi savolni yozing:\n\nHozirgi:\n{row2[0] if row2 else ''}")
+        return
+
+    if call.data.startswith("edit_ans:"):
+        tid=int(call.data.split(":")[1])
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT option_a,option_b,option_c,option_d,correct_answer FROM generated_tests WHERE id=%s",(tid,))
+        row2=cur2.fetchone();cur2.close();conn2.close()
+        if row2:
+            await call.message.answer(
+                f"✅ To'g'ri javobni tanlang:\n\nA) {row2[0]}\nB) {row2[1]}\nC) {row2[2]}\nD) {row2[3]}\n\nHozir: {row2[4]}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=f"A) {row2[0][:30]}",callback_data=f"set_ans:{tid}:A")],
+                    [InlineKeyboardButton(text=f"B) {row2[1][:30]}",callback_data=f"set_ans:{tid}:B")],
+                    [InlineKeyboardButton(text=f"C) {row2[2][:30]}",callback_data=f"set_ans:{tid}:C")],
+                    [InlineKeyboardButton(text=f"D) {row2[3][:30]}",callback_data=f"set_ans:{tid}:D")],
+                ])
+            )
+        return
+
+    if call.data.startswith("set_ans:"):
+        parts2=call.data.split(":");tid=int(parts2[1]);ans=parts2[2]
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE generated_tests SET correct_answer=%s WHERE id=%s",(ans,tid))
+        conn2.commit();cur2.close();conn2.close()
+        await call.answer(f"✅ To'g'ri javob {ans} ga o'zgartirildi",show_alert=True)
+        return
+
+    if call.data.startswith("edit_expl:"):
+        tid=int(call.data.split(":")[1])
+        await call.answer()
+        admin_state[user_id]=f"edit_test_field:{tid}:explanation"
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT explanation FROM generated_tests WHERE id=%s",(tid,))
+        row2=cur2.fetchone();cur2.close();conn2.close()
+        await call.message.answer(f"💡 Yangi izohni yozing:\n\nHozirgi:\n{row2[0] if row2 else '-'}")
+        return
+
+    if call.data.startswith("edit_img:"):
+        tid=int(call.data.split(":")[1])
+        await call.answer()
+        admin_state[user_id]=f"edit_test_field:{tid}:image_url"
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT image_url FROM generated_tests WHERE id=%s",(tid,))
+        row2=cur2.fetchone();cur2.close();conn2.close()
+        await call.message.answer(f"🖼 Yangi rasm kodini yozing:\n\nHozirgi: {row2[0] if row2 else '-'}\n\nMasalan: 3-02-1-001-1")
         return
 
     if call.data.startswith("fix_ok:"):
