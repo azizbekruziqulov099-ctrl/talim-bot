@@ -204,20 +204,47 @@ async def render_page_as_image(page_text, page_num):
     """Matndan matplotlib rasm."""
     try:
         import matplotlib; matplotlib.use('Agg')
-        import matplotlib.pyplot as plt, io
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        mpl.rcParams['text.usetex'] = False
+        import io
+
+        # LaTeX belgilarini oddiy matn sifatida ko'rsat
+        def safe(t):
+            return (t.replace('\\','\\\\')
+                     .replace('$','\\$')
+                     .replace('^','\\^{}')
+                     .replace('_','\\_')
+                     .replace('%','\\%')
+                     .replace('&','\\&'))
+
         lines = [l.strip() for l in page_text.split('\n') if l.strip()][:35]
+
         fig, ax = plt.subplots(figsize=(8, 11))
         ax.set_xlim(0,1); ax.set_ylim(0,1); ax.axis('off')
         fig.patch.set_facecolor('white')
-        ax.text(0.5,0.98,f"Bet {page_num}",ha='center',va='top',fontsize=12,fontweight='bold')
+
+        ax.text(0.5, 0.98, f"Bet {page_num}", ha='center', va='top',
+                fontsize=13, fontweight='bold', fontfamily='DejaVu Sans')
+
         y = 0.93
         for line in lines:
             if y < 0.02: break
-            w = 'bold' if re.match(r'^\d+-?§',line) else 'normal'
-            ax.text(0.03,y,line[:95],ha='left',va='top',fontsize=9,fontweight=w,color='#222')
+            w = 'bold' if re.match(r'^\d+-?§', line) else 'normal'
+            # LaTeX escaping o'rniga oddiy text renderer
+            try:
+                ax.text(0.03, y, line[:90], ha='left', va='top',
+                       fontsize=9, fontweight=w, color='#111',
+                       fontfamily='monospace',
+                       transform=ax.transAxes)
+            except: pass
             y -= 0.028
+
         buf = io.BytesIO()
-        plt.savefig(buf,format='png',dpi=130,bbox_inches='tight',facecolor='white')
-        plt.close(); buf.seek(0)
+        plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor='white')
+        plt.close()
+        buf.seek(0)
         return buf.read()
-    except: return None
+    except Exception as e:
+        print(f"render: {e}")
+        return None
