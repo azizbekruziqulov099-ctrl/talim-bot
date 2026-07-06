@@ -92,7 +92,24 @@ async def _photo_for(test, user_id=None):
         except: pass
     # image_url bo'yicha
     if img_url and str(img_url).strip() not in ("","None","nan"):
-        fid = await _get_file_id(str(img_url).strip())
+        url_str = str(img_url).strip()
+        # LaTeX formula — rasm sifatida ko'rsat
+        if url_str.startswith("$") or url_str.startswith("\\"):
+            try:
+                import matplotlib; matplotlib.use("Agg")
+                import matplotlib.pyplot as plt, io
+                fig, ax = plt.subplots(figsize=(6, 1.5))
+                ax.axis("off"); fig.patch.set_facecolor("white")
+                ax.text(0.5, 0.5, url_str, ha="center", va="center",
+                       fontsize=16, transform=ax.transAxes)
+                buf = io.BytesIO()
+                plt.savefig(buf, format="png", dpi=150,
+                           bbox_inches="tight", facecolor="white")
+                plt.close(); buf.seek(0)
+                from aiogram.types import BufferedInputFile
+                return BufferedInputFile(buf.read(), "formula.png")
+            except: pass
+        fid = await _get_file_id(url_str)
         if fid: return fid
     # Session topic_code + savol tartib raqami
     if user_id:
