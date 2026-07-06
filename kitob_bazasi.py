@@ -40,28 +40,38 @@ async def page_to_image(pdf_path: str, page_num: int) -> bytes | None:
 
     return None
 
-async def gemini_vision_page(img_bytes: bytes) -> str:
-    """Gemini Vision orqali bet matnini LaTeX ga o'giradi."""
+async def gemini_read_pdf_page(pdf_path: str, page_num: int) -> str:
+    """Gemini ga PDF betni to'g'ridan yuborib o'qitadi."""
     import aiohttp
     key = os.getenv("GEMINI_API_KEY","")
     if not key: return ""
     try:
-        img_b64 = base64.b64encode(img_bytes).decode()
+        # Faqat o'sha betni ajratib yuborish
+        from pypdf import PdfReader, PdfWriter
+        import io
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        writer.add_page(reader.pages[page_num - 1])
+        buf = io.BytesIO()
+        writer.write(buf)
+        buf.seek(0)
+        pdf_b64 = base64.b64encode(buf.read()).decode()
+
         body = {
             "contents":[{"parts":[
-                {"inline_data":{"mime_type":"image/png","data":img_b64}},
+                {"inline_data":{"mime_type":"application/pdf","data":pdf_b64}},
                 {"text":(
                     "Bu O'zbek matematika darsligi sahifasi.\n"
-                    "Barcha matnni va formulalarni o'qi:\n"
-                    "- Kasrlar: \\frac{a}{b}\n"
-                    "- Daraja: x^{2}\n"
-                    "- Ildiz: \\sqrt{x}\n"
-                    "- Ko'paytma: a \\cdot b\n"
-                    "Har bir misol raqami yangi qatorda.\n"
-                    "Faqat matnni qaytar, boshqa izoh yozma."
+                    "Barcha matnni to'liq o'qi:\n"
+                    "- Har bir misol raqami yangi qatorda bo'lsin\n"
+                    "- Kasrlarni: a/b yoki \\frac{a}{b} shaklida yoz\n"
+                    "- Darajalarni: x^2 shaklida yoz\n"
+                    "- Ildizni: sqrt(x) yoki \\sqrt{x} shaklida yoz\n"
+                    "- Hech qanday izoh yozma, faqat matnni qaytar\n"
+                    "- O'zbek tilida yoz"
                 )}
             ]}],
-            "generationConfig":{"maxOutputTokens":3000}
+            "generationConfig":{"maxOutputTokens":4000}
         }
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
         async with aiohttp.ClientSession() as s:
@@ -70,7 +80,7 @@ async def gemini_vision_page(img_bytes: bytes) -> str:
                     d = await r.json()
                     return d["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
-        print(f"gemini_vision: {e}")
+        print(f"gemini_pdf: {e}")
     return ""
 
 def find_section(text: str) -> str:
@@ -115,19 +125,13 @@ async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progres
     for i in range(total):
         page_num = i + 1
         try:
-            # Rasmga aylantir
-            img_bytes = await page_to_image(file_path, page_num)
-
-            if img_bytes:
-                # Gemini Vision bilan o'qi
-                latex_text = await gemini_vision_page(img_bytes)
-                if not latex_text:
-                    # Fallback: oddiy pypdf
-                    from pypdf import PdfReader as PR
-                    r2 = PR(file_path)
-                    latex_text = r2.pages[i].extract_text() or ""
-            else:
-                latex_text = ""
+            # Gemini PDF betni to'g'ridan o'qiydi
+            latex_text = await gemini_read_pdf_page(file_path, page_num)
+            if not latex_text:
+                # Fallback: pypdf
+                from pypdf import PdfReader as PR
+                r2 = PR(file_path)
+                latex_text = r2.pages[i].extract_text() or ""
 
             section = find_section(latex_text)
             exercises = extract_exercises(latex_text)
