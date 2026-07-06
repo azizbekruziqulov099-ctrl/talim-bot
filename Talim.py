@@ -5367,9 +5367,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         if img:
             from aiogram.types import BufferedInputFile
-            await call.message.answer_photo(BufferedInputFile(img,f"bet_{page2}.png"),caption=caption,reply_markup=kb)
+            await call.message.answer_photo(
+                BufferedInputFile(img,f"bet_{page2}.png"),
+                caption=caption,
+                reply_markup=kb
+            )
         else:
-            await call.message.answer(pg["text"][:800],reply_markup=kb)
+            await call.message.answer(
+                f"📖 Bet {page2}\n\n{pg['text'][:600]}",
+                reply_markup=kb
+            )
         return
 
 
