@@ -115,7 +115,19 @@ def find_section(text: str) -> str:
     return ""
 
 def extract_exercises(text: str) -> list:
-    examples = []; cur = ""
+    examples = []
+    # LaTeX \item larni ajratish
+    if "\\item" in text:
+        import re as _re
+        items = _re.findall(r'\\item\s+(.+?)(?=\\item|\\end\{enumerate\}|$)', text, _re.DOTALL)
+        for item in items:
+            clean = item.strip().replace('\n',' ')
+            clean = _re.sub(r'\s+',' ', clean)
+            if len(clean) > 5:
+                examples.append(clean[:500])
+        return examples
+    # Oddiy raqamli misollar
+    cur = ""
     for line in text.split("\n"):
         line = line.strip()
         if re.match(r'^\d+[\.\)]\s', line):
@@ -246,15 +258,49 @@ def get_books(sinf=None):
     except: return []
 
 async def render_page_as_image(page_text, page_num):
-    """Matndan matplotlib rasm."""
+    """A4 formatida chiroyli rasm."""
     try:
-        import matplotlib; matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        import matplotlib as mpl
-        mpl.rcParams['text.usetex'] = False
-        import io
+        import matplotlib; matplotlib.use("Agg")
+        import matplotlib.pyplot as plt, io, re as _re
 
-        # LaTeX belgilarini oddiy matn sifatida ko'rsat
+        text = page_text
+        text = _re.sub(r"\\documentclass.*?\n", "", text)
+        text = _re.sub(r"\\usepackage.*?\n", "", text)
+        text = _re.sub(r"\\begin\{[^}]+\}|\\end\{[^}]+\}", "", text)
+        text = _re.sub(r"\\Large\\bfseries\s*", "", text)
+        text = _re.sub(r"\\vspace\{[^}]+\}", "", text)
+
+        lines_raw = text.split("\n"); lines=[]; item_num=0
+        for line in lines_raw:
+            line=line.strip()
+            if not line: continue
+            if line.startswith("\\item"):
+                item_num+=1
+                line=f"{item_num}) {line[6:].strip()}"
+            if line: lines.append(line)
+
+        fig,ax=plt.subplots(figsize=(8.27,11.69))
+        ax.axis("off"); fig.patch.set_facecolor("white")
+        ax.text(0.5,0.98,f"Bet {page_num}",ha="center",va="top",
+                fontsize=14,fontweight="bold",transform=ax.transAxes)
+        y=0.95
+        for line in lines[:45]:
+            if y<0.02: break
+            is_h=bool(_re.match(r"^\d+-?§",line))
+            try:
+                ax.text(0.04,y,line[:100],ha="left",va="top",fontsize=9,
+                       fontweight="bold" if is_h else "normal",color="#111",
+                       transform=ax.transAxes,fontfamily="monospace")
+            except: pass
+            y-=0.022
+        buf=io.BytesIO()
+        plt.savefig(buf,format="png",dpi=120,bbox_inches="tight",facecolor="white")
+        plt.close(); buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        print(f"render: {e}")
+        return None
+
         def safe(t):
             return (t.replace('\\','\\\\')
                      .replace('$','\\$')
