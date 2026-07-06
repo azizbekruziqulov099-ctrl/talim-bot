@@ -5454,11 +5454,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_del:"):
         book_id2=int(call.data[10:]); await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("DELETE FROM book_exercises WHERE book_id=%s",(book_id2,))
-        cur2.execute("DELETE FROM book_pages WHERE book_id=%s",(book_id2,))
-        cur2.execute("DELETE FROM books WHERE id=%s",(book_id2,))
-        conn2.commit();cur2.close();conn2.close()
-        await call.message.answer("🗑 O'chirildi!"); return
+        cur2.execute("SELECT title FROM books WHERE id=%s",(book_id2,))
+        b2=cur2.fetchone(); cur2.close(); conn2.close()
+        title2=b2[0] if b2 else "Kitob"
+        admin_state[user_id]=f"kitob_del_confirm:{book_id2}"
+        await call.message.answer(
+            f"⚠️ '{title2}' ni o'chirmoqchimisiz?\n\n"
+            f"Tasdiqlash uchun kitob parolini yozing\n"
+            f"(Standart parol: 0000)"
+        )
+        return
 
     if call.data.startswith("kitob_test:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
