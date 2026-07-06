@@ -41,34 +41,60 @@ async def page_to_image(pdf_path: str, page_num: int) -> bytes | None:
     return None
 
 async def gemini_read_pdf_page(pdf_path: str, page_num: int) -> str:
-    """Gemini ga PDF betni to'g'ridan yuborib o'qitadi."""
-    import aiohttp
+    """PDF betni RASM sifatida Gemini ga yuboradi — aniq o'qiydi."""
+    import aiohttp, shutil
     key = os.getenv("GEMINI_API_KEY","")
     if not key: return ""
-    try:
-        # Faqat o'sha betni ajratib yuborish
-        from pypdf import PdfReader, PdfWriter
-        import io
-        reader = PdfReader(pdf_path)
-        writer = PdfWriter()
-        writer.add_page(reader.pages[page_num - 1])
-        buf = io.BytesIO()
-        writer.write(buf)
-        buf.seek(0)
-        pdf_b64 = base64.b64encode(buf.read()).decode()
 
+    # 1. Betni rasmga aylantir
+    img_bytes = None
+
+    # pdftoppm usuli
+    if shutil.which("pdftoppm"):
+        try:
+            tmp = tempfile.mkdtemp()
+            out = os.path.join(tmp, "p")
+            subprocess.run([
+                "pdftoppm", "-r", "250",
+                "-f", str(page_num), "-l", str(page_num), "-png",
+                pdf_path, out
+            ], capture_output=True, timeout=30)
+            imgs = sorted([f for f in os.listdir(tmp) if f.endswith(".png")])
+            if imgs:
+                with open(os.path.join(tmp, imgs[0]), "rb") as f:
+                    img_bytes = f.read()
+        except Exception as e:
+            print(f"pdftoppm: {e}")
+
+    # PyMuPDF zaxira
+    if not img_bytes:
+        try:
+            import fitz
+            doc = fitz.open(pdf_path)
+            page = doc[page_num - 1]
+            mat = fitz.Matrix(2.5, 2.5)
+            pix = page.get_pixmap(matrix=mat)
+            img_bytes = pix.tobytes("png")
+        except Exception as e:
+            print(f"fitz: {e}")
+
+    if not img_bytes:
+        return ""
+
+    # 2. Rasmni Gemini Vision ga yuborish
+    try:
+        img_b64 = base64.b64encode(img_bytes).decode()
         body = {
             "contents":[{"parts":[
-                {"inline_data":{"mime_type":"application/pdf","data":pdf_b64}},
+                {"inline_data":{"mime_type":"image/png","data":img_b64}},
                 {"text":(
-                    "Bu O'zbek matematika darsligi sahifasi.\n"
-                    "Barcha matnni to'liq o'qi:\n"
-                    "- Har bir misol raqami yangi qatorda bo'lsin\n"
-                    "- Kasrlarni: a/b yoki \\frac{a}{b} shaklida yoz\n"
-                    "- Darajalarni: x^2 shaklida yoz\n"
-                    "- Ildizni: sqrt(x) yoki \\sqrt{x} shaklida yoz\n"
-                    "- Hech qanday izoh yozma, faqat matnni qaytar\n"
-                    "- O'zbek tilida yoz"
+                    "Bu O'zbek matematika darsligi sahifasi rasmi.\n"
+                    "Barcha matnni to'liq va aniq o'qi:\n"
+                    "- Kasrlarni a/b yoki \\frac{a}{b} shaklida yoz\n"
+                    "- Darajalarni x^2 shaklida yoz\n"
+                    "- Ildizni \\sqrt{x} shaklida yoz\n"
+                    "- Har bir misol raqami yangi qatorda\n"
+                    "- Hech qanday izoh yozma, faqat matnni qaytar"
                 )}
             ]}],
             "generationConfig":{"maxOutputTokens":4000}
@@ -80,7 +106,7 @@ async def gemini_read_pdf_page(pdf_path: str, page_num: int) -> str:
                     d = await r.json()
                     return d["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
-        print(f"gemini_pdf: {e}")
+        print(f"gemini_vision: {e}")
     return ""
 
 def find_section(text: str) -> str:
