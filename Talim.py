@@ -1850,6 +1850,40 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(txt[:2000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
+    # Kitob o'chirish — parol tasdiqlash
+    if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
+        book_id2=int(str(admin_state[user_id]).split(":")[1])
+        entered=message.text.strip()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT parol,title FROM books WHERE id=%s",(book_id2,))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        if not row2:
+            await message.answer("❌ Kitob topilmadi!"); admin_state.pop(user_id,None); return
+        parol2,title2=row2
+        if entered != (parol2 or "0000"):
+            await message.answer(f"❌ Parol noto'g'ri! Kitob o'chirilmadi."); admin_state.pop(user_id,None); return
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("DELETE FROM book_exercises WHERE book_id=%s",(book_id2,))
+        cur2.execute("DELETE FROM book_pages WHERE book_id=%s",(book_id2,))
+        cur2.execute("DELETE FROM books WHERE id=%s",(book_id2,))
+        conn2.commit();cur2.close();conn2.close()
+        admin_state.pop(user_id,None)
+        await message.answer(f"✅ '{title2}' o'chirildi!")
+        return
+
+    # Kitob paroli o'rnatish
+    if str(admin_state.get(user_id) or "").startswith("kitob_set_parol:") and message.text:
+        book_id2=int(str(admin_state[user_id]).split(":")[1])
+        parol2=message.text.strip()
+        if not (parol2.isdigit() and len(parol2)==4):
+            await message.answer("❌ 4 xonali raqam yozing!"); return
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE books SET parol=%s WHERE id=%s",(parol2,book_id2))
+        conn2.commit();cur2.close();conn2.close()
+        admin_state.pop(user_id,None)
+        await message.answer(f"✅ Parol {parol2} o'rnatildi!")
+        return
+
     # Kitob bet navigatsiya
     if str(admin_state.get(user_id) or "").startswith("kitob_goto:") and message.text:
         try: page2 = int(message.text.strip())
@@ -5226,6 +5260,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ── KITOB CALLBACKS ──
+    if call.data.startswith("kitob_parol:"):
+        book_id2=int(call.data[12:]); await call.answer()
+        admin_state[user_id]=f"kitob_set_parol:{book_id2}"
+        await call.message.answer("🔑 Yangi 4 xonali parol yozing (masalan: 1234):")
+        return
+
     if call.data.startswith("kitob_davom:"):
         book_id2=int(call.data[12:])
         await call.answer()
@@ -5329,7 +5369,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="📖 Betlarni ko'rish",callback_data=f"kitob_bet:{book_id}:1")],
                     [InlineKeyboardButton(text="✍️ Davom ettirish",callback_data=f"kitob_davom:{book_id}")],
-                    [InlineKeyboardButton(text="🔍 Qidiruv",callback_data=f"kitob_qidir:{book_id}")],
+                    [InlineKeyboardButton(text="🔍 Qidiruv",callback_data=f"kitob_qidir:{book_id}"),
+                     InlineKeyboardButton(text="🔑 Parol",callback_data=f"kitob_parol:{book_id}")],
                     [InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"kitob_del:{book_id}")],
                 ])
             )
@@ -5361,22 +5402,18 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         kb=InlineKeyboardMarkup(inline_keyboard=rows2)
         img=await render_page_as_image(pg["text"],page2)
 
-        # Eski xabarni o'chirib yangi yuborish
-        try: await call.message.delete()
-        except: pass
+        # Matnli ko'rinish — edit ishlaydi, yo'qolmaydi
+        page_txt = pg["text"][:800] if pg.get("text") else ""
+        full_txt = f"📖 Bet {page2}"
+        if pg.get("section"): full_txt += f" — {pg['section']}"
+        full_txt += f"\n\n{page_txt}"
 
-        if img:
-            from aiogram.types import BufferedInputFile
-            await call.message.answer_photo(
-                BufferedInputFile(img,f"bet_{page2}.png"),
-                caption=caption,
-                reply_markup=kb
-            )
-        else:
-            await call.message.answer(
-                f"📖 Bet {page2}\n\n{pg['text'][:600]}",
-                reply_markup=kb
-            )
+        try:
+            await call.message.edit_text(full_txt, reply_markup=kb)
+        except:
+            try: await call.message.delete()
+            except: pass
+            await call.message.answer(full_txt, reply_markup=kb)
         return
 
 
