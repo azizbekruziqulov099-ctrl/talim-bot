@@ -5134,10 +5134,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         nav=[]
         if page2>1: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"kitob_bet:{book_id2}:{page2-1}"))
-        nav.append(InlineKeyboardButton(text=f"{page2}/{tot2}",callback_data="noop"))
+        nav.append(InlineKeyboardButton(text=f"📄 {page2}/{tot2}",callback_data=f"kitob_goto:{book_id2}"))
         if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
         rows2=[nav,[
-            InlineKeyboardButton(text="📝 Matn",callback_data=f"kitob_matn:{book_id2}:{page2}"),
+            InlineKeyboardButton(text="✏️ Yozib kiritish",callback_data=f"kitob_write:{book_id2}:{page2}"),
             InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")
         ]]
         caption=f"📖 Bet {page2}"
@@ -5152,6 +5152,41 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.answer(pg["text"][:800],reply_markup=kb)
         return
 
+
+    if call.data.startswith("kitob_write:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        admin_state[user_id] = f"kitob_write_text:{book_id2}:{page2}"
+        await call.message.answer(
+            "✏️ Bet " + str(page2) + " yangi matnini yozing 👇"
+        )
+        return
+
+    if call.data.startswith("kitob_goto:"):
+        book_id2=int(call.data[11:])
+        await call.answer()
+        admin_state[user_id] = f"kitob_goto:{book_id2}"
+        await call.message.answer("📄 Qaysi betga o'tmoqchisiz? Raqam yozing:")
+        return
+
+    if call.data.startswith("kitob_matn:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        from kitob_bazasi import get_page
+        pg = get_page(book_id2, page2)
+        if not pg:
+            await call.message.answer("❌ Bet topilmadi"); return
+        txt = pg.get("text","")
+        for i in range(0, min(len(txt), 8000), 4000):
+            await call.message.answer(txt[i:i+4000])
+        await call.message.answer(
+            f"📖 Bet {page2}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"kitob_write:{book_id2}:{page2}")],
+                [InlineKeyboardButton(text="⬅️ Betga qaytish", callback_data=f"kitob_bet:{book_id2}:{page2}")],
+            ])
+        )
+        return
 
     if call.data.startswith("kitob_qidir:"):
         book_id2=int(call.data[12:]); await call.answer()
