@@ -66,6 +66,32 @@ def find_section(text: str) -> str:
     return ""
 
 # ══ 3. DB GA YUKLASH ══
+async def fix_ocr_with_gemini(text: str) -> str:
+    """Gemini bilan OCR xatolarini tuzatadi."""
+    gemini_key = os.getenv("GEMINI_API_KEY","")
+    if not gemini_key: return text
+    try:
+        import aiohttp
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+        prompt = f"""Bu matn O'zbek matematika kitobidan OCR (skanerlash) orqali olingan.
+OCR xatolarini tuzat — raqamlar, kasrlar, matematik belgilarni to'g'irla.
+Masalan: "A )|" → "A) 1/2", "3 ' 5" → "3/5", "l" → "1" (raqam), "O" → "0" (nol).
+Faqat tuzatilgan matnni qaytар — boshqa hech narsa yozma.
+
+Matn:
+{text[:2000]}"""
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 2000}
+        }
+        async with aiohttp.ClientSession() as s:
+            async with s.post(url, json=body, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status == 200:
+                    d = await r.json()
+                    return d["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except: pass
+    return text
+
 async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progress_cb=None):
     async def p(msg):
         if progress_cb: await progress_cb(msg)
@@ -94,6 +120,9 @@ async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progres
         if not raw.strip(): continue
 
         lat = kyr_to_lat(raw)
+        # Gemini bilan OCR tuzatish (har 5 betda)
+        if i % 5 == 0:
+            lat = await fix_ocr_with_gemini(lat)
         section = find_section(raw)
         exercises = extract_exercises(lat)
 
@@ -180,3 +209,44 @@ def get_books(sinf=None) -> list:
         rows = cur.fetchall(); cur.close(); conn.close()
         return [{"id":r[0],"title":r[1],"sinf":r[2],"fan":r[3],"pages":r[4]} for r in rows]
     except: return []
+
+
+async def render_page_as_image(page_text: str, page_num: int) -> bytes | None:
+    """Bet matnini rasm qilib beradi (matplotlib)."""
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.font_manager as fm
+        import io
+
+        lines = [l.strip() for l in page_text.split('\n') if l.strip()][:30]
+
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+        ax.axis('off')
+        fig.patch.set_facecolor('white')
+
+        ax.text(0.5, 0.97, f"Bet {page_num}", ha='center', va='top',
+               fontsize=11, fontweight='bold', color='#333')
+
+        y = 0.92
+        for line in lines:
+            if y < 0.02: break
+            size = 10
+            weight = 'bold' if re.match(r'^\d+-?§', line) else 'normal'
+            ax.text(0.05, y, line[:90], ha='left', va='top',
+                   fontsize=size, fontweight=weight,
+                   fontfamily='DejaVu Sans', color='#222',
+                   wrap=True)
+            y -= 0.032
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                   facecolor='white', edgecolor='none')
+        plt.close()
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        print(f"render_page: {e}")
+        return None
