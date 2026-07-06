@@ -1843,6 +1843,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         parts3 = str(admin_state[user_id]).split(":")
         book_id3, page_num3 = int(parts3[1]), int(parts3[2])
         text3 = message.text.strip()
+        # Menu tugmalarini o'tkazib yuborish
+        menu_items = {"📚 Kitoblar ▾","🚀 Mavzu tayyorla","📋 Shablonlar",
+                     "🧠 Bilimlar ▾","📊 Hisobotlar & Xatolar","👥 Foydalanuvchilar",
+                     "🖼 Rasmlar boshqaruvi","🎨 AI Rasm yaratish","⚙️ Akkaunt sozlamalari",
+                     "📖 Darslar holati","🧭 DTS topik boshqaruvi"}
+        if text3 in menu_items or text3.startswith("/"):
+            return
         if text3.lower() in ("tugat","stop","done"):
             conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
             cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(page_num3-1,book_id3))
@@ -1862,11 +1869,19 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("UPDATE books SET total_pages=GREATEST(total_pages,%s) WHERE id=%s",(page_num3,book_id3))
         conn2.commit(); cur2.close(); conn2.close()
         admin_state[user_id] = f"kitob_qolda_bet:{book_id3}:{page_num3+1}"
-        await message.answer(
-            f"✅ Bet {page_num3} saqlandi ({len(exercises)} misol)\n\n"
-            f"📝 Bet {page_num3+1}:\n(Tugash: <code>tugat</code>)",
-            parse_mode="HTML"
-        )
+        # A4 rasm sifatida ko'rsat
+        from kitob_bazasi import render_page_as_image
+        img3 = await render_page_as_image(text3, page_num3)
+        kb3 = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"📝 Bet {page_num3+1} yozing", callback_data=f"kitob_next_bet:{book_id3}:{page_num3+1}"),
+            InlineKeyboardButton(text="✅ Kitobni tugatish", callback_data=f"kitob_qolda_tugat:{book_id3}:{page_num3}"),
+        ]])
+        caption3 = f"✅ Bet {page_num3} saqlandi ({len(exercises)} misol)"
+        if img3:
+            from aiogram.types import BufferedInputFile
+            await message.answer_photo(BufferedInputFile(img3,f"bet_{page_num3}.png"), caption=caption3, reply_markup=kb3)
+        else:
+            await message.answer(caption3, reply_markup=kb3)
         return
 
     # ═══ BRAIN ═══
@@ -5147,6 +5162,28 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ── KITOB CALLBACKS ──
+    if call.data.startswith("kitob_next_bet:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        await call.message.answer(
+            f"📝 Bet {page2} matnini yozing (LaTeX):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Kitobni tugatish", callback_data=f"kitob_qolda_tugat:{book_id2}:{page2-1}")
+            ]])
+        )
+        admin_state[user_id] = f"kitob_qolda_bet:{book_id2}:{page2}"
+        return
+
+    if call.data.startswith("kitob_qolda_tugat:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); last_page=int(parts2[2])
+        await call.answer()
+        admin_state.pop(user_id, None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(last_page,book_id2))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.message.answer(f"✅ Kitob saqlandi!\n📄 {last_page} bet\n🔑 ID: {book_id2}")
+        return
+
     if call.data == "kitob_qolda":
         await call.answer()
         admin_state[user_id] = "kitob_qolda_info"
