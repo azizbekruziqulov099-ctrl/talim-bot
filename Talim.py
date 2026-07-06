@@ -5125,17 +5125,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_bet:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
-        from kitob_bazasi import get_page, get_exercises
+        from kitob_bazasi import get_page, get_exercises, render_page_as_image
         pg=get_page(book_id2,page2)
         if not pg:
             await call.message.answer("❌ Bet topilmadi"); return
-        exs=get_exercises(book_id2,page_num=page2,limit=5)
-        txt=f"📖 Bet {page2}"
-        if pg.get("section"): txt+=f" — {pg['section']}"
-        txt+=f"\n\n{pg['text'][:600]}"
-        if exs:
-            txt+="\n\n📐 Misollar:\n"
-            for i,e in enumerate(exs,1): txt+=f"{i}. {e[:60]}\n"
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
         cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
         tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
@@ -5143,11 +5136,22 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if page2>1: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"kitob_bet:{book_id2}:{page2-1}"))
         nav.append(InlineKeyboardButton(text=f"{page2}/{tot2}",callback_data="noop"))
         if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
-        rows2=[nav]
-        if exs: rows2.append([InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")])
-        try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        rows2=[nav,[
+            InlineKeyboardButton(text="📝 Matn",callback_data=f"kitob_matn:{book_id2}:{page2}"),
+            InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")
+        ]]
+        caption=f"📖 Bet {page2}"
+        if pg.get("section"): caption+=f" — {pg['section']}"
+        kb=InlineKeyboardMarkup(inline_keyboard=rows2)
+        img=await render_page_as_image(pg["text"],page2)
+        if img:
+            from aiogram.types import BufferedInputFile
+            try: await call.message.answer_photo(BufferedInputFile(img,f"bet_{page2}.png"),caption=caption,reply_markup=kb)
+            except: await call.message.answer(pg["text"][:800],reply_markup=kb)
+        else:
+            await call.message.answer(pg["text"][:800],reply_markup=kb)
         return
+
 
     if call.data.startswith("kitob_qidir:"):
         book_id2=int(call.data[12:]); await call.answer()
