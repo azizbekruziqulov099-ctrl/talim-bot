@@ -1817,6 +1817,55 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
 
+    if str(admin_state.get(user_id) or "").startswith("kitob_edit_text:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        book_id3,page3=int(parts3[1]),int(parts3[2])
+        admin_state.pop(user_id,None)
+        from kitob_bazasi import extract_exercises
+        new_text=message.text.strip()
+        exs=extract_exercises(new_text)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE book_pages SET full_text=%s,exercise_count=%s WHERE book_id=%s AND page_num=%s",
+                    (new_text,len(exs),book_id3,page3))
+        cur2.execute("DELETE FROM book_exercises WHERE book_id=%s AND page_num=%s",(book_id3,page3))
+        for ex in exs:
+            cur2.execute("INSERT INTO book_exercises(book_id,page_num,savol) VALUES(%s,%s,%s)",
+                        (book_id3,page3,ex[:1000]))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ Bet {page3} yangilandi! ({len(exs)} misol)")
+        return
+
+    # Kitob bet navigatsiya
+    if str(admin_state.get(user_id) or "").startswith("kitob_goto:") and message.text:
+        try: page2 = int(message.text.strip())
+        except:
+            await message.answer("❌ Faqat raqam yozing!"); return
+        book_id2 = int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id, None)
+        from kitob_bazasi import get_page, render_page_as_image
+        pg = get_page(book_id2, page2)
+        if not pg:
+            await message.answer(f"❌ Bet {page2} topilmadi!"); return
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
+        tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+        nav=[]
+        if page2>1: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"kitob_bet:{book_id2}:{page2-1}"))
+        nav.append(InlineKeyboardButton(text=f"📄 {page2}/{tot2}",callback_data=f"kitob_goto:{book_id2}"))
+        if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
+        kb2=InlineKeyboardMarkup(inline_keyboard=[nav,[
+            InlineKeyboardButton(text="📝 Matn",callback_data=f"kitob_matn:{book_id2}:{page2}"),
+            InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")
+        ]])
+        img2=await render_page_as_image(pg["text"],page2)
+        caption2=f"📖 Bet {page2}" + (f" — {pg['section']}" if pg.get("section") else "")
+        if img2:
+            from aiogram.types import BufferedInputFile
+            await message.answer_photo(BufferedInputFile(img2,f"bet_{page2}.png"),caption=caption2,reply_markup=kb2)
+        else:
+            await message.answer(pg["text"][:800],reply_markup=kb2)
+        return
+
     # Qo'lda terish — ma'lumotlar
     if admin_state.get(user_id) == "kitob_qolda_info" and message.text:
         parts3 = message.text.strip().split("|")
@@ -5162,6 +5211,48 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ── KITOB CALLBACKS ──
+    if call.data.startswith("kitob_davom:"):
+        book_id2=int(call.data[12:])
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT MAX(page_num) FROM book_pages WHERE book_id=%s",(book_id2,))
+        last=(cur2.fetchone() or [0])[0] or 0
+        cur2.close(); conn2.close()
+        next_page = last + 1
+        admin_state[user_id] = f"kitob_qolda_bet:{book_id2}:{next_page}"
+        await call.message.answer(
+            f"✍️ Davom etish — Bet {next_page}\n\n"
+            f"📝 Bet {next_page} matnini yozing:\n"
+            f"(Tugash: <code>tugat</code>)",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Kitobni tugatish",callback_data=f"kitob_qolda_tugat:{book_id2}:{last}")
+            ]])
+        )
+        return
+
+    if call.data.startswith("kitob_edit_page:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        admin_state[user_id] = f"kitob_edit_text:{book_id2}:{page2}"
+        from kitob_bazasi import get_page
+        pg = get_page(book_id2, page2)
+        cur_text = (pg.get("text") or "")[:300] if pg else ""
+        await call.message.answer(
+            f"✏️ Bet {page2} yangi matnini yozing:"
+        )
+        return
+
+    if call.data.startswith("kitob_del_page:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("DELETE FROM book_exercises WHERE book_id=%s AND page_num=%s",(book_id2,page2))
+        cur2.execute("DELETE FROM book_pages WHERE book_id=%s AND page_num=%s",(book_id2,page2))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.message.answer(f"🗑 Bet {page2} o'chirildi!")
+        return
+
     if call.data.startswith("kitob_next_bet:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
@@ -5222,6 +5313,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 f"📄 {b[4]} bet | 📐 {ex_cnt} misol\n🔑 ID: {book_id}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="📖 Betlarni ko'rish",callback_data=f"kitob_bet:{book_id}:1")],
+                    [InlineKeyboardButton(text="✍️ Davom ettirish",callback_data=f"kitob_davom:{book_id}")],
                     [InlineKeyboardButton(text="🔍 Qidiruv",callback_data=f"kitob_qidir:{book_id}")],
                     [InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"kitob_del:{book_id}")],
                 ])
