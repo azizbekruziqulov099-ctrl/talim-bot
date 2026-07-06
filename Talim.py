@@ -363,6 +363,38 @@ def init_db():
         conn.commit()
     except Exception:
         conn.rollback()
+    # Books jadvali
+    try:
+        cur.execute("""CREATE TABLE IF NOT EXISTS books (
+            id SERIAL PRIMARY KEY, title TEXT, fan TEXT, sinf TEXT,
+            muallif TEXT, total_pages INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW()
+        )""")
+        conn.commit()
+    except: conn.rollback()
+    for _add_col in [
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS total_pages INT DEFAULT 0",
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS fan TEXT",
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS sinf TEXT",
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS muallif TEXT",
+    ]:
+        try: cur.execute(_add_col); conn.commit()
+        except: conn.rollback()
+    # book_pages, book_exercises
+    try:
+        cur.execute("""CREATE TABLE IF NOT EXISTS book_pages (
+            id SERIAL PRIMARY KEY, book_id INT, page_num INT,
+            section_name TEXT, full_text TEXT, exercise_count INT DEFAULT 0,
+            UNIQUE(book_id,page_num)
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS book_exercises (
+            id SERIAL PRIMARY KEY, book_id INT, page_num INT,
+            mavzu TEXT, fan TEXT, sinf TEXT,
+            ex_type TEXT DEFAULT 'misol', savol TEXT, qiyinlik TEXT DEFAULT 'orta'
+        )""")
+        conn.commit()
+    except: conn.rollback()
+
     for _col_sql in [
         'ALTER TABLE users ADD COLUMN IF NOT EXISTS kindergarten TEXT',
         'ALTER TABLE users ADD COLUMN IF NOT EXISTS "group" TEXT',
@@ -5057,6 +5089,89 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )] for g in grades]
         await call.message.answer("🧪 Bilimni sinash\n\nSinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
+    # ── KITOB CALLBACKS ──
+    if call.data == "kitob_upload":
+        await call.answer()
+        admin_state[user_id] = "kitob_yuklash"
+        await call.message.answer(
+            "📤 PDF faylni yuboring!\n\n"
+            "Ixtiyoriy: avval ma'lumot yozing:\n"
+            "<code>Nom | Fan | Sinf | Muallif</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    if call.data.startswith("kitob_info:"):
+        book_id=int(call.data[11:])
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT title,sinf,fan,muallif,total_pages FROM books WHERE id=%s",(book_id,))
+        b=cur2.fetchone()
+        cur2.execute("SELECT COUNT(*) FROM book_exercises WHERE book_id=%s",(book_id,))
+        ex_cnt=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+        if b:
+            await call.message.answer(
+                f"📖 {b[0]}\n🏫 {b[1]}-sinf | 📚 {b[2]}\n"
+                f"📄 {b[4]} bet | 📐 {ex_cnt} misol\n🔑 ID: {book_id}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📖 Betlarni ko'rish",callback_data=f"kitob_bet:{book_id}:1")],
+                    [InlineKeyboardButton(text="🔍 Qidiruv",callback_data=f"kitob_qidir:{book_id}")],
+                    [InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"kitob_del:{book_id}")],
+                ])
+            )
+        return
+
+    if call.data.startswith("kitob_bet:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        from kitob_bazasi import get_page, get_exercises
+        pg=get_page(book_id2,page2)
+        if not pg:
+            await call.message.answer("❌ Bet topilmadi"); return
+        exs=get_exercises(book_id2,page_num=page2,limit=5)
+        txt=f"📖 Bet {page2}"
+        if pg.get("section"): txt+=f" — {pg['section']}"
+        txt+=f"\n\n{pg['text'][:600]}"
+        if exs:
+            txt+="\n\n📐 Misollar:\n"
+            for i,e in enumerate(exs,1): txt+=f"{i}. {e[:60]}\n"
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
+        tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+        nav=[]
+        if page2>1: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"kitob_bet:{book_id2}:{page2-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page2}/{tot2}",callback_data="noop"))
+        if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
+        rows2=[nav]
+        if exs: rows2.append([InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")])
+        try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("kitob_qidir:"):
+        book_id2=int(call.data[12:]); await call.answer()
+        admin_state[user_id]=f"kitob_search:{book_id2}"
+        await call.message.answer("🔍 So'z yozing:"); return
+
+    if call.data.startswith("kitob_del:"):
+        book_id2=int(call.data[10:]); await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("DELETE FROM book_exercises WHERE book_id=%s",(book_id2,))
+        cur2.execute("DELETE FROM book_pages WHERE book_id=%s",(book_id2,))
+        cur2.execute("DELETE FROM books WHERE id=%s",(book_id2,))
+        conn2.commit();cur2.close();conn2.close()
+        await call.message.answer("🗑 O'chirildi!"); return
+
+    if call.data.startswith("kitob_test:"):
+        parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
+        await call.answer()
+        from kitob_bazasi import get_exercises
+        exs=get_exercises(book_id2,page_num=page2,limit=20)
+        if not exs: await call.message.answer("❌ Misol topilmadi!"); return
+        txt=f"📐 {page2}-bet misollari ({len(exs)} ta):\n\n"
+        for i,e in enumerate(exs,1): txt+=f"{i}. {e[:100]}\n\n"
+        await call.message.answer(txt[:3000]); return
 
     if call.data.startswith("sin_gr:"):
         gr=call.data[7:]
