@@ -1817,6 +1817,58 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
 
+    # Qo'lda terish — ma'lumotlar
+    if admin_state.get(user_id) == "kitob_qolda_info" and message.text:
+        parts3 = message.text.strip().split("|")
+        title3 = parts3[0].strip() if len(parts3)>0 else "Kitob"
+        fan3   = parts3[1].strip() if len(parts3)>1 else "Fan"
+        sinf3  = parts3[2].strip() if len(parts3)>2 else "1"
+        mual3  = parts3[3].strip() if len(parts3)>3 else ""
+        admin_state.pop(user_id, None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("INSERT INTO books(title,fan,sinf,muallif,total_pages) VALUES(%s,%s,%s,%s,0) RETURNING id",
+                    (title3,fan3,sinf3,mual3))
+        book_id3=cur2.fetchone()[0]; conn2.commit(); cur2.close(); conn2.close()
+        admin_state[user_id] = f"kitob_qolda_bet:{book_id3}:1"
+        await message.answer(
+            f"✅ {title3} yaratildi!\n\n"
+            "📝 Bet 1 matnini yozing:\n"
+            "Tugash: <code>tugat</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Qo'lda terish — betlar
+    if str(admin_state.get(user_id) or "").startswith("kitob_qolda_bet:") and message.text:
+        parts3 = str(admin_state[user_id]).split(":")
+        book_id3, page_num3 = int(parts3[1]), int(parts3[2])
+        text3 = message.text.strip()
+        if text3.lower() in ("tugat","stop","done"):
+            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(page_num3-1,book_id3))
+            conn2.commit(); cur2.close(); conn2.close()
+            admin_state.pop(user_id,None)
+            await message.answer(f"✅ Kitob tayyor!\n📄 {page_num3-1} bet\n🔑 ID: {book_id3}")
+            return
+        from kitob_bazasi import extract_exercises
+        exercises = extract_exercises(text3)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""INSERT INTO book_pages(book_id,page_num,full_text,exercise_count)
+            VALUES(%s,%s,%s,%s) ON CONFLICT(book_id,page_num) DO UPDATE SET full_text=EXCLUDED.full_text""",
+            (book_id3,page_num3,text3,len(exercises)))
+        for ex in exercises:
+            cur2.execute("INSERT INTO book_exercises(book_id,page_num,savol) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
+                        (book_id3,page_num3,ex[:1000]))
+        cur2.execute("UPDATE books SET total_pages=GREATEST(total_pages,%s) WHERE id=%s",(page_num3,book_id3))
+        conn2.commit(); cur2.close(); conn2.close()
+        admin_state[user_id] = f"kitob_qolda_bet:{book_id3}:{page_num3+1}"
+        await message.answer(
+            f"✅ Bet {page_num3} saqlandi ({len(exercises)} misol)\n\n"
+            f"📝 Bet {page_num3+1}:\n(Tugash: <code>tugat</code>)",
+            parse_mode="HTML"
+        )
+        return
+
     # ═══ BRAIN ═══
     if (user_id not in ADMINS
             and message.text
@@ -5173,106 +5225,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_write:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
-    # Qo'lda terish — ma'lumotlar
-    if admin_state.get(user_id) == "kitob_qolda_info" and message.text:
-        parts = message.text.strip().split("|")
-        title = parts[0].strip() if len(parts)>0 else "Kitob"
-        fan   = parts[1].strip() if len(parts)>1 else "Fan"
-        sinf  = parts[2].strip() if len(parts)>2 else "1"
-        mual  = parts[3].strip() if len(parts)>3 else ""
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("INSERT INTO books(title,fan,sinf,muallif,total_pages) VALUES(%s,%s,%s,%s,0) RETURNING id",
-                    (title,fan,sinf,mual))
-        book_id2=cur2.fetchone()[0]; conn2.commit(); cur2.close(); conn2.close()
-        admin_state[user_id] = f"kitob_qolda_bet:{book_id2}:1"
-        await message.answer(
-            f"✅ Kitob yaratildi: {title}\n\n"
-            f"📝 Bet 1 matnini yozing (LaTeX bilan):\n\n"
-            f"Tugash uchun: <code>tugat</code>",
-            parse_mode="HTML"
-        )
-        return
-
-    # Qo'lda terish — betlar
-    if str(admin_state.get(user_id) or "").startswith("kitob_qolda_bet:") and message.text:
-        parts = str(admin_state[user_id]).split(":")
-        book_id2, page_num = int(parts[1]), int(parts[2])
-        text = message.text.strip()
-
-        if text.lower() in ("tugat","stop","done","end"):
-            # Tugash
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-            cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(page_num-1,book_id2))
-            conn2.commit(); cur2.close(); conn2.close()
-            admin_state.pop(user_id,None)
-            await message.answer(
-                f"✅ Kitob tayyor!\n"
-                f"📄 {page_num-1} bet saqlandi\n"
-                f"🔑 Book ID: {book_id2}"
-            )
-            return
-
-        # Bet saqlash
-        from kitob_bazasi import extract_exercises
-        exercises = extract_exercises(text)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("""INSERT INTO book_pages(book_id,page_num,full_text,exercise_count)
-            VALUES(%s,%s,%s,%s) ON CONFLICT(book_id,page_num)
-            DO UPDATE SET full_text=EXCLUDED.full_text""",
-            (book_id2,page_num,text,len(exercises)))
-        for ex in exercises:
-            cur2.execute("INSERT INTO book_exercises(book_id,page_num,savol) VALUES(%s,%s,%s)",
-                        (book_id2,page_num,ex[:1000]))
-        cur2.execute("UPDATE books SET total_pages=GREATEST(total_pages,%s) WHERE id=%s",(page_num,book_id2))
-        conn2.commit(); cur2.close(); conn2.close()
-
-        admin_state[user_id] = f"kitob_qolda_bet:{book_id2}:{page_num+1}"
-        await message.answer(
-            f"✅ Bet {page_num} saqlandi ({len(exercises)} misol)\n\n"
-            f"📝 Bet {page_num+1} matnini yozing:\n"
-            f"(Tugash: <code>tugat</code>)",
-            parse_mode="HTML"
-        )
-        return
-
-    if str(admin_state.get(user_id) or "").startswith("kitob_goto:") and message.text:
-        book_id2 = int(str(admin_state[user_id]).split(":")[1])
-        admin_state.pop(user_id, None)
-        try:
-            page2 = int(message.text.strip())
-        except:
-            await message.answer("❌ Raqam yozing!"); return
-        from kitob_bazasi import get_page, render_page_as_image
-        pg = get_page(book_id2, page2)
-        if not pg:
-            await message.answer(f"❌ Bet {page2} topilmadi!"); return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
-        tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
-        nav=[]
-        if page2>1: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"kitob_bet:{book_id2}:{page2-1}"))
-        nav.append(InlineKeyboardButton(text=f"📄 {page2}/{tot2}",callback_data=f"kitob_goto:{book_id2}"))
-        if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
-        rows2=[nav,[
-            InlineKeyboardButton(text="📝 Matn",callback_data=f"kitob_matn:{book_id2}:{page2}"),
-            InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")
-        ]]
-        caption = f"📖 Bet {page2}"
-        kb = InlineKeyboardMarkup(inline_keyboard=rows2)
-        img = await render_page_as_image(pg["text"], page2)
-        if img:
-            from aiogram.types import BufferedInputFile
-            await message.answer_photo(BufferedInputFile(img,f"bet_{page2}.png"),caption=caption,reply_markup=kb)
-        else:
-            await message.answer(pg["text"][:800], reply_markup=kb)
-        return
-
-        admin_state[user_id] = f"kitob_write_text:{book_id2}:{page2}"
-        await call.message.answer(
-            "✏️ Bet " + str(page2) + " yangi matnini yozing 👇"
-        )
-        return
-
     if call.data.startswith("kitob_goto:"):
         book_id2=int(call.data[11:])
         await call.answer()
