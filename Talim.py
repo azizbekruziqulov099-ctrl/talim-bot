@@ -2372,14 +2372,24 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             try:
                 import kitob_bazasi as _kb
                 import tempfile, os as _os, aiohttp as _ah
-                from io import BytesIO
 
-                await status_k.edit_text("⏳ Fayl yuklanmoqda (23MB)...")
-                print(f"[KITOB] Yuklanmoqda fid={fid}")
+                await status_k.edit_text("⏳ Fayl ma'lumoti olinmoqda...")
+                print(f"[KITOB] get_file boshlandi")
 
-                # Katta fayl uchun file_path usuli
-                file_info = await message.bot.get_file(fid)
-                file_path = file_info.file_path
+                try:
+                    file_info = await message.bot.get_file(fid)
+                    file_path = file_info.file_path
+                    print(f"[KITOB] file_path: {file_path}")
+                except Exception as fe:
+                    print(f"[KITOB] get_file xato: {fe}")
+                    await status_k.edit_text(
+                        f"❌ Fayl yuklab bo'lmadi!\n"
+                        f"Sabab: {fe}\n\n"
+                        f"Telegram 20MB dan katta fayllarni bermir.\n"
+                        f"Faylni siqib (zip) yoki bo'lib yuboring."
+                    )
+                    return
+
                 token = message.bot.token
                 url = f"https://api.telegram.org/file/bot{token}/{file_path}"
 
