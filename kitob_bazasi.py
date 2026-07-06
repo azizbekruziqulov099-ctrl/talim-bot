@@ -1,51 +1,68 @@
 """
 kitob_bazasi.py
-PDF (kirill) → lotin → DB
-Gemini/GPT kerak emas
+PDF → rasm → Gemini Vision → LaTeX → DB
 """
-import os, re, psycopg2, asyncio
-
-try:
-    from pypdf import PdfReader
-except ImportError:
-    import subprocess, sys
-    subprocess.run([sys.executable,"-m","pip","install","pypdf","--break-system-packages","-q"])
-    try:
-        from pypdf import PdfReader
-    except: PdfReader = None
+import os, re, psycopg2, asyncio, base64, json, subprocess, tempfile
 
 DATABASE_URL = os.getenv("DATABASE_URL","")
 def db(): return psycopg2.connect(DATABASE_URL)
 
-# ══ 1. KIRILL → LOTIN ══
-CYRL_TO_LAT = {
-    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo',
-    'Ж':'J','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M',
-    'Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U',
-    'Ф':'F','Х':'X','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Sh',
-    'Ъ':"'",'Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
-    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo',
-    'ж':'j','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m',
-    'н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u',
-    'ф':'f','х':'x','ц':'ts','ч':'ch','ш':'sh','щ':'sh',
-    'ъ':"'",'ь':'','э':'e','ю':'yu','я':'ya',
-    'Ў':"O'",'ў':"o'",'Қ':'Q','қ':'q','Ғ':"G'",'ғ':"g'",
-    'Ҳ':'H','ҳ':'h','Ҷ':'J','ҷ':'j',
-}
+async def page_to_image(pdf_path: str, page_num: int) -> bytes | None:
+    """PDF betni rasmga aylantiradi (pdftoppm)."""
+    try:
+        tmp = tempfile.mkdtemp()
+        out = os.path.join(tmp, "page")
+        subprocess.run([
+            "pdftoppm", "-r", "200",
+            "-f", str(page_num), "-l", str(page_num), "-png",
+            pdf_path, out
+        ], capture_output=True, timeout=30)
+        imgs = sorted([f for f in os.listdir(tmp) if f.endswith(".png")])
+        if imgs:
+            with open(os.path.join(tmp, imgs[0]), "rb") as f:
+                return f.read()
+    except Exception as e:
+        print(f"page_to_image: {e}")
+    return None
 
-def kyr_to_lat(text: str) -> str:
-    result = ""; i = 0
-    while i < len(text):
-        two = text[i:i+2]
-        if two in CYRL_TO_LAT:
-            result += CYRL_TO_LAT[two]; i += 2
-        elif text[i] in CYRL_TO_LAT:
-            result += CYRL_TO_LAT[text[i]]; i += 1
-        else:
-            result += text[i]; i += 1
-    return result
+async def gemini_vision_page(img_bytes: bytes) -> str:
+    """Gemini Vision orqali bet matnini LaTeX ga o'giradi."""
+    import aiohttp
+    key = os.getenv("GEMINI_API_KEY","")
+    if not key: return ""
+    try:
+        img_b64 = base64.b64encode(img_bytes).decode()
+        body = {
+            "contents":[{"parts":[
+                {"inline_data":{"mime_type":"image/png","data":img_b64}},
+                {"text":(
+                    "Bu O'zbek matematika darsligi sahifasi.\n"
+                    "Barcha matnni va formulalarni o'qi:\n"
+                    "- Kasrlar: \\frac{a}{b}\n"
+                    "- Daraja: x^{2}\n"
+                    "- Ildiz: \\sqrt{x}\n"
+                    "- Ko'paytma: a \\cdot b\n"
+                    "Har bir misol raqami yangi qatorda.\n"
+                    "Faqat matnni qaytar, boshqa izoh yozma."
+                )}
+            ]}],
+            "generationConfig":{"maxOutputTokens":3000}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+        async with aiohttp.ClientSession() as s:
+            async with s.post(url, json=body, timeout=aiohttp.ClientTimeout(total=30)) as r:
+                if r.status == 200:
+                    d = await r.json()
+                    return d["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception as e:
+        print(f"gemini_vision: {e}")
+    return ""
 
-# ══ 2. MISOL/SAVOL AJRATISH ══
+def find_section(text: str) -> str:
+    m = re.search(r'(\d+-?§\.?\s*[^\n]+)', text)
+    if m: return m.group(1).strip()[:100]
+    return ""
+
 def extract_exercises(text: str) -> list:
     examples = []; cur = ""
     for line in text.split("\n"):
@@ -58,104 +75,77 @@ def extract_exercises(text: str) -> list:
     if cur: examples.append(cur.strip())
     return [e for e in examples if len(e) > 15]
 
-def find_section(text: str) -> str:
-    m = re.search(r'(\d+-?§\.?\s*[^\n]+)', text)
-    if m: return kyr_to_lat(m.group(1).strip()[:100])
-    m = re.search(r'(\d+[\-–]\s*(?:mavzu|dars|bo\'lim)[^\n]*)', text, re.I)
-    if m: return m.group(1).strip()[:100]
-    return ""
-
-# ══ 3. DB GA YUKLASH ══
-async def fix_ocr_with_gemini(text: str) -> str:
-    """Gemini bilan OCR xatolarini tuzatadi."""
-    gemini_key = os.getenv("GEMINI_API_KEY","")
-    if not gemini_key: return text
-    try:
-        import aiohttp
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-        prompt = f"""Bu matn O'zbek matematika kitobidan OCR (skanerlash) orqali olingan.
-OCR xatolarini tuzat — raqamlar, kasrlar, matematik belgilarni to'g'irla.
-Masalan: "A )|" → "A) 1/2", "3 ' 5" → "3/5", "l" → "1" (raqam), "O" → "0" (nol).
-Faqat tuzatilgan matnni qaytар — boshqa hech narsa yozma.
-
-Matn:
-{text[:2000]}"""
-        body = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 2000}
-        }
-        async with aiohttp.ClientSession() as s:
-            async with s.post(url, json=body, timeout=aiohttp.ClientTimeout(total=15)) as r:
-                if r.status == 200:
-                    d = await r.json()
-                    return d["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except: pass
-    return text
-
 async def load_book_to_db(file_path, sinf, fan="Matematika", muallif="", progress_cb=None):
     async def p(msg):
         if progress_cb: await progress_cb(msg)
 
-    if PdfReader is None:
-        await p("❌ pypdf kutubxonasi o'rnatilmagan!")
-        return {"book_id":0,"pages":0,"exercises":0}
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(file_path)
+        total = len(reader.pages)
+    except Exception as e:
+        await p(f"❌ PDF o'qib bo'lmadi: {e}"); return {"book_id":0,"pages":0,"exercises":0}
 
-    reader = PdfReader(file_path)
-    total = len(reader.pages)
-    await p(f"📖 {total} bet o'qilmoqda...")
+    await p(f"📖 {total} bet o'qilmoqda (Gemini Vision)...")
 
     conn = db(); cur = conn.cursor()
     cur.execute("""
         INSERT INTO books(title,fan,sinf,muallif,total_pages)
         VALUES(%s,%s,%s,%s,%s) RETURNING id
-    """, (f"{fan} {sinf}-sinf", fan, sinf, muallif, total))
+    """, (f"{fan} {sinf}", fan, sinf, muallif, total))
     book_id = cur.fetchone()[0]; conn.commit()
 
-    saved_p = 0; saved_e = 0
+    saved_p = saved_e = 0
 
     for i in range(total):
+        page_num = i + 1
         try:
-            raw = reader.pages[i].extract_text() or ""
-        except: raw = ""
-        if not raw.strip(): continue
+            # Rasmga aylantir
+            img_bytes = await page_to_image(file_path, page_num)
 
-        lat = kyr_to_lat(raw)
-        # Gemini bilan OCR tuzatish (har 5 betda)
-        if i % 5 == 0:
-            lat = await fix_ocr_with_gemini(lat)
-        section = find_section(raw)
-        exercises = extract_exercises(lat)
+            if img_bytes:
+                # Gemini Vision bilan o'qi
+                latex_text = await gemini_vision_page(img_bytes)
+                if not latex_text:
+                    # Fallback: oddiy pypdf
+                    from pypdf import PdfReader as PR
+                    r2 = PR(file_path)
+                    latex_text = r2.pages[i].extract_text() or ""
+            else:
+                latex_text = ""
 
-        cur.execute("""
-            INSERT INTO book_pages(book_id,page_num,section_name,full_text,exercise_count)
-            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(book_id,page_num)
-            DO UPDATE SET full_text=EXCLUDED.full_text,section_name=EXCLUDED.section_name
-        """, (book_id, i+1, section, lat[:5000], len(exercises)))
-        saved_p += 1
+            section = find_section(latex_text)
+            exercises = extract_exercises(latex_text)
 
-        for ex in exercises:
             cur.execute("""
-                INSERT INTO book_exercises(book_id,page_num,mavzu,fan,sinf,savol)
-                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING
-            """, (book_id, i+1, section or f"Bet {i+1}", fan, sinf, ex[:500]))
-            saved_e += 1
+                INSERT INTO book_pages(book_id,page_num,section_name,full_text,exercise_count)
+                VALUES(%s,%s,%s,%s,%s) ON CONFLICT(book_id,page_num)
+                DO UPDATE SET full_text=EXCLUDED.full_text,section_name=EXCLUDED.section_name
+            """, (book_id, page_num, section, latex_text[:8000], len(exercises)))
+            saved_p += 1
 
-        if (i+1) % 10 == 0 or i == total-1:
-            pct = round((i+1)*100/total)
-            bar = "█" * (pct//10) + "░" * (10 - pct//10)
-            await p(
-                f"📖 Kitob yuklanmoqda...\n"
-                f"{bar} {pct}%\n"
-                f"📄 {i+1}/{total} bet\n"
-                f"📐 {saved_e} misol topildi"
-            )
+            for ex in exercises:
+                cur.execute("""
+                    INSERT INTO book_exercises(book_id,page_num,mavzu,fan,sinf,savol)
+                    VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING
+                """, (book_id, page_num, section or f"Bet {page_num}", fan, sinf, ex[:1000]))
+                saved_e += 1
+
+        except Exception as e:
+            print(f"Bet {page_num}: {e}")
+
+        if page_num % 10 == 0 or page_num == total:
+            conn.commit()
+            pct = round(page_num*100/total)
+            bar = "█"*(pct//10) + "░"*(10-pct//10)
+            await p(f"{bar} {pct}%\n📄 {page_num}/{total} bet | 📐 {saved_e} misol")
+        await asyncio.sleep(0.1)
 
     conn.commit(); cur.close(); conn.close()
     await p(f"✅ Saqlandi!\n📄 {saved_p} bet | 📐 {saved_e} misol\n🔑 Book ID: {book_id}")
     return {"book_id": book_id, "pages": saved_p, "exercises": saved_e}
 
-# ══ 4. QIDIRUV ══
-def search_book(query: str, sinf=None, fan=None, limit=10) -> list:
+def search_book(query, sinf=None, fan=None, limit=10):
     try:
         conn = db(); cur = conn.cursor()
         params = [f"%{query}%", f"%{query}%"]
@@ -165,7 +155,7 @@ def search_book(query: str, sinf=None, fan=None, limit=10) -> list:
         if fan:  params.append(fan)
         params.append(limit)
         cur.execute(f"""
-            SELECT p.page_num, p.section_name, p.full_text, b.id, b.title
+            SELECT p.page_num,p.section_name,p.full_text,b.id,b.title
             FROM book_pages p JOIN books b ON b.id=p.book_id
             WHERE (p.full_text ILIKE %s OR p.section_name ILIKE %s) {sf} {ff}
             ORDER BY p.page_num LIMIT %s
@@ -174,7 +164,7 @@ def search_book(query: str, sinf=None, fan=None, limit=10) -> list:
         return [{"page":r[0],"section":r[1],"text":r[2][:400],"book_id":r[3],"title":r[4]} for r in rows]
     except: return []
 
-def get_page(book_id: int, page_num: int) -> dict:
+def get_page(book_id, page_num):
     try:
         conn = db(); cur = conn.cursor()
         cur.execute("SELECT page_num,section_name,full_text FROM book_pages WHERE book_id=%s AND page_num=%s",
@@ -184,7 +174,7 @@ def get_page(book_id: int, page_num: int) -> dict:
     except: pass
     return {}
 
-def get_exercises(book_id: int, page_num: int = None, mavzu: str = None, limit: int = 20) -> list:
+def get_exercises(book_id, page_num=None, mavzu=None, limit=20):
     try:
         conn = db(); cur = conn.cursor()
         if page_num:
@@ -199,7 +189,7 @@ def get_exercises(book_id: int, page_num: int = None, mavzu: str = None, limit: 
         return [r[0] for r in rows]
     except: return []
 
-def get_books(sinf=None) -> list:
+def get_books(sinf=None):
     try:
         conn = db(); cur = conn.cursor()
         if sinf:
@@ -210,43 +200,24 @@ def get_books(sinf=None) -> list:
         return [{"id":r[0],"title":r[1],"sinf":r[2],"fan":r[3],"pages":r[4]} for r in rows]
     except: return []
 
-
-async def render_page_as_image(page_text: str, page_num: int) -> bytes | None:
-    """Bet matnini rasm qilib beradi (matplotlib)."""
+async def render_page_as_image(page_text, page_num):
+    """Matndan matplotlib rasm."""
     try:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        import matplotlib.font_manager as fm
-        import io
-
-        lines = [l.strip() for l in page_text.split('\n') if l.strip()][:30]
-
-        fig, ax = plt.subplots(figsize=(8.5, 11))
-        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
-        ax.axis('off')
+        import matplotlib; matplotlib.use('Agg')
+        import matplotlib.pyplot as plt, io
+        lines = [l.strip() for l in page_text.split('\n') if l.strip()][:35]
+        fig, ax = plt.subplots(figsize=(8, 11))
+        ax.set_xlim(0,1); ax.set_ylim(0,1); ax.axis('off')
         fig.patch.set_facecolor('white')
-
-        ax.text(0.5, 0.97, f"Bet {page_num}", ha='center', va='top',
-               fontsize=11, fontweight='bold', color='#333')
-
-        y = 0.92
+        ax.text(0.5,0.98,f"Bet {page_num}",ha='center',va='top',fontsize=12,fontweight='bold')
+        y = 0.93
         for line in lines:
             if y < 0.02: break
-            size = 10
-            weight = 'bold' if re.match(r'^\d+-?§', line) else 'normal'
-            ax.text(0.05, y, line[:90], ha='left', va='top',
-                   fontsize=size, fontweight=weight,
-                   fontfamily='DejaVu Sans', color='#222',
-                   wrap=True)
-            y -= 0.032
-
+            w = 'bold' if re.match(r'^\d+-?§',line) else 'normal'
+            ax.text(0.03,y,line[:95],ha='left',va='top',fontsize=9,fontweight=w,color='#222')
+            y -= 0.028
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight',
-                   facecolor='white', edgecolor='none')
-        plt.close()
-        buf.seek(0)
+        plt.savefig(buf,format='png',dpi=130,bbox_inches='tight',facecolor='white')
+        plt.close(); buf.seek(0)
         return buf.read()
-    except Exception as e:
-        print(f"render_page: {e}")
-        return None
+    except: return None
