@@ -2405,6 +2405,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         muallif = info.get("muallif", "")
         fid     = message.document.file_id
         admin_state[user_id] = None
+        admin_state.pop(f"{user_id}_kitob_info", None)
         status_k = await message.answer(
             f"📖 {title}\n⏳ PDF qabul qilindi, yuklanmoqda..."
         )
