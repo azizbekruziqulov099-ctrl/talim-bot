@@ -94,17 +94,30 @@ async def _photo_for(test, user_id=None):
     if img_url and str(img_url).strip() not in ("","None","nan"):
         url_str = str(img_url).strip()
         # LaTeX formula — rasm sifatida ko'rsat
-        if url_str.startswith("$") or url_str.startswith("\\"):
+        if url_str.startswith("$") or url_str.startswith("\\") or "$" in url_str:
             try:
                 import matplotlib; matplotlib.use("Agg")
-                import matplotlib.pyplot as plt, io
-                fig, ax = plt.subplots(figsize=(6, 1.5))
-                ax.axis("off"); fig.patch.set_facecolor("white")
-                ax.text(0.5, 0.5, url_str, ha="center", va="center",
-                       fontsize=16, transform=ax.transAxes)
-                buf = io.BytesIO()
+                import matplotlib.pyplot as plt, io as _io
+                parts = url_str.split("$")
+                fig = plt.figure(figsize=(8, 2))
+                fig.patch.set_facecolor("white")
+                ax = fig.add_axes([0,0,1,1]); ax.axis("off")
+                ax.set_xlim(0,10); ax.set_ylim(0,2)
+                x = 0.2; y = 1.0
+                for idx, part in enumerate(parts):
+                    if not part.strip(): continue
+                    if idx % 2 == 0:
+                        t = ax.text(x, y, part, fontsize=18, va="center",
+                                   ha="left", color="black")
+                    else:
+                        t = ax.text(x, y, f"${part}$", fontsize=20,
+                                   va="center", ha="left", color="#1a1a8c")
+                    fig.canvas.draw()
+                    bb = t.get_window_extent(renderer=fig.canvas.get_renderer())
+                    x += bb.width/(fig.dpi*fig.get_figwidth()/10) + 0.1
+                buf = _io.BytesIO()
                 plt.savefig(buf, format="png", dpi=150,
-                           bbox_inches="tight", facecolor="white")
+                           bbox_inches="tight", facecolor="white", pad_inches=0.2)
                 plt.close(); buf.seek(0)
                 from aiogram.types import BufferedInputFile
                 return BufferedInputFile(buf.read(), "formula.png")
