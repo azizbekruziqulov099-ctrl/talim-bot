@@ -8,21 +8,36 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 def db(): return psycopg2.connect(DATABASE_URL)
 
 async def page_to_image(pdf_path: str, page_num: int) -> bytes | None:
-    """PDF betni rasmga aylantiradi (pdftoppm)."""
+    """PDF betni rasmga aylantiradi (pdftoppm yoki PyMuPDF)."""
+    # 1. pdftoppm
     try:
-        tmp = tempfile.mkdtemp()
-        out = os.path.join(tmp, "page")
-        subprocess.run([
-            "pdftoppm", "-r", "200",
-            "-f", str(page_num), "-l", str(page_num), "-png",
-            pdf_path, out
-        ], capture_output=True, timeout=30)
-        imgs = sorted([f for f in os.listdir(tmp) if f.endswith(".png")])
-        if imgs:
-            with open(os.path.join(tmp, imgs[0]), "rb") as f:
-                return f.read()
+        import shutil
+        if shutil.which("pdftoppm"):
+            tmp = tempfile.mkdtemp()
+            out = os.path.join(tmp, "page")
+            subprocess.run([
+                "pdftoppm", "-r", "200",
+                "-f", str(page_num), "-l", str(page_num), "-png",
+                pdf_path, out
+            ], capture_output=True, timeout=30)
+            imgs = sorted([f for f in os.listdir(tmp) if f.endswith(".png")])
+            if imgs:
+                with open(os.path.join(tmp, imgs[0]), "rb") as f:
+                    return f.read()
     except Exception as e:
-        print(f"page_to_image: {e}")
+        pass
+
+    # 2. PyMuPDF (fitz)
+    try:
+        import fitz
+        doc = fitz.open(pdf_path)
+        page = doc[page_num - 1]
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        return pix.tobytes("png")
+    except Exception as e:
+        pass
+
     return None
 
 async def gemini_vision_page(img_bytes: bytes) -> str:
