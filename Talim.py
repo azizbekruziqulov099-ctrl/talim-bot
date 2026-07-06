@@ -1835,6 +1835,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(f"✅ Bet {page3} yangilandi! ({len(exs)} misol)")
         return
 
+    if str(admin_state.get(user_id) or "").startswith("kitob_search:") and message.text:
+        book_id2=int(str(admin_state[user_id]).split(":")[1])
+        query=message.text.strip()
+        admin_state.pop(user_id,None)
+        from kitob_bazasi import search_book
+        results=[r for r in search_book(query) if r["book_id"]==book_id2]
+        if not results:
+            await message.answer(f"❌ '{query}' topilmadi"); return
+        rows2=[[InlineKeyboardButton(text=f"📖 Bet {r['page']}",callback_data=f"kitob_bet:{book_id2}:{r['page']}")] for r in results[:10]]
+        txt=f"🔍 '{query}' — {len(results)} ta bet:\n\n"
+        for r in results[:5]:
+            txt+=f"📄 Bet {r['page']}: {r['text'][:80]}...\n\n"
+        await message.answer(txt[:2000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
     # Kitob bet navigatsiya
     if str(admin_state.get(user_id) or "").startswith("kitob_goto:") and message.text:
         try: page2 = int(message.text.strip())
@@ -5335,17 +5350,24 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         nav.append(InlineKeyboardButton(text=f"📄 {page2}/{tot2}",callback_data=f"kitob_goto:{book_id2}"))
         if page2<tot2: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"kitob_bet:{book_id2}:{page2+1}"))
         rows2=[nav,[
-            InlineKeyboardButton(text="✏️ Yozib kiritish",callback_data=f"kitob_write:{book_id2}:{page2}"),
+            InlineKeyboardButton(text="✏️ Tahrirlash",callback_data=f"kitob_edit_page:{book_id2}:{page2}"),
             InlineKeyboardButton(text="🎯 Misollar",callback_data=f"kitob_test:{book_id2}:{page2}")
+        ],[
+            InlineKeyboardButton(text="🗑 Betni o'chir",callback_data=f"kitob_del_page:{book_id2}:{page2}"),
+            InlineKeyboardButton(text="🗑 Kitobni o'chir",callback_data=f"kitob_del:{book_id2}"),
         ]]
         caption=f"📖 Bet {page2}"
         if pg.get("section"): caption+=f" — {pg['section']}"
         kb=InlineKeyboardMarkup(inline_keyboard=rows2)
         img=await render_page_as_image(pg["text"],page2)
+
+        # Eski xabarni o'chirib yangi yuborish
+        try: await call.message.delete()
+        except: pass
+
         if img:
             from aiogram.types import BufferedInputFile
-            try: await call.message.answer_photo(BufferedInputFile(img,f"bet_{page2}.png"),caption=caption,reply_markup=kb)
-            except: await call.message.answer(pg["text"][:800],reply_markup=kb)
+            await call.message.answer_photo(BufferedInputFile(img,f"bet_{page2}.png"),caption=caption,reply_markup=kb)
         else:
             await call.message.answer(pg["text"][:800],reply_markup=kb)
         return
