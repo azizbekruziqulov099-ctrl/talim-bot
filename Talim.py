@@ -2359,14 +2359,23 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # ── Kitob PDF yuklash ──
     if (message.document and user_id in ADMINS and
-            admin_state.get(user_id) == "kitob_yuklash_pdf"):
+            message.document.file_name and
+            message.document.file_name.lower().endswith(".pdf")):
+        # State bo'lmasa ham qabul qilamiz
         info = admin_state.get(f"{user_id}_kitob_info", {})
+        if not info:
+            # Fayl nomidan ma'lumot olish
+            fname = message.document.file_name.replace(".pdf","")
+            info = {"title": fname, "fan": "Matematika", "sinf": "7", "muallif": ""}
         title   = info.get("title", "Kitob")
-        fan     = info.get("fan", "")
-        sinf    = info.get("sinf", "")
+        fan     = info.get("fan", "Matematika")
+        sinf    = info.get("sinf", "7")
         muallif = info.get("muallif", "")
         fid     = message.document.file_id
-        status_k = await message.answer("⏳ PDF qabul qilindi, qayta ishlash boshlandi...")
+        admin_state[user_id] = None
+        status_k = await message.answer(
+            f"📖 {title}\n⏳ PDF qabul qilindi, yuklanmoqda..."
+        )
 
         async def do_process_kitob():
             try:
