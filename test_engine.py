@@ -15,9 +15,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ── Matnni tozalash ──
 def render_text(t):
-    """Matnni ko'rsatish uchun: [en]...[/en] → yotiq (italic)."""
+    """Matnni ko'rsatish uchun: [en]...[/en] → yotiq (italic). Float .0 ni tozalash."""
     if not t: return ""
     t = str(t)
+    # Float .0 ni tozalash: "9.0" → "9", "16.0" → "16"
+    import re as _re
+    t = _re.sub(r'\b(\d+)\.0\b', r'\1', t)
     t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[en\](.*?)\[/en\]', r'_\1_', t, flags=re.DOTALL)  # italic
     t = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', t, flags=re.DOTALL)
