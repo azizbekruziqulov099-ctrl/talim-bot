@@ -1672,17 +1672,31 @@ async def handle_all(
 
 
 async def _rq_save(source, user_id, name, rol, sinf):
-    """Tez kirish — foydalanuvchini saqlash."""
+    """Tez kirish — foydalanuvchini saqlash (multi-account)."""
     conn2=psycopg2.connect(DATABASE_URL); cur2=conn2.cursor()
     rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
     sinf_txt = f"{sinf}-sinf" if sinf else ""
     try:
+        # users jadvalini yangilash
         cur2.execute("""
             INSERT INTO users(user_id,full_name,role,class,is_verified)
             VALUES(%s,%s,%s,%s,TRUE)
             ON CONFLICT(user_id) DO UPDATE
             SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
         """, (user_id, name, rol_uz, sinf_txt))
+        # user_accounts da yangi indeks
+        cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id,))
+        max_idx=(cur2.fetchone() or [None])[0]
+        new_idx = 0 if max_idx is None else max_idx + 1
+        # Barchasini nofaol
+        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
+        # Yangi akkaunt qo'shish
+        cur2.execute("""
+            INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
+            VALUES(%s,%s,%s,%s,%s,TRUE)
+            ON CONFLICT(telegram_id,account_index) DO UPDATE
+            SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
+        """, (user_id, new_idx, name, rol_uz, sinf_txt))
         conn2.commit()
     except Exception as e:
         print(f"rq_save: {e}")
@@ -1692,15 +1706,9 @@ async def _rq_save(source, user_id, name, rol, sinf):
     from keyboards import get_main_keyboard
     kb = get_main_keyboard(rol_uz)
     if hasattr(source, "answer"):
-        await source.answer(
-            f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}",
-            reply_markup=kb
-        )
+        await source.answer(f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}", reply_markup=kb)
     else:
-        await source.message.answer(
-            f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}",
-            reply_markup=kb
-        )
+        await source.message.answer(f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}", reply_markup=kb)
 
 async def _save_quick_user(call, user_id):
     """rq_sinf callbackdan saqlash."""
@@ -6660,6 +6668,61 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ── KABINET CALLBACKLAR ──
+    if call.data == "kb_new_acc":
+        await call.answer()
+        # Yangi akkaunt yaratish — registratsiya oqimi
+        from register import start_registration
+        # Oldin aktiv akkauntni nofaol qilmaymiz — yangi qo'shamiz
+        user_state[user_id] = "reg_new_acc"
+        await call.message.answer(
+            "➕ Yangi akkaunt yaratish\n\nYangi rol tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data="rq_rol:student")],
+                [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data="rq_rol:teacher")],
+                [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="rq_rol:parent")],
+            ])
+        )
+        return
+
+    if call.data == "kb_switch_acc":
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""
+            SELECT id, account_index, full_name, role
+            FROM user_accounts WHERE telegram_id=%s
+            ORDER BY account_index
+        """, (user_id,))
+        accs = cur2.fetchall(); cur2.close(); conn2.close()
+        rows2 = [[InlineKeyboardButton(
+            text=f"{'✅' if i==0 else '👤'} {a[2] or '—'} ({a[3] or '—'})",
+            callback_data=f"kb_activate:{a[0]}"
+        )] for i,a in enumerate(accs)]
+        await call.message.answer("🔄 Akkauntni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("kb_activate:"):
+        acc_id2=int(call.data[12:]); await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        # Avval barchasini nofaol
+        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
+        # Tanlanganni faol
+        cur2.execute("""
+            UPDATE user_accounts SET is_active=TRUE WHERE id=%s
+            RETURNING full_name, role
+        """, (acc_id2,))
+        row2=cur2.fetchone()
+        # users jadvalini ham yangilaymiz
+        if row2:
+            cur2.execute("UPDATE users SET full_name=%s, role=%s WHERE user_id=%s",
+                        (row2[0],row2[1],user_id))
+        conn2.commit();cur2.close();conn2.close()
+        from keyboards import get_main_keyboard
+        await call.message.answer(
+            f"✅ Akkaunt almashtirildi!\n👤 {row2[0] if row2 else ''}\n🎭 {row2[1] if row2 else ''}",
+            reply_markup=get_main_keyboard(row2[1] if row2 else "")
+        )
+        return
+
     if call.data == "kb_togaraklar":
         await call.answer()
         from togarak import get_student_togaraklar
