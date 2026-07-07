@@ -6795,10 +6795,14 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # ══ TO'GARAK CALLBACKLAR ══
     if call.data == "tg_yangi":
         await call.answer()
+        if user_id not in ADMINS:
+            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            cur2.execute("SELECT COUNT(*) FROM togaraklar WHERE teacher_id=%s AND aktiv=TRUE",(user_id,))
+            cnt2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+            if cnt2 >= 1:
+                await call.message.answer("❌ Siz allaqachon 1 ta to'garak ochgansiz!\n\nFaqat admin cheksiz to'garak ocha oladi."); return
         user_state[user_id] = "tg_create_nomi"
-        await call.message.answer(
-            "➕ Yangi to'garak yaratish\n\nTo'garak nomini yozing:"
-        )
+        await call.message.answer("➕ Yangi to'garak\n\nTo'garak nomini yozing:")
         return
 
     if call.data.startswith("tg_info:"):
@@ -7163,10 +7167,21 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT bo_lim FROM dts_tree WHERE grade=%s AND subject=%s AND is_deleted=FALSE ORDER BY bo_lim LIMIT 20",(sinf,fan))
-        boblar=cur2.fetchall(); cur2.close(); conn2.close()
-        rows2=[[InlineKeyboardButton(text=f"📖 {b[0][:40]}",callback_data=f"tg_reja_bob:{tgid}:{sinf}:{fan}:{b[0][:20]}")] for b in boblar]
-        await call.message.answer(f"Bo'limni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        # Bo'lim qadami yo'q — to'g'ridan mavzular
+        cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+            FROM dts_tree WHERE grade=%s AND subject_name=%s
+            AND is_deleted=FALSE AND mavzu_code IS NOT NULL
+            ORDER BY mavzu_code LIMIT 30""", (sinf,fan))
+        mavzular=cur2.fetchall(); cur2.close(); conn2.close()
+        if not mavzular:
+            await call.message.answer("❌ Mavzu topilmadi!"); return
+        rows2=[[InlineKeyboardButton(
+            text=f"📌 {(m[1] or m[0])[:40]}",
+            callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}"
+        )] for m in mavzular]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
+        await call.message.answer(f"📌 Mavzuni tanlang ({len(mavzular)} ta):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_reja_bob:"):
