@@ -257,14 +257,42 @@ async def speak_all_question(user_id):
                 return en_voice
             return uz_voice
 
+        def split_by_lang(raw_text):
+            """Matnni til bo'yicha bo'laklarga ajratadi."""
+            import re
+            if not raw_text: return []
+            segments = []
+            # [en]...[/en] va [ru]...[/ru] teglarini topamiz
+            pattern = r'(\[en\](.*?)\[/en\]|\[ru\](.*?)\[/ru\])'
+            last = 0
+            for m in re.finditer(pattern, str(raw_text), re.DOTALL):
+                # Tegdan oldingi uz matni
+                before = raw_text[last:m.start()].strip()
+                if before: segments.append((before, uz_voice))
+                # Teglangan qism
+                if m.group(0).startswith('[en]'):
+                    segments.append((m.group(2), en_voice))
+                else:
+                    segments.append((m.group(3), "ru-RU-DmitryNeural"))
+                last = m.end()
+            # Qolgan qism
+            rest = raw_text[last:].strip()
+            if rest: segments.append((rest, uz_voice))
+            return segments if segments else [(raw_text, uz_voice)]
+
         parts = []
-        # Savol
-        parts.append((_tts_clean(q), pick_voice(q)))
-        # Javoblar raqam bilan
+        # Savol — til bo'yicha bo'laklarga ajratamiz
+        for seg_text, seg_voice in split_by_lang(q):
+            clean = _tts_clean(seg_text)
+            if clean: parts.append((clean, seg_voice))
+        # Javoblar
         for num, opt in enumerate([a,b,c,d], 1):
             txt = _tts_clean(str(opt or ""))
             if txt:
-                parts.append((f"{num}. {txt}", pick_voice(opt)))
+                seg_parts = split_by_lang(str(opt or ""))
+                for seg_text, seg_voice in seg_parts:
+                    clean = _tts_clean(seg_text)
+                    if clean: parts.append((f"{num}. {clean}" if seg_text==str(opt or "").strip() else clean, seg_voice))
 
         combined = AS.silent(200)
         for text, voice in parts:
@@ -537,6 +565,17 @@ async def check_text_answer(user_id, user_answer, message):
         noop_kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✏️ Xato test bildirish", callback_data=f"report_test:{s['current']}")
         ]])
+
+    s["answered"] = True
+    if expl:
+        result_text += f"\n\n💡 {expl[:300]}"
+    await _edit_board(s, _board_text(s))
+    try:
+        await message.answer(result_text, reply_markup=noop_kb)
+    except: pass
+    await asyncio.sleep(2)
+    if test_sessions.get(user_id):
+        await _advance(user_id)
 
 # ── O'tkazib yuborish ──
 async def test_skip(user_id):
