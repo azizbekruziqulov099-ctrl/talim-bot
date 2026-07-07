@@ -6458,6 +6458,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
             return
         await call.answer()
+        from test_engine import start_test
         await start_test(user_id, tests, call.message)
         from storage import test_sessions as _ts
         if user_id in _ts:
