@@ -356,8 +356,12 @@ async def start_registration(message):
     user_id = message.from_user.id
     temp_user[user_id] = {}
     user_state[user_id] = "reg_wait_inline"
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     nm = await message.answer(
-        "📋 Ro'yxatdan o'tish\n\nRolni tanlang:",
-        reply_markup=_ik(ROLES,"role",cols=1)
+        "👋 Xush kelibsiz!\n\nQanday kirmoqchisiz?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚡ Tez kirish (faqat ism)", callback_data="reg_quick:start")],
+            [InlineKeyboardButton(text="📋 To'liq ro'yxat", callback_data="reg_full:start")],
+        ])
     )
     registration_message[user_id] = nm.message_id
