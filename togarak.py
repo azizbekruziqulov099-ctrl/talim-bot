@@ -401,13 +401,15 @@ def get_reja(togarak_id: int) -> list:
     try:
         conn = db(); cur = conn.cursor()
         cur.execute("""
-            SELECT r.id, r.topic_code, r.tartib, r.tur, r.kun, r.izoh, r.completed
+            SELECT r.id, r.topic_code, r.tartib, r.tur, r.kun, r.izoh, r.completed,
+                   r.dars_kuni, r.dars_vaqt
             FROM togarak_reja r
             WHERE r.togarak_id=%s ORDER BY r.tartib
         """, (togarak_id,))
         rows = cur.fetchall(); cur.close(); conn.close()
         return [{"id":r[0],"code":r[1],"tartib":r[2],"tur":r[3],
-                 "kun":r[4],"izoh":r[5],"completed":r[6]} for r in rows]
+                 "kun":r[4],"izoh":r[5],"completed":r[6],
+                 "dars_kuni":r[7],"dars_vaqt":r[8]} for r in rows]
     except: return []
 
 def add_to_reja(togarak_id, topic_code, tur="dars", kun=None, izoh="") -> int:
