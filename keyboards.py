@@ -3,7 +3,15 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 def get_main_keyboard(role=None, unread_errors=0):
     r = str(role or "").strip().lower()
 
-    if any(x in r for x in ("quvchi","student","ota","parent")):
+    if any(x in r for x in ("ota","parent","ona")):
+        keyboard = [
+            [KeyboardButton(text="👶 Farzandim"),       KeyboardButton(text="📊 Nazorat")],
+            [KeyboardButton(text="📋 Yoqlama"),         KeyboardButton(text="⭐ Baholar")],
+            [KeyboardButton(text="📝 Uy imtihoni"),     KeyboardButton(text="💬 O'qituvchi")],
+            [KeyboardButton(text="🤖 Yordamchi"),       KeyboardButton(text="👤 Kabinet")],
+        ]
+
+    elif any(x in r for x in ("quvchi","student")):
         keyboard = [
             [KeyboardButton(text="🎯 Bugungi reja"),    KeyboardButton(text="🧪 Bilimni sinash")],
             [KeyboardButton(text="📚 Bilimni mustahkamlash"), KeyboardButton(text="📈 Rivojlanishim")],
@@ -30,7 +38,6 @@ def get_main_keyboard(role=None, unread_errors=0):
             [KeyboardButton(text="📚 To'garaklar"),     KeyboardButton(text="🤖 Yordamchi")],
             [KeyboardButton(text="📖 Darslar holati"),   KeyboardButton(text="👤 Kabinet")],
         ]
-
     else:
         keyboard = [[KeyboardButton(text="🏠 Bosh menyu")]]
 
