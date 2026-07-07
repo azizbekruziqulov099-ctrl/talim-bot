@@ -2233,30 +2233,33 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
-        role2=(row2[0] if row2 else "")
+        role2 = str(row2[0] if row2 else "")
         from togarak import get_teacher_togaraklar, get_student_togaraklar, togarak_list_kb
 
-        if "qituvchi" in str(role2):
-            # O'qituvchi — o'z to'garaklari
+        if "qituvchi" in role2:
+            # O'QITUVCHI — o'z to'garaklari + yaratish
             tgs = get_teacher_togaraklar(user_id)
-            kb2 = togarak_list_kb(tgs, "tg")
-            kb2.inline_keyboard.append([InlineKeyboardButton(text="➕ Yangi to'garak", callback_data="tg_yangi")])
-            await message.answer(
-                f"📚 Mening to'garaklarim ({len(tgs)} ta):",
-                reply_markup=kb2
-            )
-        else:
-            # O'quvchi — a'zo bo'lgan to'garaklar
-            tgs = get_student_togaraklar(user_id)
             rows2 = [[InlineKeyboardButton(
-                text=f"📚 {t['nomi']} | {t['teacher']}",
-                callback_data=f"stg_info:{t['id']}"
+                text=f"📚 {t['nomi']} ({t['azolar']}/{t['max']})",
+                callback_data=f"tg_info:{t['id']}"
             )] for t in tgs]
-            rows2.append([InlineKeyboardButton(text="🔑 To'garakka qo'shilish", callback_data="stg_join")])
+            rows2.append([InlineKeyboardButton(text="➕ Yangi to'garak ochish", callback_data="tg_yangi")])
             await message.answer(
                 f"📚 Mening to'garaklarim ({len(tgs)} ta):",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
             )
+        else:
+            # O'QUVCHI — a'zo bo'lgan to'garaklar + izlash
+            tgs = get_student_togaraklar(user_id)
+            rows2 = [[InlineKeyboardButton(
+                text=f"📚 {t['nomi']} | 👨‍🏫 {t['teacher']}",
+                callback_data=f"stg_info:{t['id']}"
+            )] for t in tgs]
+            rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash (ID bilan)", callback_data="stg_join")])
+            txt = f"📚 Mening to'garaklarim ({len(tgs)} ta):"
+            if not tgs:
+                txt = "📚 Siz hali hech qaysi to'garakka a'zo emassiz.\n\n🔍 To'garak ID va parolini o'qituvchingizdan oling!"
+            await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if message.text == "🎨 Rasm chizdir":
