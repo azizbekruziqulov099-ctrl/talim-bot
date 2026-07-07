@@ -1,0 +1,193 @@
+"""
+togarak.py — To'garak boshqaruvi
+O'qituvchi: yaratish, o'chirish, yoqlama, a'zolar
+O'quvchi: qo'shilish, chiqish, ko'rish
+"""
+import os, psycopg2, re
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+DATABASE_URL = os.getenv("DATABASE_URL","")
+def db(): return psycopg2.connect(DATABASE_URL)
+
+# ══ PAROL TEKSHIRISH ══
+def check_parol(parol: str) -> bool:
+    """4 dan ko'p belgi, harf yoki raqam."""
+    return len(parol) >= 4
+
+# ══ O'QITUVCHI FUNKSIYALARI ══
+
+def get_teacher_togaraklar(teacher_id: int) -> list:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT t.id, t.nomi, t.fan, t.parol, t.max_talaba, t.oylik_sana, t.oylik_summa,
+               COUNT(a.id) as azolar_soni
+        FROM togaraklar t
+        LEFT JOIN togarak_azolar a ON a.togarak_id=t.id AND a.aktiv=TRUE
+        WHERE t.teacher_id=%s AND t.aktiv=TRUE
+        GROUP BY t.id ORDER BY t.created_at DESC
+    """, (teacher_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"id":r[0],"nomi":r[1],"fan":r[2],"parol":r[3],
+             "max":r[4],"oylik_sana":r[5],"oylik_summa":r[6],"azolar":r[7]} for r in rows]
+
+def create_togarak(teacher_id, nomi, fan, parol, max_t=25, oylik_sana=1, oylik_summa=0) -> int:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO togaraklar(nomi,fan,teacher_id,parol,max_talaba,oylik_sana,oylik_summa)
+        VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id
+    """, (nomi,fan,teacher_id,parol,max_t,oylik_sana,oylik_summa))
+    tid = cur.fetchone()[0]; conn.commit(); cur.close(); conn.close()
+    return tid
+
+def delete_togarak(togarak_id, teacher_id) -> bool:
+    conn = db(); cur = conn.cursor()
+    cur.execute("UPDATE togaraklar SET aktiv=FALSE WHERE id=%s AND teacher_id=%s",
+               (togarak_id, teacher_id))
+    ok = cur.rowcount > 0; conn.commit(); cur.close(); conn.close()
+    return ok
+
+def get_togarak_azolar(togarak_id: int) -> list:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT u.user_id, u.full_name, u.class, a.qoshilgan
+        FROM togarak_azolar a
+        JOIN users u ON u.user_id=a.user_id
+        WHERE a.togarak_id=%s AND a.aktiv=TRUE
+        ORDER BY u.full_name
+    """, (togarak_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"uid":r[0],"ism":r[1],"sinf":r[2],"sana":r[3]} for r in rows]
+
+def remove_azо(togarak_id, user_id, teacher_id) -> bool:
+    conn = db(); cur = conn.cursor()
+    # Teacher egasi ekanligini tekshirish
+    cur.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(togarak_id,teacher_id))
+    if not cur.fetchone():
+        cur.close(); conn.close(); return False
+    cur.execute("UPDATE togarak_azolar SET aktiv=FALSE WHERE togarak_id=%s AND user_id=%s",
+               (togarak_id,user_id))
+    ok = cur.rowcount > 0; conn.commit(); cur.close(); conn.close()
+    return ok
+
+# ══ O'QUVCHI FUNKSIYALARI ══
+
+def get_student_togaraklar(user_id: int) -> list:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT t.id, t.nomi, t.fan, u.full_name, t.oylik_sana, t.oylik_summa, a.qoshilgan
+        FROM togarak_azolar a
+        JOIN togaraklar t ON t.id=a.togarak_id
+        JOIN users u ON u.user_id=t.teacher_id
+        WHERE a.user_id=%s AND a.aktiv=TRUE AND t.aktiv=TRUE
+        ORDER BY a.qoshilgan DESC
+    """, (user_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"id":r[0],"nomi":r[1],"fan":r[2],"teacher":r[3],
+             "oylik_sana":r[4],"oylik_summa":r[5],"qoshilgan":r[6]} for r in rows]
+
+def join_togarak(togarak_id, user_id, parol) -> dict:
+    """O'quvchini to'garakka qo'shish."""
+    conn = db(); cur = conn.cursor()
+    # To'garakni topish
+    cur.execute("SELECT parol,max_talaba,nomi FROM togaraklar WHERE id=%s AND aktiv=TRUE",
+               (togarak_id,))
+    t = cur.fetchone()
+    if not t:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ To'garak topilmadi!"}
+    if t[0] != parol:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ Parol noto'g'ri!"}
+    # A'zolar soni tekshirish
+    cur.execute("SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(togarak_id,))
+    cnt = cur.fetchone()[0]
+    if cnt >= t[1]:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": f"❌ To'garak to'ldi (max {t[1]} ta)!"}
+    # Faqat 1 ta to'garakka ruxsat (admin chiqishi mumkin)
+    cur.execute("SELECT COUNT(*) FROM togarak_azolar WHERE user_id=%s AND aktiv=TRUE",(user_id,))
+    if cur.fetchone()[0] >= 1:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ Siz allaqachon bir to'garakka a'zostsiz!"}
+    try:
+        cur.execute("INSERT INTO togarak_azolar(togarak_id,user_id) VALUES(%s,%s)",
+                   (togarak_id,user_id))
+        conn.commit()
+    except:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ Xato yuz berdi!"}
+    cur.close(); conn.close()
+    return {"ok": True, "msg": f"✅ '{t[2]}' to'garakka qo'shildingiz!"}
+
+def leave_togarak(togarak_id, user_id) -> bool:
+    conn = db(); cur = conn.cursor()
+    cur.execute("UPDATE togarak_azolar SET aktiv=FALSE WHERE togarak_id=%s AND user_id=%s",
+               (togarak_id,user_id))
+    ok = cur.rowcount > 0; conn.commit(); cur.close(); conn.close()
+    return ok
+
+# ══ YOQLAMA ══
+
+def save_yoqlama(togarak_id, user_id, holat, izoh="") -> bool:
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO togarak_yoqlama(togarak_id,user_id,holat,izoh)
+            VALUES(%s,%s,%s,%s)
+            ON CONFLICT(togarak_id,user_id,sana)
+            DO UPDATE SET holat=EXCLUDED.holat,izoh=EXCLUDED.izoh
+        """, (togarak_id,user_id,holat,izoh))
+        conn.commit(); ok=True
+    except:
+        conn.rollback(); ok=False
+    cur.close(); conn.close()
+    return ok
+
+def get_yoqlama_bugun(togarak_id: int) -> list:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT a.user_id, u.full_name, u.class,
+               COALESCE(y.holat,'kelmadi') as holat
+        FROM togarak_azolar a
+        JOIN users u ON u.user_id=a.user_id
+        LEFT JOIN togarak_yoqlama y ON y.togarak_id=a.togarak_id
+            AND y.user_id=a.user_id AND y.sana=CURRENT_DATE
+        WHERE a.togarak_id=%s AND a.aktiv=TRUE
+        ORDER BY u.full_name
+    """, (togarak_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"uid":r[0],"ism":r[1],"sinf":r[2],"holat":r[3]} for r in rows]
+
+def get_yoqlama_statistika(togarak_id: int, oy: int = None) -> list:
+    conn = db(); cur = conn.cursor()
+    oy_filter = "AND EXTRACT(MONTH FROM y.sana)=%s" if oy else ""
+    params = [togarak_id]
+    if oy: params.append(oy)
+    cur.execute(f"""
+        SELECT u.full_name, u.class,
+               COUNT(CASE WHEN y.holat='keldi' THEN 1 END) as keldi,
+               COUNT(CASE WHEN y.holat='kelmadi' THEN 1 END) as kelmadi,
+               COUNT(CASE WHEN y.holat='kech' THEN 1 END) as kech
+        FROM togarak_azolar a
+        JOIN users u ON u.user_id=a.user_id
+        LEFT JOIN togarak_yoqlama y ON y.togarak_id=a.togarak_id
+            AND y.user_id=a.user_id {oy_filter}
+        WHERE a.togarak_id=%s AND a.aktiv=TRUE
+        GROUP BY u.full_name, u.class
+        ORDER BY u.full_name
+    """, params + [togarak_id])
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"ism":r[0],"sinf":r[1],"keldi":r[2],"kelmadi":r[3],"kech":r[4]} for r in rows]
+
+# ══ KEYBOARD YARATUVCHILAR ══
+
+def togarak_list_kb(togaraklar: list, prefix="tg") -> InlineKeyboardMarkup:
+    """To'garaklar ro'yxati — 1 ta to'garak = 1 qator."""
+    rows = []
+    for t in togaraklar:
+        cnt = t.get("azolar",0)
+        rows.append([InlineKeyboardButton(
+            text=f"📚 {t['nomi']} ({cnt}/{t['max']})",
+            callback_data=f"{prefix}_info:{t['id']}"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
