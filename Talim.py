@@ -2159,6 +2159,28 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer("❌ O'qituvchiga yuborib bo'lmadi.")
         return
 
+    if str(admin_state.get(user_id) or "").startswith("tg_jadval_vaqt:") and message.text:
+        parts3=str(admin_state[user_id]).split(":"); tgid3,kun_id3=int(parts3[1]),int(parts3[2])
+        admin_state.pop(user_id,None)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        vaqt=message.text.strip()
+        bosh,tug="","" 
+        if "-" in vaqt: bosh,tug=vaqt.split("-",1)
+        else: bosh=vaqt
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        try:
+            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid3,kun_id3))
+            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",
+                        (tgid3,kun_id3,KUNLAR[kun_id3],bosh.strip(),tug.strip()))
+            conn2.commit()
+        except Exception as e: conn2.rollback(); print(f"jadval: {e}")
+        cur2.close(); conn2.close()
+        await message.answer(
+            f"✅ {KUNLAR[kun_id3]}: {bosh.strip()} qo'shildi!\n\n"
+            f"📅 Jadval ko'rish uchun to'garak menyusiga qayting."
+        )
+        return
+
     # Kitob o'chirish — parol tasdiqlash
     if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
         book_id2=int(str(admin_state[user_id]).split(":")[1])
@@ -2651,22 +2673,58 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if message.text == "📈 Rivojlanishim":
         from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress, get_reja
+        from datetime import datetime
         tgs = get_student_togaraklar(user_id)
-        rows2=[]
-        for t in tgs:
-            prog = get_togarak_progress(t["id"])
-            s_prog = get_student_progress(t["id"], user_id)
-            rows2.append([InlineKeyboardButton(
-                text=f"📚 {t['nomi']} | {prog['pct']}% | Baho: {s_prog['avg_baho']}",
-                callback_data=f"stg_info:{t['id']}"
-            )])
-        rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
-        txt = "📈 Rivojlanishim\n\n"
-        if tgs:
-            txt += "📚 To'garaklarim:\n"
-        else:
+        bugun_id = datetime.now().weekday()
+        KUNLAR = ["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
+
+        txt = "📈 Rivojlanishim\n" + "─"*20 + "\n\n"
+
+        if not tgs:
             txt += "📚 Hali hech qaysi to'garakka a'zo emassiz.\n"
-        await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        else:
+            for t in tgs:
+                prog = get_togarak_progress(t["id"])
+                sp = get_student_progress(t["id"], user_id)
+
+                # Bilim darajasi
+                bdaraja = "⭐ A'lo" if sp["avg_baho"]>=4.5 else ("👍 Yaxshi" if sp["avg_baho"]>=3.5 else ("📖 O'rta" if sp["avg_baho"]>0 else "—"))
+
+                # Bugungi va keyingi dars
+                conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+                try:
+                    cur2.execute("SELECT boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],bugun_id))
+                    j=cur2.fetchone()
+                    # Keyingi dars kuni
+                    for d in range(1,8):
+                        next_id=(bugun_id+d)%7
+                        cur2.execute("SELECT kun_nomi,boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],next_id))
+                        nj=cur2.fetchone()
+                        if nj: break
+                    else: nj=None
+                except: j=None; nj=None
+                cur2.close(); conn2.close()
+
+                # Reja progress — 10 lik albomlar
+                reja = get_reja(t["id"])
+                total_r = len(reja); done_r = sum(1 for r in reja if r["completed"])
+                albom_no = done_r // 10 + 1
+                albom_pos = done_r % 10
+                bar = "█"*albom_pos + "░"*(10-albom_pos)
+
+                txt += f"📚 {t['nomi']}\n"
+                txt += f"  🧠 Bilim: {bdaraja}\n"
+                txt += f"  📋 Davomat: {sp['yoqlama_pct']}%\n"
+                if j: txt += f"  🕐 Bugun: {j[0]}\n"
+                if nj: txt += f"  ➡️ Keyingi: {nj[0]} {nj[1]}\n"
+                txt += f"  📗 {albom_no}-albom: [{bar}] {albom_pos}/10\n"
+                txt += f"  📊 Jami: {done_r}/{total_r} mavzu o'tildi\n\n"
+
+        rows2 = [[InlineKeyboardButton(
+            text=f"📚 {t['nomi']}",callback_data=f"stg_info:{t['id']}"
+        )] for t in tgs]
+        rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
+        await message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         await student_progress(message)
         return
 
@@ -7121,12 +7179,29 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from togarak import get_reja
         reja=[r for r in get_reja(tgid) if not r["completed"]]
         if not reja: await call.message.answer("✅ Barcha mavzular o'tilgan!"); return
-        rows2=[[InlineKeyboardButton(
-            text=f"📖 {r['tartib']}. {r['code'][:40]}",
-            callback_data=f"tg_mark_done:{tgid}:{r['code']}"
-        )] for r in reja[:10]]
+        # Jadvaldan bugungi vaqtni ham ko'rsat
+        from datetime import datetime
+        bugun_id=datetime.now().weekday()
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        try:
+            cur2.execute("SELECT boshlanish,tugash FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid,bugun_id))
+            j=cur2.fetchone()
+        except: j=None
+        cur2.close(); conn2.close()
+        vaqt_txt=f"🕐 {j[0]}" + (f"–{j[1]}" if j and j[1] else "") if j else ""
+        rows2=[]
+        # 10 lik albomlar
+        per=10; total=len(reja)
+        for i,r in enumerate(reja[:10]):
+            albom=f"[{i+1}/10]" if total>10 else f"[{i+1}/{total}]"
+            rows2.append([InlineKeyboardButton(
+                text=f"📖 {albom} {r['code'][:35]}",
+                callback_data=f"tg_mark_done:{tgid}:{r['code']}"
+            )])
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
-        await call.message.answer("📅 Bugungi darsni belgilang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        txt=f"📅 {KUNLAR[bugun_id]} {vaqt_txt}\nBugungi darsni belgilang ({total} ta qoldi):"
+        await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_mark_done:"):
