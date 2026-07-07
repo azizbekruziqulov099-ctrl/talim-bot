@@ -2166,6 +2166,27 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer("❌ O'qituvchiga yuborib bo'lmadi.")
         return
 
+    if str(admin_state.get(user_id) or "").startswith("tg_reja_vaqt_save:") and message.text:
+        parts3=str(admin_state[user_id]).split(":"); tgid3,reja_id3,kun_id3=int(parts3[1]),int(parts3[2]),int(parts3[3])
+        admin_state.pop(user_id,None)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        vaqt=message.text.strip()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("UPDATE togarak_reja SET dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
+                        (KUNLAR[kun_id3], vaqt, reja_id3))
+            # Jadval jadvaliga ham qo'shamiz
+            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=(SELECT togarak_id FROM togarak_reja WHERE id=%s) AND kun_id=%s",(reja_id3,kun_id3))
+            cur2.execute("""SELECT togarak_id FROM togarak_reja WHERE id=%s""",(reja_id3,))
+            tg_id_r=(cur2.fetchone() or [tgid3])[0]
+            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish) VALUES(%s,%s,%s,%s)",
+                        (tg_id_r,kun_id3,KUNLAR[kun_id3],vaqt))
+            conn2.commit()
+        except Exception as e: conn2.rollback(); print(f"reja_vaqt: {e}")
+        cur2.close(); conn2.close()
+        await message.answer(f"✅ {KUNLAR[kun_id3]}: {vaqt} — belgilandi!")
+        return
+
     if str(admin_state.get(user_id) or "").startswith("tg_jadval_vaqt:") and message.text:
         parts3=str(admin_state[user_id]).split(":"); tgid3,kun_id3=int(parts3[1]),int(parts3[2])
         admin_state.pop(user_id,None)
@@ -6303,14 +6324,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("report_test:"):
         cur_idx = int(call.data.split(":")[1])
         await call.answer()
-        # Test to'xtatmaymiz — faqat comment so'raymiz
+        # Timer ni pauza qilamiz
+        from storage import test_sessions as _ts2
+        s2 = _ts2.get(user_id,{})
+        if s2.get("timer_task"):
+            try: s2["timer_task"].cancel()
+            except: pass
+            s2["timer_task"] = None
         user_state[user_id] = f"report_comment:{cur_idx}"
         await call.message.answer(
             "✏️ Xato haqida yozing:\n\n"
-            "Masalan:\n"
-            "• «Javob noto'g'ri»\n"
-            "• «Savol tushunarsiz»\n"
-            "• «Rasm mos emas»\n\n"
+            "• Javob noto'g'ri\n"
+            "• Savol tushunarsiz\n"
+            "• Rasm mos emas\n\n"
             "Yozib yuboring → test davom etadi"
         )
         return
@@ -7188,17 +7214,79 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         prog=get_togarak_progress(tgid)
         txt=f"📚 Dars rejasi\n{'─'*20}\n"
         txt+=f"📊 O'tildi: {prog['done']}/{prog['total']} ({prog['pct']}%)\n\n"
-        if not reja: txt+="(Hali mavzu qo'shilmagan)"
-        for r in reja[:15]:
-            icon="✅" if r["completed"] else ("📅" if r["tur"]=="imtihon" else "📖")
-            txt+=f"{icon} {r['tartib']}. {r['code'][:30]}\n"
+        if not reja:
+            txt+="(Hali mavzu qo'shilmagan)"
+        else:
+            for r in reja[:20]:
+                icon="✅" if r["completed"] else ("📅" if r["tur"]=="imtihon" else "📖")
+                kun = f" | 📅{r['kun']}" if r.get("kun") else ""
+                vaqt = f" {r['dars_vaqt']}" if r.get("dars_vaqt") else ""
+                txt+=f"{icon} {r['tartib']}. {r['code'][:35]}{kun}{vaqt}\n"
         rows2=[
             [InlineKeyboardButton(text="➕ Mavzu qo'shish",callback_data=f"tg_reja_add:{tgid}"),
-             InlineKeyboardButton(text="📅 Bugun",callback_data=f"tg_reja_today:{tgid}")],
-            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
+             InlineKeyboardButton(text="📅 Jadval",callback_data=f"tg_reja_jadval:{tgid}")],
+            [InlineKeyboardButton(text="✅ Bugun o'tildi",callback_data=f"tg_reja_today:{tgid}"),
+             InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
         ]
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_reja_jadval:"):
+        tgid=int(call.data[16:]); await call.answer()
+        # Haftalik jadval — har kunga dars vaqti va mavzu
+        from togarak import get_reja
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("SELECT kun_nomi,boshlanish FROM togarak_jadval WHERE togarak_id=%s ORDER BY kun_id",(tgid,))
+            jadval={r[0]:r[1] for r in cur2.fetchall()}
+        except: jadval={}
+        cur2.close(); conn2.close()
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        txt="📅 Haftalik dars jadvali\n"+"─"*20+"\n\n"
+        for k in KUNLAR:
+            vaqt=jadval.get(k,"—")
+            txt+=f"📌 {k}: {vaqt}\n"
+        txt+="\n⬇️ Kun tanlab dars vaqti + mavzu qo'ying:"
+        rows2=[[InlineKeyboardButton(text=f"📌 {k}",callback_data=f"tg_reja_kun_set:{tgid}:{i}")] for i,k in enumerate(KUNLAR)]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
+        await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_reja_kun_set:"):
+        parts2=call.data[16:].split(":"); tgid,kun_id=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        # Rejadagi mavzularni ko'rsat — bu kun uchun tanlash
+        from togarak import get_reja
+        reja=get_reja(tgid)
+        rows2=[]
+        for r in reja:
+            if not r["completed"]:
+                rows2.append([InlineKeyboardButton(
+                    text=f"📖 {r['tartib']}. {r['code'][:35]}",
+                    callback_data=f"tg_reja_mavzu_kun:{tgid}:{r['id']}:{kun_id}"
+                )])
+        if not rows2:
+            await call.message.answer("✅ Barcha mavzular belgilangan!"); return
+        admin_state[user_id]=f"tg_reja_vaqt:{tgid}:{kun_id}"
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_jadval:{tgid}")])
+        await call.message.answer(
+            f"📅 {KUNLAR[kun_id]} — qaysi mavzu o'tiladi?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return
+
+    if call.data.startswith("tg_reja_mavzu_kun:"):
+        parts2=call.data[18:].split(":"); tgid,reja_id,kun_id=int(parts2[0]),int(parts2[1]),int(parts2[2])
+        await call.answer()
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        admin_state[user_id]=f"tg_reja_vaqt_save:{tgid}:{reja_id}:{kun_id}"
+        await call.message.answer(
+            f"📅 {KUNLAR[kun_id]} — dars vaqtini yozing:\n"
+            f"Masalan: <code>15:00</code>",
+            parse_mode="HTML"
+        )
         return
 
     if call.data.startswith("tg_reja_today:"):
