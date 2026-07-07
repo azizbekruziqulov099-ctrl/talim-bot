@@ -17,7 +17,7 @@ from urllib.parse import quote
 from aiogram.filters import *
 from dts_import_handlers import *
 from ai_generatori import *
-from storage import user_state, temp_user, registration_message, reg_kbd_message
+from storage import user_state, temp_user, registration_message, reg_kbd_message, admin_state
 from keyboards import get_main_keyboard
 from loader import dp, bot
 from test_generator import save_test
@@ -68,7 +68,6 @@ conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
 user_locks = {}
-admin_state = {}
 state_history = {}
 generator_process = None
 topic_stats_state = {}
@@ -112,7 +111,6 @@ ws1["G2"] = "uz"
 ws1["G3"] = "ru"
 ws1["G4"] = "en"
 
-
 # TESTLAR
 ws2 = wb.create_sheet("TESTLAR")
 
@@ -141,7 +139,6 @@ for col_num, header in enumerate(headers, start=1):
     cell = ws2.cell(row=1, column=col_num)
     cell.value = header
     cell.font = Font(bold=True)
-
 
 # NAMUNA
 ws3 = wb.create_sheet("NAMUNA")
@@ -350,7 +347,6 @@ def check_survey(user_id):
         return False
 
     return row[0] == 1
-
 
 def init_db():
     conn = psycopg2.connect(DATABASE_URL)
@@ -677,7 +673,6 @@ def init_db():
     )
     """)
     # ===== Yetishmayotgan jadvallar tugadi =====
-
 
     conn.commit()
     conn.close()
@@ -1295,7 +1290,6 @@ async def _error_and_home(source, user_id, err, label="Xato"):
     await _notify_admins(f"{label}: {short}", user_id, uname)
     print(f"[ERROR] user={user_id} | {label}: {short}\n{tb}")
 
-
 from aiogram.filters import Command
 
 @dp.message(Command("menu"))
@@ -1327,7 +1321,6 @@ async def cmd_menu(message: types.Message, state: FSMContext):
         "🏠 Bosh menyu",
         reply_markup=get_main_keyboard(role)
     )
-
 
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
@@ -1485,7 +1478,6 @@ async def prepare_test_import(message, user_id):
             resize_keyboard=True
         )
     )
-
 
 async def import_tests_excel(target, path, user_id):
 
@@ -1669,7 +1661,6 @@ async def handle_all(
         await _handle_all_inner(message, state, user_id)
     except Exception as _e:
         await _error_and_home(message, user_id, _e, "Xatolik")
-
 
 async def _rq_save(source, user_id, name, rol, sinf):
     """Tez kirish — foydalanuvchini saqlash (multi-account)."""
@@ -1862,7 +1853,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             try: await _advance(user_id)
             except Exception as _te: print(f"test davom: {_te}")
         return
-
 
     if str(admin_state.get(user_id) or "").startswith("kitob_edit_text:") and message.text:
         parts3=str(admin_state[user_id]).split(":")
@@ -2300,7 +2290,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
-
     if message.text == "🤖 Yordamchi":
         await message.answer(
             "🤖 Ta'lim yordamchisi\n\n"
@@ -2411,7 +2400,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await student_profile(message)
         return
 
-    
     if user_id not in temp_user:
         temp_user[user_id] = {}
 
@@ -2717,8 +2705,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     ):
         await handle_shablon_message(message, user_id)
         return
-
-
 
     # ── Excel RASMLAR varog'i bo'lsa — avtomatik rasm yaratish ──
     if (message.document and user_id in ADMINS and
@@ -3569,7 +3555,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
 
         return
-
 
     elif message.text == "📥 Test import qilish":
 
@@ -4482,7 +4467,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-
         elif user_state.get(message.from_user.id) == "change_region":
 
             temp_user[message.from_user.id] = {
@@ -4504,7 +4488,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
 
             return
-
 
         elif user_state.get(message.from_user.id) == "change_district":
 
@@ -4541,7 +4524,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-
 # ===== MAKTABNI ALMASHTIRISH =====
 
         elif message.text == "🏫 Maktabni almashtirish":
@@ -4555,7 +4537,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-
         elif user_state.get(user_id) == "change_school_type":
 
             temp_user[user_id]["new_school_type"] = message.text
@@ -4567,7 +4548,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
 
             return
-
 
         elif user_state.get(user_id) == "change_school":
 
@@ -4597,7 +4577,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
 
             return
-
 
         elif user_state.get(user_id) == "change_school_class":
 
@@ -4637,7 +4616,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
 
@@ -4676,7 +4654,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
 
             return
-
 
         elif user_state.get(message.from_user.id) == "change_class":
 
@@ -4791,12 +4768,7 @@ def _mk_ts_kb(st2, cnt_total):
         [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
     ])
 
-
 @dp.callback_query()
-
-
-
-
 
 async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
@@ -4810,11 +4782,9 @@ async def test_buttons(call: CallbackQuery, state: FSMContext):
     except Exception as _e:
         await _error_and_home(call, user_id, _e, "Xatolik")
 
-
 async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: int):
 
     # ═══ DTS NAVIGATOR ═══
-
 
     # ═══ BARCHA LA_ CALLBACKLAR (lesson_admin) ═══
     if call.data.startswith("la_") or call.data in (
@@ -4853,6 +4823,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         # Navigator
         if d == "dts_navigator":      await _dts.dts_navigator(call); return
+        if d.startswith("dts_nav_"):
+            page = int(d[8:])
+            await _dts.dts_navigator(call, page=page); return
+        if d.startswith("dts_del_topic:"):
+            tc = d[14:]
+            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            cur2.execute("UPDATE dts_tree SET is_deleted=TRUE WHERE topic_code=%s",(tc,))
+            # Agar sinf bo'sh qolsa — sinf ham "yo'qoladi" (barcha topiklar o'chirilgan)
+            conn2.commit();cur2.close();conn2.close()
+            await call.answer("✅ Topik o'chirildi",show_alert=True)
+            # Sahifani yangilash
+            await _dts.dts_navigator(call)
+            return
         if d == "dts_menu":           await _dts.dts_menu(call); return
         if d == "dts_search":         await _dts.dts_search(call); return
         if d == "dts_fast_search":    await _dts.dts_fast_search(call); return
@@ -5615,7 +5598,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.answer(full_txt, reply_markup=kb)
         return
 
-
     if call.data.startswith("kitob_write:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
@@ -5750,7 +5732,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
         except: pass
         return
-
 
     if call.data == "mustah_back":
         await call.message.delete()
@@ -6457,9 +6438,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.message.answer("🏠 Asosiy menyu", reply_markup=get_main_keyboard(role))
         return
 
-
-
-
     if call.data.startswith("ans_"):
 
         answer = call.data.replace(
@@ -7027,7 +7005,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await lesson_finish_and_test(call.from_user.id, call.message.chat.id, tc)
         return
 
-
     if call.data in ("tset_start_quick", "tset_start_force"):
         from datetime import datetime
         now        = datetime.now()
@@ -7380,8 +7357,6 @@ async def _health_server():
     site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
     print("✅ Health server port 8080 da ishga tushdi")
-
-
 
 # ═══ BRAIN message handler ═══
 @dp.message()
