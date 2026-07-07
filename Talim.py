@@ -7101,7 +7101,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tgid=int(call.data[12:]); await call.answer()
         # DTS dan sinf tanlash
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT sinf FROM dts_tree WHERE sinf IS NOT NULL AND NOT is_deleted ORDER BY sinf")
+        cur2.execute("SELECT DISTINCT grade FROM dts_tree WHERE grade IS NOT NULL AND is_deleted=FALSE ORDER BY grade")
         sinflar=cur2.fetchall(); cur2.close(); conn2.close()
         if not sinflar:
             admin_state[user_id]=f"tg_reja_add_manual:{tgid}"
@@ -7115,7 +7115,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT fan FROM dts_tree WHERE sinf=%s AND NOT is_deleted ORDER BY fan",(sinf,))
+        cur2.execute("SELECT DISTINCT subject FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject",(sinf,))
         fanlar=cur2.fetchall(); cur2.close(); conn2.close()
         rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
         await call.message.answer(f"📚 {sinf} - qaysi fan?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
@@ -7125,7 +7125,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT bob_nomi FROM dts_tree WHERE sinf=%s AND fan=%s AND NOT is_deleted ORDER BY bob_nomi LIMIT 20",(sinf,fan))
+        cur2.execute("SELECT DISTINCT bo_lim FROM dts_tree WHERE grade=%s AND subject=%s AND is_deleted=FALSE ORDER BY bo_lim LIMIT 20",(sinf,fan))
         boblar=cur2.fetchall(); cur2.close(); conn2.close()
         rows2=[[InlineKeyboardButton(text=f"📖 {b[0][:40]}",callback_data=f"tg_reja_bob:{tgid}:{sinf}:{fan}:{b[0][:20]}")] for b in boblar]
         await call.message.answer(f"Bo'limni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
@@ -7135,7 +7135,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]; bob=parts2[3]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT topic_code,mavzu FROM dts_tree WHERE sinf=%s AND fan=%s AND bob_nomi LIKE %s AND NOT is_deleted LIMIT 15",(sinf,fan,f"{bob}%"))
+        cur2.execute("SELECT topic_code,mavzu_name FROM dts_tree WHERE grade=%s AND subject=%s AND bo_lim LIKE %s AND is_deleted=FALSE LIMIT 15",(sinf,fan,f"{bob}%"))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
         rows2=[[InlineKeyboardButton(text=f"📌 {m[1][:40]}",callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}")] for m in mavzular]
         await call.message.answer("Mavzuni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
