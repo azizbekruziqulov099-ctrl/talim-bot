@@ -1268,23 +1268,37 @@ async def student_profile(message):
         await message.answer("❌ Profil topilmadi. /start bosing"); return
 
     name,role,cls,bdate,school,region = row
+    is_teacher = "qituvchi" in str(role or "")
+
     txt = (
-        f"👤 Kabinet\n\n"
-        f"{'─'*20}\n"
+        f"👤 Kabinet\n{'─'*20}\n"
         f"📛 Ism: {name or '—'}\n"
         f"🎭 Rol: {role or '—'}\n"
-        f"🏫 Sinf: {cls or '—'}\n"
-        f"🎂 Tug'ilgan: {bdate or '—'}\n"
+        + (f"🏫 Sinf: {cls or '—'}\n" if not is_teacher else "")
+        + f"🎂 Tug'ilgan: {bdate or '—'}\n"
         f"🏛 Maktab: {school or '—'}\n"
         f"{'─'*20}"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Ism o'zgartir",    callback_data="kb_change:name"),
-         InlineKeyboardButton(text="🎭 Rol o'zgartir",    callback_data="kb_change:role")],
-        [InlineKeyboardButton(text="🏫 Sinf o'zgartir",  callback_data="kb_change:class"),
-         InlineKeyboardButton(text="🎂 Sana o'zgartir",  callback_data="kb_change:bdate")],
-        [InlineKeyboardButton(text="🏛 Maktab o'zgartir",callback_data="kb_change:school")],
-        [InlineKeyboardButton(text="🔄 Qayta ro'yxat",   callback_data="kb_rereg"),
-         InlineKeyboardButton(text="🗑 Profilni o'chir",  callback_data="kb_delete")],
+
+    rows2 = [
+        [InlineKeyboardButton(text="✏️ Ism",    callback_data="kb_change:name"),
+         InlineKeyboardButton(text="🎭 Rol",    callback_data="kb_change:role")],
+        [InlineKeyboardButton(text="🎂 Sana",   callback_data="kb_change:bdate"),
+         InlineKeyboardButton(text="🏛 Maktab", callback_data="kb_change:school")],
+    ]
+
+    if not is_teacher:
+        rows2.append([
+            InlineKeyboardButton(text="🏫 Sinf", callback_data="kb_change:class")
+        ])
+        # To'garaklar
+        rows2.append([
+            InlineKeyboardButton(text="📚 To'garaklarim", callback_data="kb_togaraklar")
+        ])
+
+    rows2.append([
+        InlineKeyboardButton(text="🔄 Qayta ro'yxat", callback_data="kb_rereg"),
+        InlineKeyboardButton(text="🗑 O'chir",         callback_data="kb_delete"),
     ])
-    await message.answer(txt, reply_markup=kb)
+
+    await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
