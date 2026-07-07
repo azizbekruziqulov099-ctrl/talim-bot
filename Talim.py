@@ -2720,9 +2720,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 txt += f"  📗 {albom_no}-albom: [{bar}] {albom_pos}/10\n"
                 txt += f"  📊 Jami: {done_r}/{total_r} mavzu o'tildi\n\n"
 
-        rows2 = [[InlineKeyboardButton(
-            text=f"📚 {t['nomi']}",callback_data=f"stg_info:{t['id']}"
-        )] for t in tgs]
+        rows2 = []
+        for t in tgs:
+            prog = get_togarak_progress(t["id"])
+            rows2.append([InlineKeyboardButton(
+                text=f"📚 {t['nomi']} — albomlar",
+                callback_data=f"stg_albomlar:{t['id']}"
+            )])
         rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
         await message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         await student_progress(message)
@@ -7406,8 +7410,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
              f"💰 So'nggi to'lov: {last_tolov:,} so'm\n"
              f"📅 To'lov kuni: har oyning {t['oylik_sana']}-kuni")
         kb2=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Baholarim",  callback_data=f"stg_baholar:{tgid}"),
-             InlineKeyboardButton(text="💰 To'lovlar",  callback_data=f"stg_tolovlar:{tgid}")],
+            [InlineKeyboardButton(text="📚 Mavzular (albom)",callback_data=f"stg_albomlar:{tgid}"),
+             InlineKeyboardButton(text="📊 Baholarim",  callback_data=f"stg_baholar:{tgid}")],
             [InlineKeyboardButton(text="📝 Uyga vazifa",callback_data=f"stg_hw:{tgid}"),
              InlineKeyboardButton(text="🏆 Reyting",    callback_data=f"stg_reyting:{tgid}")],
             [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"stg_chat:{tgid}")],
@@ -7490,6 +7494,67 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.bot.send_message(uid2,"❌ Chiqish so'rovingiz rad etildi.")
         except: pass
         await call.message.edit_text("❌ Rad etildi.",reply_markup=None)
+        return
+
+    if call.data.startswith("stg_albomlar:"):
+        tgid=int(call.data[13:]); await call.answer()
+        from togarak import get_reja, get_student_progress
+        reja=get_reja(tgid)
+        if not reja: await call.message.answer("📚 Reja mavjud emas!"); return
+        ALBOM=10; total=len(reja)
+        ICONS=["📗","📘","📙","📕","📓"]
+        rows2=[]
+        for i in range(0,total,ALBOM):
+            chunk=reja[i:i+ALBOM]
+            done=sum(1 for r in chunk if r["completed"])
+            n=i//ALBOM+1
+            bar="█"*done+"░"*(len(chunk)-done)
+            icon=ICONS[min(n-1,len(ICONS)-1)]
+            rows2.append([InlineKeyboardButton(
+                text=f"{icon} {n}-albom [{bar}] {done}/{len(chunk)}",
+                callback_data=f"stg_albom_open:{tgid}:{i}"
+            )])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
+        try: await call.message.edit_text(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_albom_open:"):
+        parts2=call.data[15:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        from togarak import get_reja
+        reja=get_reja(tgid)
+        chunk=reja[start:start+10]
+        albom_n=start//10+1
+        rows2=[]
+        for r in chunk:
+            icon="✅" if r["completed"] else "📖"
+            rows2.append([InlineKeyboardButton(
+                text=f"{icon} {r['tartib']}. {r['code'][:40]}",
+                callback_data=f"stg_mavzu_test:{tgid}:{r['code']}"
+            )])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
+        try: await call.message.edit_text(f"📗 {albom_n}-albom mavzulari:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📗 {albom_n}-albom mavzulari:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_mavzu_test:"):
+        parts2=call.data[15:].split(":"); tgid=int(parts2[0]); code=parts2[1]
+        await call.answer()
+        # Mavzu test sozlamalari
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s",(code,))
+        cnt=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+        if cnt==0:
+            await call.message.answer(f"❌ '{code}' mavzusida test yo'q!"); return
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id),dict): _us[user_id]={}
+        _us[user_id].update({"ts_topic":code,"ts_count":min(20,cnt),"ts_diff":"all",
+                              "ts_timed":True,"ts_write":False,"_ts_cnt_total":cnt})
+        await call.message.answer(
+            f"🧪 Mavzu: {code}\n📊 Jami: {cnt} ta savol\n\nSozlamalar:",
+            reply_markup=_mk_ts_kb(_us[user_id],cnt)
+        )
         return
 
     if call.data.startswith("stg_baholar:"):
