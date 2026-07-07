@@ -2453,6 +2453,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📈 Rivojlanishim":
+        from togarak import get_student_togaraklar
+        tgs = get_student_togaraklar(user_id)
+        rows2 = [[InlineKeyboardButton(
+            text=f"📚 {t['nomi']} | {t['teacher']}",
+            callback_data=f"stg_info:{t['id']}"
+        )] for t in tgs]
+        rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
+        await message.answer(
+            f"📈 Rivojlanishim\n\n📚 Mening to'garaklarim ({len(tgs)} ta):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
         await student_progress(message)
         return
 
@@ -6755,16 +6766,95 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("stg_info:"):
         tgid=int(call.data[9:]); await call.answer()
-        from togarak import get_student_togaraklar
+        from togarak import get_student_togaraklar, get_baholar, get_tolov_status
         tgs={t["id"]:t for t in get_student_togaraklar(user_id)}
         t=tgs.get(tgid)
         if not t: await call.message.answer("❌ Topilmadi"); return
-        txt=(f"📚 {t['nomi']}\n👨‍🏫 {t['teacher']}\n"
-             f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
-             f"📅 To'lov: har oyning {t['oylik_sana']}-kuni")
-        await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🚪 Chiqish",callback_data=f"stg_leave:{tgid}")
-        ]]))
+        baholar=get_baholar(tgid,user_id)
+        tolovlar=get_tolov_status(tgid,user_id)
+        avg_baho=round(sum(b[0] for b in baholar)/len(baholar),1) if baholar else "—"
+        last_tolov=tolovlar[0][1] if tolovlar else 0
+        txt=(f"📚 {t['nomi']}\n"
+             f"👨‍🏫 {t['teacher']}\n"
+             f"📊 O'rtacha baho: {avg_baho}\n"
+             f"💰 So'nggi to'lov: {last_tolov:,} so'm\n"
+             f"📅 To'lov kuni: har oyning {t['oylik_sana']}-kuni")
+        kb2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Baholarim",  callback_data=f"stg_baholar:{tgid}"),
+             InlineKeyboardButton(text="💰 To'lovlar",  callback_data=f"stg_tolovlar:{tgid}")],
+            [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"stg_chat:{tgid}")],
+            [InlineKeyboardButton(text="🚪 Chiqish so'rovi", callback_data=f"stg_leave_req:{tgid}")],
+        ])
+        await call.message.answer(txt, reply_markup=kb2)
+        return
+
+    if call.data.startswith("stg_leave_req:"):
+        tgid=int(call.data[14:]); await call.answer()
+        from togarak import send_leave_request
+        res=send_leave_request(tgid,user_id)
+        if res["ok"]:
+            try:
+                await call.bot.send_message(
+                    res["teacher_id"],
+                    f"⚠️ Chiqish so'rovi!\n👤 {res['user_name']}\n📚 {res['tg_nomi']}",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ Ruxsat", callback_data=f"tg_leave_ok:{user_id}_{tgid}"),
+                        InlineKeyboardButton(text="❌ Yo'q",   callback_data=f"tg_leave_no:{user_id}_{tgid}"),
+                    ]])
+                )
+            except: pass
+            await call.message.answer("✅ So'rov yuborildi! O'qituvchi javobini kuting.")
+        return
+
+    if call.data.startswith("tg_leave_ok:"):
+        parts2=call.data[12:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        from togarak import confirm_leave
+        confirm_leave(tgid2,uid2)
+        try: await call.bot.send_message(uid2,"✅ To'garakdan chiqishingizga ruxsat berildi.")
+        except: pass
+        await call.message.edit_text("✅ Tasdiqlandi.",reply_markup=None)
+        return
+
+    if call.data.startswith("tg_leave_no:"):
+        parts2=call.data[12:].split("_"); uid2=int(parts2[0])
+        await call.answer()
+        try: await call.bot.send_message(uid2,"❌ Chiqish so'rovingiz rad etildi.")
+        except: pass
+        await call.message.edit_text("❌ Rad etildi.",reply_markup=None)
+        return
+
+    if call.data.startswith("stg_baholar:"):
+        tgid=int(call.data[12:]); await call.answer()
+        from togarak import get_baholar
+        rows2=get_baholar(tgid,user_id)
+        if not rows2: await call.message.answer("📊 Hali baho qo'yilmagan!"); return
+        txt="📊 Baholaringiz:\n\n"
+        for b in rows2:
+            txt+=f"⭐ {b[0]}/5 — {b[1] or '—'}\n"
+        await call.message.answer(txt[:2000])
+        return
+
+    if call.data.startswith("stg_tolovlar:"):
+        tgid=int(call.data[13:]); await call.answer()
+        from togarak import get_tolov_status
+        rows2=get_tolov_status(tgid,user_id)
+        if not rows2: await call.message.answer("💰 Hali to'lov ma'lumoti yo'q!"); return
+        txt="💰 To'lovlar tarixi:\n\n"
+        for t2 in rows2:
+            txt+=f"📅 {t2[0]}: {t2[1]:,} so'm\n"
+        await call.message.answer(txt[:2000])
+        return
+
+    if call.data.startswith("stg_chat:"):
+        tgid=int(call.data[9:]); await call.answer()
+        admin_state[user_id]=f"tg_send_msg:{tgid}:all"
+        await call.message.answer(
+            "💬 Guruh chatiga xabar yozing:\n(O'qituvchi va barcha a'zolarga yuboriladi)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="❌ Bekor",callback_data="cancel_msg")
+            ]])
+        )
         return
 
     if call.data.startswith("stg_leave:"):
