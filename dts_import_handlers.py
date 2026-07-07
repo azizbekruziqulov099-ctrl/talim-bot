@@ -1966,7 +1966,10 @@ async def dts_mavzu(
             InlineKeyboardButton(
                 text=f"🔹 {name}",
                 callback_data=f"dts_small_{topic_code}"
-
+            ),
+            InlineKeyboardButton(
+                text="🗑",
+                callback_data=f"dts_del_topic:{topic_code}"
             )
 
         ])
