@@ -30,6 +30,8 @@ def _tts_clean(t):
     """TTS uchun math va tinish belgilarini o'zbek tilida o'qitish."""
     if not t: return ""
     t = str(t).strip()
+    # Float .0 ni tozalash: "10.0" → "10", "9.0" → "9"
+    t = re.sub(r'\b(\d+)\.0\b', r'\1', t)
     t = re.sub(r'\[en\](.*?)\[/en\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', t, flags=re.DOTALL)
@@ -41,7 +43,7 @@ def _tts_clean(t):
     t = t.replace("= ?", " teng nima").replace("=?", " teng nima")
     t = t.replace("= ...", " teng nima").replace("=…", " teng nima")
     t = t.replace(" = ", " teng ").replace("=", " teng ")
-    t = t.replace("?", " nima").replace("…", " ").replace("...", " ")
+    t = t.replace("?", "").replace("…", " ").replace("...", " ")
     t = t.replace("²", " kvadrat").replace("³", " kub")
     t = t.replace("√", " ildiz ").replace("%", " foiz")
     # Kasr: 1/2 → bir ikkinchi
@@ -589,42 +591,35 @@ async def check_text_answer(user_id, user_answer, message):
     correct = render_text(str(test[5] or "")).strip().lower()
     expl    = render_text(str(test[6] or ""))
     given   = render_text(user_answer.strip()).lower()
-    is_ok   = given == correct or correct in given or given in correct
 
-    photo = await _photo_for(test, user_id)
-    noop_kb = InlineKeyboardMarkup(inline_keyboard=[])
+    # To'g'ri javob tekshirish — qat'iy
+    def is_match(given, correct):
+        if given == correct: return True
+        # Raqamlarni solishtirish: "9" == "9.0"
+        try:
+            return float(given) == float(correct)
+        except: pass
+        # Ha/yo'q kabi qisqa javoblar — faqat to'liq mos
+        if len(correct) <= 5: return given == correct
+        # Uzun javoblar — correct javob given ichida bo'lsa
+        if len(correct) > 10 and correct in given: return True
+        return False
+
+    is_ok = is_match(given, correct)
 
     if is_ok:
         s["correct"] += 1
-        result_text = f"✅ To'g'ri!"
-        noop_kb = InlineKeyboardMarkup(inline_keyboard=[])
+        result_text = "✅ To'g'ri!"
     else:
         s["wrong"] += 1
         result_text = f"❌ Xato!  ✅ To'g'ri: {render_text(test[5])}"
-        noop_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✏️ Xato test bildirish", callback_data=f"report_test:{s['current']}")
-        ]])
 
-    s["answered"] = True
-    if expl:
-        result_text += f"\n\n💡 {expl[:300]}"
-    await _edit_board(s, _board_text(s))
-    # Yangi xabar yubormasdan mavjud savolni edit qilamiz
-    try:
-        noop_full = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=result_text[:40], callback_data="noop")
-        ]] if len(result_text) < 40 else [])
-        await bot.edit_message_text(
-            text=result_text[:3000],
-            chat_id=s["board_chat_id"],
-            message_id=s["q_msg_id"],
-            reply_markup=noop_kb
-        )
-    except:
-        pass
-    await asyncio.sleep(2)
-    if test_sessions.get(user_id):
-        await _advance(user_id)
+    result_kb = InlineKeyboardMarkup(inline_keyboard=[] if is_ok else [[
+        InlineKeyboardButton(text="✏️ Xato test bildirish", callback_data=f"report_test:{s['current']}")
+    ]])
+
+    photo = await _photo_for(test, user_id)
+    await _show_result(user_id, result_text, result_kb, photo)
 
 # ── O'tkazib yuborish ──
 async def test_skip(user_id):
