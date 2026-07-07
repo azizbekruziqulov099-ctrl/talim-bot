@@ -363,3 +363,99 @@ def get_tolov_status(togarak_id, user_id=None):
             (cur_month, togarak_id))
     rows=cur.fetchall(); cur.close(); conn.close()
     return rows
+
+# ══ GURUH XABARLARI ══
+def get_guruh_xabarlar(togarak_id: int, limit: int = 20) -> list:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("""
+            SELECT m.matn, u.full_name, u.role, m.created_at
+            FROM togarak_messages m
+            JOIN users u ON u.user_id=m.sender_id
+            WHERE m.togarak_id=%s AND m.receiver_id IS NULL
+            ORDER BY m.created_at DESC LIMIT %s
+        """, (togarak_id, limit))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        return [{"matn":r[0],"ism":r[1],"rol":r[2],"vaqt":r[3]} for r in reversed(rows)]
+    except: return []
+
+def get_personal_messages(togarak_id, user1, user2, limit=20):
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("""
+            SELECT m.matn, m.sender_id, u.full_name, m.created_at
+            FROM togarak_messages m
+            JOIN users u ON u.user_id=m.sender_id
+            WHERE m.togarak_id=%s AND (
+                (m.sender_id=%s AND m.receiver_id=%s) OR
+                (m.sender_id=%s AND m.receiver_id=%s)
+            )
+            ORDER BY m.created_at DESC LIMIT %s
+        """, (togarak_id, user1, user2, user2, user1, limit))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        return [{"matn":r[0],"sender":r[1],"ism":r[2],"vaqt":r[3]} for r in reversed(rows)]
+    except: return []
+
+# ══ DARS REJASI ══
+def get_reja(togarak_id: int) -> list:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("""
+            SELECT r.id, r.topic_code, r.tartib, r.tur, r.kun, r.izoh, r.completed
+            FROM togarak_reja r
+            WHERE r.togarak_id=%s ORDER BY r.tartib
+        """, (togarak_id,))
+        rows = cur.fetchall(); cur.close(); conn.close()
+        return [{"id":r[0],"code":r[1],"tartib":r[2],"tur":r[3],
+                 "kun":r[4],"izoh":r[5],"completed":r[6]} for r in rows]
+    except: return []
+
+def add_to_reja(togarak_id, topic_code, tur="dars", kun=None, izoh="") -> int:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("SELECT COALESCE(MAX(tartib),0)+1 FROM togarak_reja WHERE togarak_id=%s",(togarak_id,))
+        tartib = cur.fetchone()[0]
+        cur.execute("""INSERT INTO togarak_reja(togarak_id,topic_code,tartib,tur,kun,izoh)
+            VALUES(%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (togarak_id,topic_code,tartib,tur,kun,izoh))
+        rid=cur.fetchone()[0]; conn.commit(); cur.close(); conn.close()
+        return rid
+    except: return 0
+
+def mark_dars_done(togarak_id, topic_code, teacher_id) -> bool:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("""INSERT INTO togarak_dars_log(togarak_id,topic_code,teacher_id)
+            VALUES(%s,%s,%s) ON CONFLICT DO NOTHING""",(togarak_id,topic_code,teacher_id))
+        cur.execute("UPDATE togarak_reja SET completed=TRUE WHERE togarak_id=%s AND topic_code=%s",
+                   (togarak_id,topic_code))
+        conn.commit(); cur.close(); conn.close()
+        return True
+    except: return False
+
+def get_togarak_progress(togarak_id: int) -> dict:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM togarak_reja WHERE togarak_id=%s",(togarak_id,))
+        total=cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM togarak_reja WHERE togarak_id=%s AND completed=TRUE",(togarak_id,))
+        done=cur.fetchone()[0]
+        cur.execute("SELECT topic_code FROM togarak_reja WHERE togarak_id=%s AND completed=FALSE ORDER BY tartib LIMIT 1",(togarak_id,))
+        next_r=cur.fetchone(); cur.close(); conn.close()
+        pct=round(done*100/total) if total else 0
+        return {"total":total,"done":done,"pct":pct,"next":next_r[0] if next_r else None}
+    except: return {"total":0,"done":0,"pct":0,"next":None}
+
+def get_student_progress(togarak_id, user_id) -> dict:
+    try:
+        conn = db(); cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s AND holat='keldi'",(togarak_id,user_id))
+        keldi=cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s",(togarak_id,user_id))
+        jami=cur.fetchone()[0]
+        cur.execute("SELECT AVG(baho) FROM togarak_baholar WHERE togarak_id=%s AND user_id=%s",(togarak_id,user_id))
+        avg_b=(cur.fetchone() or [None])[0]
+        cur.close(); conn.close()
+        pct=round(keldi*100/jami) if jami else 0
+        return {"yoqlama_pct":pct,"avg_baho":round(float(avg_b),1) if avg_b else 0,"keldi":keldi,"jami":jami}
+    except: return {"yoqlama_pct":0,"avg_baho":0,"keldi":0,"jami":0}
