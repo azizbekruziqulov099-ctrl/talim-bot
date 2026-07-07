@@ -2189,6 +2189,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
+    if str(admin_state.get(user_id) or "").startswith("tg_new_parol:") and message.text:
+        tgid=int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id,None)
+        yangi=message.text.strip()
+        if len(yangi)<4: await message.answer("❌ Kamida 4 belgi!"); return
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE togaraklar SET parol=%s WHERE id=%s AND teacher_id=%s",(yangi,tgid,user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ Parol yangilandi!\n\n🔑 Yangi parol: <code>{yangi}</code>",parse_mode="HTML")
+        return
+
     # Kitob o'chirish — parol tasdiqlash
     if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
         book_id2=int(str(admin_state[user_id]).split(":")[1])
@@ -6857,12 +6868,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         t = tgs.get(tgid)
         if not t: await call.message.answer("❌ Topilmadi"); return
         azolar = get_togarak_azolar(tgid)
+        # Parol yashirin — alohida ko'rish tugmasi
         txt = (f"📚 {t['nomi']}\n📖 Fan: {t['fan'] or '-'}\n"
-               f"🔑 Parol: {t['parol']}\n"
+               f"🆔 ID: {tgid}\n"
                f"👥 A'zolar: {len(azolar)}/{t['max']}\n"
                f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
                f"📅 To'lov sanasi: har oyning {t['oylik_sana']}-kuni")
-        # Pending so'rovlar sonini ko'rsat
         conn3=_get_db_conn();cur3=conn3.cursor()
         cur3.execute("SELECT COUNT(*) FROM togarak_requests r JOIN togaraklar t ON t.id=r.togarak_id WHERE r.togarak_id=%s AND r.status='pending' AND t.teacher_id=%s",(tgid,user_id))
         pend_cnt=(cur3.fetchone() or [0])[0]; cur3.close(); conn3.close()
@@ -6875,6 +6886,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             [InlineKeyboardButton(text="📊 Statistika",callback_data=f"tg_stat:{tgid}"),
              InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0")],
             [InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}"),
+             InlineKeyboardButton(text="🔑 Parolni ko'r",callback_data=f"tg_show_parol:{tgid}")],
+            [InlineKeyboardButton(text="🔄 Parol almashtir",callback_data=f"tg_change_parol:{tgid}"),
              InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"tg_del:{tgid}")],
             [InlineKeyboardButton(text="⬅️ Orqaga",callback_data="tg_back")],
         ])
@@ -6981,6 +6994,29 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")
         ]]))
+        return
+
+    if call.data.startswith("tg_show_parol:"):
+        tgid=int(call.data[14:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT parol FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        if not row2: await call.message.answer("❌ Ruxsat yo'q!"); return
+        await call.message.answer(
+            f"🔑 To'garak paroli:\n\n<code>{row2[0]}</code>\n\n"
+            f"Bu xabar 30 soniyadan keyin o'chiriladi.",
+            parse_mode="HTML"
+        )
+        return
+
+    if call.data.startswith("tg_change_parol:"):
+        tgid=int(call.data[16:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        if not cur2.fetchone(): cur2.close(); conn2.close(); await call.message.answer("❌ Ruxsat yo'q!"); return
+        cur2.close(); conn2.close()
+        admin_state[user_id]=f"tg_new_parol:{tgid}"
+        await call.message.answer("🔑 Yangi parol yozing (kamida 4 belgi):")
         return
 
     if call.data.startswith("tg_del:"):
