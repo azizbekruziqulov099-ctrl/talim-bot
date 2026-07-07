@@ -3477,7 +3477,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         rows2=[[InlineKeyboardButton(text=f"📖 {b[1]} ({b[3]} bet)",callback_data=f"kitob_info:{b[0]}")] for b in books]
         rows2.append([
             InlineKeyboardButton(text="📤 PDF yuklash",callback_data="kitob_upload"),
-            InlineKeyboardButton(text="✍️ Qo'lda terish",callback_data="kitob_qolda"),
+
         ])
         await message.answer("📚 Kitoblar:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
@@ -5144,23 +5144,25 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2 = call.data.split(":", 2)
         grade2 = parts2[1]; subj2 = parts2[2]
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        # Mavzu darajasida DISTINCT — kichik mavzular ko'rinmaydi
         cur2.execute("""
-            SELECT DISTINCT d.kichik_name, d.topic_code,
+            SELECT d.mavzu_name, d.mavzu_code,
                    COUNT(g.id) as test_cnt
             FROM dts_tree d
             JOIN generated_tests g ON g.topic_code = d.topic_code
             WHERE d.subject_name=%s AND d.is_deleted=FALSE
-            GROUP BY d.kichik_name, d.topic_code
-            ORDER BY d.topic_code
+            AND d.mavzu_code IS NOT NULL
+            GROUP BY d.mavzu_name, d.mavzu_code
+            ORDER BY d.mavzu_code
         """, (subj2,))
         topics2 = cur2.fetchall()
         cur2.close(); conn2.close()
 
         rows = []
-        for kname, tc, cnt in topics2:
+        for mname, mcode, cnt in topics2:
             rows.append([InlineKeyboardButton(
-                text=f"📝 {kname[:40]} ({cnt} ta)",
-                callback_data=f"ts_start:{tc}"
+                text=f"📝 {(mname or mcode)[:40]} ({cnt} ta)",
+                callback_data=f"ts_mavzu:{mcode}"
             )])
         rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="sinash_back")])
         await call.message.edit_text(
@@ -5965,18 +5967,20 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         PAGE = 10
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("""SELECT d.kichik_name, d.topic_code, COUNT(g.id) as cnt
+        # MAVZU darajasi — kichik mavzular ko'rinmaydi
+        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, COUNT(g.id) as cnt
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
-            GROUP BY d.kichik_name, d.topic_code ORDER BY d.topic_code""",(gr,fan2))
+            AND d.mavzu_code IS NOT NULL
+            GROUP BY d.mavzu_name, d.mavzu_code ORDER BY d.mavzu_code""",(gr,fan2))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
 
         total = len(mavzular)
         page_items = mavzular[page*PAGE:(page+1)*PAGE]
 
         rows2=[[InlineKeyboardButton(
-            text=f"📝 {m[0][:38]} ({m[2]})",
-            callback_data=f"sin_mavzu:{m[1]}"
+            text=f"📝 {(m[0] or m[1])[:38]} ({m[2]})",
+            callback_data=f"ts_mavzu:{m[1]}"
         )] for m in page_items]
 
         nav = []
@@ -6100,6 +6104,39 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         # ts_start handler ga pass qilamiz
         call.data = f"ts_start:{tc_set}"
+
+    if call.data.startswith("ts_mavzu:"):
+        mavzu_code = call.data[9:]
+        # Shu mavzu_code dagi barcha topic_code lar bo'yicha testlar
+        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        cur2.execute("""SELECT DISTINCT topic_code FROM dts_tree
+            WHERE mavzu_code=%s AND is_deleted=FALSE""", (mavzu_code,))
+        topic_codes = [r[0] for r in cur2.fetchall()]
+        if not topic_codes:
+            topic_codes = [mavzu_code]
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
+                    (topic_codes,))
+        cnt = cur2.fetchone()[0]
+        cur2.execute("SELECT mavzu_name FROM dts_tree WHERE mavzu_code=%s LIMIT 1",(mavzu_code,))
+        mname = (cur2.fetchone() or [mavzu_code])[0]
+        cur2.close(); conn2.close()
+        if cnt == 0:
+            await call.message.answer(f"❌ '{mname}' mavzusi uchun test yo'q!"); return
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+        _us[user_id].update({
+            "ts_topic": topic_codes[0],
+            "ts_topic_codes": topic_codes,
+            "ts_mavzu_name": mname,
+            "ts_count": 20, "ts_diff": "all",
+            "ts_timed": True, "ts_write": False,
+            "_ts_cnt_total": cnt
+        })
+        await call.message.answer(
+            f"🧪 Mavzu: {mname[:50]}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
+            reply_markup=_mk_ts_kb(_us[user_id], cnt)
+        )
+        return
 
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
@@ -7099,15 +7136,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("tg_reja_add:"):
         tgid=int(call.data[12:]); await call.answer()
-        # DTS dan sinf tanlash
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT grade FROM dts_tree WHERE grade IS NOT NULL AND is_deleted=FALSE ORDER BY grade")
+        # Faqat 1-11 bo'lmagan maxsus sinflar
+        cur2.execute("""SELECT DISTINCT grade FROM dts_tree
+            WHERE grade IS NOT NULL AND is_deleted=FALSE
+            AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11)
+            ORDER BY grade""")
         sinflar=cur2.fetchall(); cur2.close(); conn2.close()
         if not sinflar:
-            admin_state[user_id]=f"tg_reja_add_manual:{tgid}"
-            await call.message.answer("Mavzu kodini yozing (yoki DTS dan sinf tanlang):"); return
-        rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar[:11]]
-        rows2.append([InlineKeyboardButton(text="✏️ Qo'lda kiritish",callback_data=f"tg_reja_manual:{tgid}")])
+            await call.message.answer("❌ DTS da mavzular topilmadi!"); return
+        rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
         await call.message.answer("Qaysi sinfdan mavzu qo'shmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
@@ -7115,7 +7153,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT DISTINCT subject FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject",(sinf,))
+        cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name",(sinf,))
         fanlar=cur2.fetchall(); cur2.close(); conn2.close()
         rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
         await call.message.answer(f"📚 {sinf} - qaysi fan?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
@@ -7135,18 +7173,34 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]; bob=parts2[3]
         await call.answer()
         conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
-        cur2.execute("SELECT topic_code,mavzu_name FROM dts_tree WHERE grade=%s AND subject=%s AND bo_lim LIKE %s AND is_deleted=FALSE LIMIT 15",(sinf,fan,f"{bob}%"))
+        # Faqat mavzu darajasi — DISTINCT mavzu_code bo'yicha
+        cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+            FROM dts_tree WHERE grade=%s AND subject=%s AND bo_lim LIKE %s
+            AND is_deleted=FALSE AND mavzu_code IS NOT NULL
+            ORDER BY mavzu_code LIMIT 20""",
+            (sinf,fan,f"{bob}%"))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
-        rows2=[[InlineKeyboardButton(text=f"📌 {m[1][:40]}",callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}")] for m in mavzular]
-        await call.message.answer("Mavzuni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        if not mavzular:
+            await call.message.answer("❌ Mavzu topilmadi!"); return
+        rows2=[[InlineKeyboardButton(
+            text=f"📌 {m[1][:40] if m[1] else m[0]}",
+            callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}"
+        )] for m in mavzular]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
+        await call.message.answer("📌 Mavzuni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_reja_add_topic:"):
         parts2=call.data[18:].split(":"); tgid=int(parts2[0]); code=parts2[1]
         await call.answer()
+        # mavzu_code dan mavzu_name ni olish
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT mavzu_name FROM dts_tree WHERE mavzu_code=%s LIMIT 1",(code,))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        mavzu_name = row2[0] if row2 else code
         from togarak import add_to_reja
-        add_to_reja(tgid,code,"dars")
-        await call.message.answer(f"✅ '{code}' rejaga qo'shildi!")
+        add_to_reja(tgid, mavzu_name, "dars")
+        await call.message.answer(f"✅ '{mavzu_name[:50]}' rejaga qo'shildi!")
         return
 
     if call.data.startswith("tg_reja_manual:"):
