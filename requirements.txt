@@ -1,5 +1,4 @@
 aiogram
-aiogram-calendar
 aiohttp
 edge-tts
 psycopg2-binary
@@ -13,3 +12,4 @@ Pillow
 pypdf
 python-docx
 PyMuPDF
+segno
