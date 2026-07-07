@@ -6434,10 +6434,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from storage import user_state as _us
         st2 = _us.get(user_id) if isinstance(_us.get(user_id), dict) else {}
         tc   = st2.get("ts_topic","")
+        topic_codes = st2.get("ts_topic_codes", [tc] if tc else [])
         cnt2 = st2.get("ts_count", 20)
         diff = st2.get("ts_diff", "all")
         write= st2.get("ts_write", False)
-        if not tc:
+        if not topic_codes:
             await call.answer("❌ Mavzu tanlanmagan — qayta tanlang", show_alert=True)
             return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
@@ -6449,16 +6450,15 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             SELECT question,option_a,option_b,option_c,option_d,
                    correct_answer,explanation,question_type,is_latex,
                    image_url,audio_text,language,time_limit
-            FROM generated_tests WHERE topic_code=%s {diff_f} {type_f} {img_f}
+            FROM generated_tests WHERE topic_code=ANY(%s) {diff_f} {type_f} {img_f}
             ORDER BY RANDOM() LIMIT %s
-        """, (tc, cnt2))
+        """, (topic_codes, cnt2))
         tests = cur2.fetchall(); cur2.close(); conn2.close()
         if not tests:
             await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
             return
         await call.answer()
         await start_test(user_id, tests, call.message)
-        # topic_code ni sessionga saqlaymiz (rasm uchun)
         from storage import test_sessions as _ts
         if user_id in _ts:
             _ts[user_id]["topic_code"] = tc
@@ -7779,20 +7779,33 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("stg_mavzu_test:"):
-        parts2=call.data[15:].split(":"); tgid=int(parts2[0]); code=parts2[1]
+        parts2=call.data[15:].split(":"); tgid=int(parts2[0]); mavzu_name=":".join(parts2[1:])
         await call.answer()
-        # Mavzu test sozlamalari
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s",(code,))
+        # Mavzu_name bo'yicha barcha kichik mavzularning topic_code larini olish
+        cur2.execute("""SELECT DISTINCT topic_code FROM dts_tree
+            WHERE mavzu_name=%s AND is_deleted=FALSE AND topic_code IS NOT NULL""",
+            (mavzu_name,))
+        topic_codes=[r[0] for r in cur2.fetchall()]
+        if not topic_codes:
+            # Agar topilmasa mavzu_name ni topic_code sifatida ham qidir
+            topic_codes=[mavzu_name]
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=ANY(%s)",(topic_codes,))
         cnt=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         if cnt==0:
-            await call.message.answer(f"❌ '{code}' mavzusida test yo'q!"); return
+            await call.message.answer(f"❌ '{mavzu_name[:40]}' mavzusida test yo'q!\n\nBu mavzu uchun testlar hali import qilinmagan."); return
         from storage import user_state as _us
         if not isinstance(_us.get(user_id),dict): _us[user_id]={}
-        _us[user_id].update({"ts_topic":code,"ts_count":min(20,cnt),"ts_diff":"all",
-                              "ts_timed":True,"ts_write":False,"_ts_cnt_total":cnt})
+        _us[user_id].update({
+            "ts_topic": topic_codes[0],
+            "ts_topic_codes": topic_codes,
+            "ts_mavzu_name": mavzu_name,
+            "ts_count": min(20,cnt), "ts_diff":"all",
+            "ts_timed":True, "ts_write":False,
+            "_ts_cnt_total":cnt
+        })
         await call.message.answer(
-            f"🧪 Mavzu: {code}\n📊 Jami: {cnt} ta savol\n\nSozlamalar:",
+            f"🧪 {mavzu_name[:50]}\n📊 Jami: {cnt} ta savol\n\nSozlamalar:",
             reply_markup=_mk_ts_kb(_us[user_id],cnt)
         )
         return
