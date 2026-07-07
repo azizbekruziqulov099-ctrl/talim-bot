@@ -191,3 +191,105 @@ def togarak_list_kb(togaraklar: list, prefix="tg") -> InlineKeyboardMarkup:
             callback_data=f"{prefix}_info:{t['id']}"
         )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ══ QO'SHILISH SO'ROVI ══
+
+def send_join_request(togarak_id: int, user_id: int) -> dict:
+    """O'quvchi so'rov yuboradi."""
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT nomi, teacher_id, max_talaba FROM togaraklar WHERE id=%s AND aktiv=TRUE",(togarak_id,))
+    t = cur.fetchone()
+    if not t:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ To'garak topilmadi!"}
+    # Allaqachon a'zo
+    cur.execute("SELECT id FROM togarak_azolar WHERE togarak_id=%s AND user_id=%s AND aktiv=TRUE",(togarak_id,user_id))
+    if cur.fetchone():
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "❌ Siz allaqachon a'zostsiz!"}
+    # Allaqachon so'rov
+    cur.execute("SELECT id,status FROM togarak_requests WHERE togarak_id=%s AND user_id=%s",(togarak_id,user_id))
+    req = cur.fetchone()
+    if req and req[1] == "pending":
+        cur.close(); conn.close()
+        return {"ok": False, "msg": "⏳ So'rovingiz ko'rib chiqilmoqda!"}
+    # Jami a'zolar
+    cur.execute("SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(togarak_id,))
+    cnt = cur.fetchone()[0]
+    if cnt >= t[2]:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": f"❌ To'garak to'ldi ({t[2]} ta limit)!"}
+    # So'rov yaratish
+    try:
+        cur.execute("""INSERT INTO togarak_requests(togarak_id,user_id,status)
+            VALUES(%s,%s,'pending') ON CONFLICT(togarak_id,user_id)
+            DO UPDATE SET status='pending', created_at=NOW()""",
+            (togarak_id, user_id))
+        conn.commit()
+    except Exception as e:
+        cur.close(); conn.close()
+        return {"ok": False, "msg": f"❌ Xato: {e}"}
+    cur.close(); conn.close()
+    return {"ok": True, "teacher_id": t[1], "togarak_nomi": t[0]}
+
+def get_pending_requests(teacher_id: int) -> list:
+    """O'qituvchining kutayotgan so'rovlari."""
+    conn = db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT r.id, r.togarak_id, r.user_id, u.full_name, u.class, t.nomi
+        FROM togarak_requests r
+        JOIN togaraklar t ON t.id=r.togarak_id
+        JOIN users u ON u.user_id=r.user_id
+        WHERE t.teacher_id=%s AND r.status='pending'
+        ORDER BY r.created_at
+    """, (teacher_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [{"id":r[0],"tg_id":r[1],"uid":r[2],"ism":r[3],"sinf":r[4],"tg_nomi":r[5]} for r in rows]
+
+def approve_request(req_id: int, teacher_id: int) -> dict:
+    """So'rovni tasdiqlash."""
+    conn = db(); cur = conn.cursor()
+    cur.execute("""SELECT r.togarak_id, r.user_id FROM togarak_requests r
+        JOIN togaraklar t ON t.id=r.togarak_id
+        WHERE r.id=%s AND t.teacher_id=%s AND r.status='pending'""",
+        (req_id, teacher_id))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return {"ok": False}
+    tg_id, uid = row
+    cur.execute("UPDATE togarak_requests SET status='approved' WHERE id=%s",(req_id,))
+    try:
+        cur.execute("INSERT INTO togarak_azolar(togarak_id,user_id) VALUES(%s,%s)",(tg_id,uid))
+    except: pass
+    conn.commit(); cur.close(); conn.close()
+    return {"ok": True, "togarak_id": tg_id, "user_id": uid}
+
+def reject_request(req_id: int, teacher_id: int) -> bool:
+    conn = db(); cur = conn.cursor()
+    cur.execute("""UPDATE togarak_requests r SET status='rejected'
+        FROM togaraklar t WHERE r.togarak_id=t.id
+        AND r.id=%s AND t.teacher_id=%s""", (req_id, teacher_id))
+    ok = cur.rowcount > 0; conn.commit(); cur.close(); conn.close()
+    return ok
+
+# ══ GURUH XABARLARI ══
+
+def send_group_message(togarak_id: int, sender_id: int, matn: str, receiver_id=None) -> bool:
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO togarak_messages(togarak_id,sender_id,receiver_id,matn)
+            VALUES(%s,%s,%s,%s)""", (togarak_id, sender_id, receiver_id, matn))
+        conn.commit(); ok=True
+    except: ok=False
+    cur.close(); conn.close()
+    return ok
+
+def get_group_members(togarak_id: int) -> list:
+    """Guruh a'zolarini olish (xabar yuborish uchun)."""
+    conn = db(); cur = conn.cursor()
+    cur.execute("""SELECT a.user_id FROM togarak_azolar a
+        WHERE a.togarak_id=%s AND a.aktiv=TRUE""", (togarak_id,))
+    rows = cur.fetchall(); cur.close(); conn.close()
+    return [r[0] for r in rows]
