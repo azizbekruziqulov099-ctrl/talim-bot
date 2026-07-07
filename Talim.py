@@ -1990,6 +1990,24 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
 
+    # Shaxsiy xabar yuborish
+    if str(admin_state.get(user_id) or "").startswith("tg_send_pm:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        tgid3,uid3=int(parts3[1]),int(parts3[2])
+        admin_state.pop(user_id,None)
+        matn=message.text.strip()
+        from togarak import send_group_message
+        send_group_message(tgid3, user_id, matn, receiver_id=uid3)
+        # Qabul qiluvchiga yuborish
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
+        sender_name=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+        try:
+            await message.bot.send_message(uid3, f"💬 {sender_name}:\n{matn}")
+        except: pass
+        await message.answer("✅ Yuborildi!")
+        return
+
     # Guruhga xabar yuborish
     if str(admin_state.get(user_id) or "").startswith("tg_send_msg:") and message.text:
         parts3=str(admin_state[user_id]).split(":")
@@ -6573,12 +6591,18 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                f"👥 A'zolar: {len(azolar)}/{t['max']}\n"
                f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
                f"📅 To'lov sanasi: har oyning {t['oylik_sana']}-kuni")
+        # Pending so'rovlar sonini ko'rsat
+        conn3=psycopg2.connect(DATABASE_URL);cur3=conn3.cursor()
+        cur3.execute("SELECT COUNT(*) FROM togarak_requests r JOIN togaraklar t ON t.id=r.togarak_id WHERE r.togarak_id=%s AND r.status='pending' AND t.teacher_id=%s",(tgid,user_id))
+        pend_cnt=(cur3.fetchone() or [0])[0]; cur3.close(); conn3.close()
+        pend_txt=f"📨 So'rovlar ({pend_cnt})" if pend_cnt else "📨 So'rovlar"
         kb2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="👥 A'zolar",    callback_data=f"tg_azolar:{tgid}"),
              InlineKeyboardButton(text="📋 Yoqlama",    callback_data=f"tg_yoqlama:{tgid}")],
             [InlineKeyboardButton(text="📊 Statistika", callback_data=f"tg_stat:{tgid}"),
-             InlineKeyboardButton(text="📨 So'rovlar",  callback_data=f"tg_pending:{tgid}")],
-            [InlineKeyboardButton(text="📢 Guruhga xabar", callback_data=f"tg_msg_group:{tgid}")],
+             InlineKeyboardButton(text=pend_txt,        callback_data=f"tg_pending:{tgid}")],
+            [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"tg_guruh_chat:{tgid}"),
+             InlineKeyboardButton(text="📢 Xabar",      callback_data=f"tg_msg_group:{tgid}")],
             [InlineKeyboardButton(text="🗑 O'chirish",  callback_data=f"tg_del:{tgid}"),
              InlineKeyboardButton(text="⬅️ Orqaga",     callback_data="tg_back")],
         ])
@@ -6737,6 +6761,58 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
         except: pass
         await call.message.edit_text("❌ Rad etildi.", reply_markup=None)
+        return
+
+    if call.data.startswith("tg_guruh_chat:"):
+        tgid=int(call.data[14:]); await call.answer()
+        from togarak import get_guruh_xabarlar
+        msgs=get_guruh_xabarlar(tgid, 20)
+        txt="💬 Guruh chat\n" + "─"*20 + "\n\n"
+        if not msgs:
+            txt+="(Hali xabarlar yo'q)\n"
+        for m in msgs:
+            vaqt=str(m["vaqt"])[:16] if m["vaqt"] else ""
+            txt+=f"👤 {m['ism']}:\n{m['matn']}\n🕐 {vaqt}\n\n"
+        rows2=[[InlineKeyboardButton(text="✏️ Xabar yozish", callback_data=f"tg_msg_group:{tgid}")]]
+        # O'qituvchi bo'lsa a'zolarga xabar
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT teacher_id FROM togaraklar WHERE id=%s",(tgid,))
+        t2=cur2.fetchone(); cur2.close(); conn2.close()
+        if t2 and t2[0]==user_id:
+            rows2.append([InlineKeyboardButton(text="👤 A'zoga xabar", callback_data=f"tg_azolar_msg:{tgid}")])
+        await call.message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_azolar_msg:"):
+        tgid=int(call.data[14:]); await call.answer()
+        from togarak import get_togarak_azolar
+        azolar=get_togarak_azolar(tgid)
+        if not azolar: await call.message.answer("👥 A'zo yo'q"); return
+        rows2=[[InlineKeyboardButton(
+            text=f"👤 {a['ism']} ({a['sinf'] or '-'})",
+            callback_data=f"tg_pm:{tgid}:{a['uid']}"
+        )] for a in azolar]
+        await call.message.answer("👤 Kimga xabar yozasiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_pm:"):
+        parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
+        await call.answer()
+        from togarak import get_personal_messages
+        msgs=get_personal_messages(tgid,user_id,uid2,15)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
+        uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+        txt=f"💬 {uname} bilan yozishmalar\n" + "─"*20 + "\n\n"
+        for m in msgs:
+            me="Siz" if m["sender"]==user_id else m["ism"]
+            txt+=f"👤 {me}:\n{m['matn']}\n\n"
+        if not msgs: txt+="(Hali xabar yo'q)\n"
+        admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
+        rows2=[[InlineKeyboardButton(text="✏️ Javob yozish", callback_data=f"tg_pm:{tgid}:{uid2}")]]
+        await call.message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        await call.message.answer(f"✍️ {uname} ga xabar yozing:")
         return
 
     if call.data.startswith("tg_pending:"):
