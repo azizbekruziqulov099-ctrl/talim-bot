@@ -7267,7 +7267,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             [InlineKeyboardButton(text="📝 Uyga vazifa",callback_data=f"stg_hw:{tgid}"),
              InlineKeyboardButton(text="🏆 Reyting",    callback_data=f"stg_reyting:{tgid}")],
             [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"stg_chat:{tgid}")],
-            [InlineKeyboardButton(text="🚪 Chiqish so'rovi", callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="🏅 Yutuqlarim",     callback_data=f"stg_badges:{tgid}"),
+             InlineKeyboardButton(text="🚪 Chiqish",        callback_data=f"stg_leave_req:{tgid}")],
         ])
         await call.message.answer(txt, reply_markup=kb2)
         return
@@ -8328,7 +8329,18 @@ async def main():
                 except Exception as e:
                     print(f"weekly_report: {e}")
             await asyncio.sleep(60)
+    # Extra routerlar ulash
+    try:
+        from router_extra import router as extra_router
+        dp.include_router(extra_router)
+    except Exception as e:
+        print(f'router_extra: {e}')
     asyncio.create_task(weekly_report_task())
+    # To'lov eslatma
+    try:
+        from router_extra import tolov_eslatma_task
+        asyncio.create_task(tolov_eslatma_task(bot))
+    except: pass
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
