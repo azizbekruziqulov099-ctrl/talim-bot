@@ -52,8 +52,16 @@ from aiogram.types import FSInputFile
 import psycopg2
 try:
     from db_pool import db as _db_pool, release as _db_release, get_user_cached, invalidate_user
-    def _db(): conn=_db_pool(); return conn
-except: _db_pool=None; _db_release=None
+    _pool_available = True
+except:
+    _db_pool=None; _db_release=None; _pool_available=False
+
+def _get_db_conn():
+    """Connection pool dan ulanish olish."""
+    if _pool_available and _db_pool:
+        try: return _db_pool()
+        except: pass
+    return psycopg2.connect(DATABASE_URL)
 import re
 import os
 import subprocess
@@ -68,7 +76,7 @@ ADMINS = [401251407]
 DATABASE_URL = os.getenv("DATABASE_URL")
 API_TOKEN = os.getenv("BOT_TOKEN")
 
-conn = psycopg2.connect(DATABASE_URL)
+conn = _get_db_conn()
 cur = conn.cursor()
 
 user_locks = {}
@@ -334,7 +342,7 @@ def get_stats_keyboard():
 
 def check_survey(user_id):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -353,7 +361,7 @@ def check_survey(user_id):
     return row[0] == 1
 
 def init_db():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     # user_id INTEGER -> BIGINT (Telegram ID lari INTEGER chegarasidan oshib ketadi)
@@ -683,7 +691,7 @@ def init_db():
 
 def get_grades():
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -704,7 +712,7 @@ def get_grades():
 
 def get_subjects_by_grade(grade):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -726,7 +734,7 @@ def get_topics_by_grade_subject(
     subject_name
 ):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -751,7 +759,7 @@ def get_topics_by_grade_subject(
 
 def get_topic_name(topic_code):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -777,7 +785,7 @@ def get_topic_name(topic_code):
 
 def get_topic_test_count(topic_code):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -795,7 +803,7 @@ def get_topic_test_count(topic_code):
 
 def get_topic_statistics(topic_code):
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -952,7 +960,7 @@ async def save_image(message: types.Message):
     if True:
         # rasm_queue da kutayotgan kodlar bormi?
         try:
-            conn_rq2=psycopg2.connect(DATABASE_URL);cur_rq2=conn_rq2.cursor()
+            conn_rq2=_get_db_conn();cur_rq2=conn_rq2.cursor()
             cur_rq2.execute("""CREATE TABLE IF NOT EXISTS rasm_queue
                 (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT,
                  done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())""")
@@ -966,7 +974,7 @@ async def save_image(message: types.Message):
         total_sp = 30
 
         # rasm_queue dan keyingi 30 ta kodni olish
-        conn_rq3=psycopg2.connect(DATABASE_URL);cur_rq3=conn_rq3.cursor()
+        conn_rq3=_get_db_conn();cur_rq3=conn_rq3.cursor()
         cur_rq3.execute("""SELECT id,kod FROM rasm_queue
             WHERE user_id=%s AND done=FALSE ORDER BY id LIMIT 30""",(uid_sp,))
         rows_rq=cur_rq3.fetchall()
@@ -1014,7 +1022,7 @@ async def save_image(message: types.Message):
                         caption=f"🖼 {kod}"
                     )
                     fid_sp = sent_sp.photo[-1].file_id
-                    conn_sp = psycopg2.connect(DATABASE_URL); cur_sp = conn_sp.cursor()
+                    conn_sp = _get_db_conn(); cur_sp = conn_sp.cursor()
                     cur_sp.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
                         ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",(kod,fid_sp))
                     cur_sp.execute("UPDATE rasm_queue SET done=TRUE WHERE user_id=%s AND kod=%s",(uid_sp,kod))
@@ -1023,7 +1031,7 @@ async def save_image(message: types.Message):
                 except Exception as _e:
                     print(f"cell {kod}: {_e}")
 
-            conn_rq4=psycopg2.connect(DATABASE_URL);cur_rq4=conn_rq4.cursor()
+            conn_rq4=_get_db_conn();cur_rq4=conn_rq4.cursor()
             cur_rq4.execute("SELECT COUNT(*) FROM rasm_queue WHERE user_id=%s AND done=FALSE",(uid_sp,))
             remaining=(cur_rq4.fetchone() or [0])[0]
             cur_rq4.close();conn_rq4.close()
@@ -1079,7 +1087,7 @@ async def save_image(message: types.Message):
         pw = w // total_cols
         ph = h // total_rows
 
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         saved = 0
         for tc_idx, tc in enumerate(tcs):
             for r in range(rows):
@@ -1135,7 +1143,7 @@ async def save_image(message: types.Message):
         cell_w = W // cols
         cell_h = H // rows
 
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur  = conn.cursor()
         saved = 0
 
@@ -1191,7 +1199,7 @@ async def save_image(message: types.Message):
 
     name = caption
     file_id = message.photo[-1].file_id
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
     cur.execute("""
     INSERT INTO images(name, file_id)
@@ -1207,7 +1215,7 @@ async def save_image(message: types.Message):
 def _save_error_log(uid_sp, username, error_text):
     """Xatoni bazaga yozadi (sinxron)."""
     try:
-        conn_ = psycopg2.connect(DATABASE_URL)
+        conn_ = _get_db_conn()
         cur_  = conn_.cursor()
         cur_.execute(
             "INSERT INTO error_log(uid_sp, username, error_text) VALUES(%s,%s,%s)",
@@ -1220,7 +1228,7 @@ def _save_error_log(uid_sp, username, error_text):
 def _get_unread_errors():
     """O'qilmagan xatolar sonini qaytaradi."""
     try:
-        conn_ = psycopg2.connect(DATABASE_URL)
+        conn_ = _get_db_conn()
         cur_  = conn_.cursor()
         cur_.execute("SELECT COUNT(*) FROM error_log WHERE is_read=FALSE")
         n = cur_.fetchone()[0]
@@ -1272,7 +1280,7 @@ async def _error_and_home(source, user_id, err, label="Xato"):
 
     # Bosh menyuga qaytarish
     try:
-        conn_ = psycopg2.connect(DATABASE_URL)
+        conn_ = _get_db_conn()
         cur_  = conn_.cursor()
         cur_.execute("SELECT role FROM users WHERE user_id=%s", (uid_sp,))
         row_  = cur_.fetchone()
@@ -1315,7 +1323,7 @@ async def cmd_menu(message: types.Message, state: FSMContext):
             try: s_["timer_task"].cancel()
             except: pass
     try:
-        conn = psycopg2.connect(DATABASE_URL); cur = conn.cursor()
+        conn = _get_db_conn(); cur = conn.cursor()
         cur.execute("SELECT role FROM users WHERE user_id=%s", (uid,))
         row = cur.fetchone(); cur.close(); conn.close()
         role = row[0] if row else "🧒 O'quvchi"
@@ -1346,7 +1354,7 @@ async def start(message: types.Message, state: FSMContext):
             try: s_["timer_task"].cancel()
             except: pass
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _get_db_conn()
     cur = conn.cursor()
 
     cur.execute(
@@ -1668,7 +1676,7 @@ async def handle_all(
 
 async def _rq_save(source, user_id, name, rol, sinf):
     """Tez kirish — foydalanuvchini saqlash (multi-account)."""
-    conn2=psycopg2.connect(DATABASE_URL); cur2=conn2.cursor()
+    conn2=_get_db_conn(); cur2=conn2.cursor()
     rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
     sinf_txt = f"{sinf}-sinf" if sinf else ""
     try:
@@ -1749,7 +1757,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
 
         # Limit qayta tekshirish
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         try:
             cur2.execute("SELECT COUNT(*) FROM images WHERE name LIKE %s AND created_at >= CURRENT_DATE",
                         (f"user_{user_id}_%",))
@@ -1779,7 +1787,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     # DB ga saqlash (limit uchun)
                     fid = sent.photo[-1].file_id
                     try:
-                        conn3=psycopg2.connect(DATABASE_URL);cur3=conn3.cursor()
+                        conn3=_get_db_conn();cur3=conn3.cursor()
                         cur3.execute("INSERT INTO images(name,file_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
                                     (fname,fid))
                         conn3.commit();cur3.close();conn3.close()
@@ -1806,7 +1814,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         tid3 = int(parts3[1]); field3 = parts3[2]
         val3  = message.text.strip()
         admin_state.pop(user_id, None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute(f"UPDATE generated_tests SET {field3}=%s WHERE id=%s",(val3,tid3))
         conn2.commit();cur2.close();conn2.close()
         await message.answer(f"✅ Test #{tid3} yangilandi!\n🔑 {field3} = {val3[:60]}")
@@ -1824,7 +1832,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         if cur_idx < len(tests):
             q = tests[cur_idx][0]
-            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            conn2 = _get_db_conn(); cur2 = conn2.cursor()
             cur2.execute("SELECT id FROM generated_tests WHERE question=%s LIMIT 1", (q,))
             row2 = cur2.fetchone(); tid = row2[0] if row2 else None
             try:
@@ -1865,7 +1873,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         from kitob_bazasi import extract_exercises
         new_text=message.text.strip()
         exs=extract_exercises(new_text)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE book_pages SET full_text=%s,exercise_count=%s WHERE book_id=%s AND page_num=%s",
                     (new_text,len(exs),book_id3,page3))
         cur2.execute("DELETE FROM book_exercises WHERE book_id=%s AND page_num=%s",(book_id3,page3))
@@ -1974,7 +1982,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if res["ok"]:
             # O'qituvchiga xabar yuborish
             try:
-                conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+                conn2=_get_db_conn();cur2=conn2.cursor()
                 cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(user_id,))
                 u=cur2.fetchone(); cur2.close(); conn2.close()
                 uname = f"{u[0]} ({u[1] or ''})" if u else str(user_id)
@@ -2003,7 +2011,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         from togarak import send_group_message
         send_group_message(tgid3, user_id, matn, receiver_id=uid3)
         # Qabul qiluvchiga yuborish
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
         sender_name=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         try:
@@ -2027,7 +2035,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         from features import submit_homework
         submit_homework(hw_id3,user_id,message.text.strip())
         # O'qituvchiga xabar
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT teacher_id,mavzu FROM homework WHERE id=%s",(hw_id3,))
         hw2=cur2.fetchone()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
@@ -2096,7 +2104,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if str(user_state.get(user_id) or "").startswith("tg_del_confirm:") and message.text:
         tgid = int(str(user_state[user_id]).split(":")[1])
         user_state.pop(user_id,None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT parol FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         if not row2:
@@ -2113,7 +2121,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         field = str(user_state[user_id]).replace("kb_change_","")
         val = message.text.strip()
         user_state.pop(user_id, None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         col_map = {"name":"full_name","bdate":"birth_date","school":"school"}
         col = col_map.get(field)
         if col:
@@ -2130,7 +2138,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         except:
             await message.answer("❌ Faqat raqam (ID) yozing!"); return
         # Farzand borligini tekshirish
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
         child=cur2.fetchone()
         if not child:
@@ -2148,7 +2156,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if str(admin_state.get(user_id) or "").startswith("parent_send_msg:") and message.text:
         teacher_id=int(str(admin_state[user_id]).split(":")[1])
         admin_state.pop(user_id, None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
         sender=(cur2.fetchone() or ["Ota-ona"])[0]; cur2.close(); conn2.close()
         try:
@@ -2167,7 +2175,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         bosh,tug="","" 
         if "-" in vaqt: bosh,tug=vaqt.split("-",1)
         else: bosh=vaqt
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid3,kun_id3))
             cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",
@@ -2185,7 +2193,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
         book_id2=int(str(admin_state[user_id]).split(":")[1])
         entered=message.text.strip()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT parol,title FROM books WHERE id=%s",(book_id2,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         if not row2:
@@ -2193,7 +2201,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         parol2,title2=row2
         if entered != (parol2 or "0000"):
             await message.answer(f"❌ Parol noto'g'ri! Kitob o'chirilmadi."); admin_state.pop(user_id,None); return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("DELETE FROM book_exercises WHERE book_id=%s",(book_id2,))
         cur2.execute("DELETE FROM book_pages WHERE book_id=%s",(book_id2,))
         cur2.execute("DELETE FROM books WHERE id=%s",(book_id2,))
@@ -2208,7 +2216,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         parol2=message.text.strip()
         if not (parol2.isdigit() and len(parol2)==4):
             await message.answer("❌ 4 xonali raqam yozing!"); return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE books SET parol=%s WHERE id=%s",(parol2,book_id2))
         conn2.commit();cur2.close();conn2.close()
         admin_state.pop(user_id,None)
@@ -2226,7 +2234,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         pg = get_page(book_id2, page2)
         if not pg:
             await message.answer(f"❌ Bet {page2} topilmadi!"); return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
         tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         nav=[]
@@ -2254,7 +2262,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         sinf3  = parts3[2].strip() if len(parts3)>2 else "1"
         mual3  = parts3[3].strip() if len(parts3)>3 else ""
         admin_state.pop(user_id, None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("INSERT INTO books(title,fan,sinf,muallif,total_pages) VALUES(%s,%s,%s,%s,0) RETURNING id",
                     (title3,fan3,sinf3,mual3))
         book_id3=cur2.fetchone()[0]; conn2.commit(); cur2.close(); conn2.close()
@@ -2280,7 +2288,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if text3 in menu_items or text3.startswith("/"):
             return
         if text3.lower() in ("tugat","stop","done"):
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            conn2=_get_db_conn();cur2=conn2.cursor()
             cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(page_num3-1,book_id3))
             conn2.commit(); cur2.close(); conn2.close()
             admin_state.pop(user_id,None)
@@ -2288,7 +2296,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
         from kitob_bazasi import extract_exercises
         exercises = extract_exercises(text3)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""INSERT INTO book_pages(book_id,page_num,full_text,exercise_count)
             VALUES(%s,%s,%s,%s) ON CONFLICT(book_id,page_num) DO UPDATE SET full_text=EXCLUDED.full_text""",
             (book_id3,page_num3,text3,len(exercises)))
@@ -2328,7 +2336,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if message.text not in _skip:
             try:
                 from brain import process_message as _b
-                _cn = psycopg2.connect(DATABASE_URL); _cu = _cn.cursor()
+                _cn = _get_db_conn(); _cu = _cn.cursor()
                 _cu.execute("SELECT class FROM users WHERE user_id=%s",(user_id,))
                 _gr = _cu.fetchone(); _grade = str(_gr[0]) if _gr else None
                 _cu.close(); _cn.close()
@@ -2336,7 +2344,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 if _res.get("message"):
                     await message.answer(_res["message"])
                 if _res.get("action") == "START_TEST" and _res.get("topic"):
-                    _c2 = psycopg2.connect(DATABASE_URL); _cu2 = _c2.cursor()
+                    _c2 = _get_db_conn(); _cu2 = _c2.cursor()
                     _cu2.execute("""SELECT question,option_a,option_b,option_c,option_d,
                            correct_answer,explanation,question_type,is_latex,
                            image_url,audio_text,language,time_limit
@@ -2361,7 +2369,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📚 Bilimni mustahkamlash":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
         _gr = cur2.fetchone()
         _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
@@ -2401,7 +2409,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📚 To'garaklar":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         role2 = str(row2[0] if row2 else "")
@@ -2435,7 +2443,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # ── OTA-ONA MENYUSI ──
     if message.text == "👶 Farzandim":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT u.user_id,u.full_name,u.class FROM parent_child p
             JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
         bolalar=cur2.fetchall(); cur2.close(); conn2.close()
@@ -2449,7 +2457,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📊 Nazorat":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
             JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
         bolalar=cur2.fetchall(); cur2.close(); conn2.close()
@@ -2461,7 +2469,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📋 Yoqlama":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
             JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
         bolalar=cur2.fetchall(); cur2.close(); conn2.close()
@@ -2471,7 +2479,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "⭐ Baholar":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
             JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
         bolalar=cur2.fetchall(); cur2.close(); conn2.close()
@@ -2481,7 +2489,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📝 Uy imtihoni":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT u.user_id,u.full_name,u.class FROM parent_child p
             JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
         bolalar=cur2.fetchall(); cur2.close(); conn2.close()
@@ -2491,7 +2499,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "💬 O'qituvchi":
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT DISTINCT t.teacher_id, u.full_name, tg.nomi
             FROM parent_child p
             JOIN togarak_azolar a ON a.user_id=p.child_id
@@ -2509,7 +2517,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "🎨 Rasm chizdir":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         try:
             cur2.execute("SELECT COUNT(*) FROM images WHERE name LIKE %s AND created_at >= CURRENT_DATE",
                         (f"user_{user_id}_%",))
@@ -2550,7 +2558,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if message.text == "🤖 Yordamchi":
         # Rolni aniqlash
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         role2 = str(row2[0] if row2 else "")
@@ -2588,7 +2596,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "🧪 Bilimni sinash":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
         _gr = cur2.fetchone()
         _my_grade = str(_gr[0]) if _gr and _gr[0] else "1"
@@ -2643,7 +2651,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer(text, reply_markup=kb)
         except Exception:
             pass
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
         row = cur2.fetchone()
@@ -2691,7 +2699,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 bdaraja = "⭐ A'lo" if sp["avg_baho"]>=4.5 else ("👍 Yaxshi" if sp["avg_baho"]>=3.5 else ("📖 O'rta" if sp["avg_baho"]>0 else "—"))
 
                 # Bugungi va keyingi dars
-                conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+                conn2=_get_db_conn();cur2=conn2.cursor()
                 try:
                     cur2.execute("SELECT boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],bugun_id))
                     j=cur2.fetchone()
@@ -2751,7 +2759,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # SOZLAMALAR HOLATLARI
     if user_state.get(user_id) == "change_name":
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2 = conn2.cursor()
         cur2.execute("UPDATE users SET full_name=%s WHERE user_id=%s", (message.text, user_id))
         conn2.commit(); cur2.close(); conn2.close()
@@ -2763,7 +2771,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         try:
             from datetime import datetime
             bdate = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
-            conn2 = psycopg2.connect(DATABASE_URL)
+            conn2 = _get_db_conn()
             cur2 = conn2.cursor()
             cur2.execute("UPDATE users SET birth_date=%s WHERE user_id=%s", (bdate, user_id))
             conn2.commit(); cur2.close(); conn2.close()
@@ -2774,7 +2782,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if user_state.get(user_id) == "change_school_settings":
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2 = conn2.cursor()
         cur2.execute("UPDATE users SET school=%s WHERE user_id=%s", (message.text, user_id))
         conn2.commit(); cur2.close(); conn2.close()
@@ -2789,7 +2797,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur = conn.cursor()
 
         cur.execute("""
@@ -2878,7 +2886,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         fid = admin_state[user_id].split(":",1)[1]
         name = message.text.strip()
         admin_state.pop(user_id, None)
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""INSERT INTO images(name,file_id) VALUES(%s,%s)
                         ON CONFLICT(name) DO UPDATE SET file_id=EXCLUDED.file_id""",
                     (name, fid))
@@ -3275,7 +3283,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if message.from_user.id not in ADMINS:
             return
 
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur = conn.cursor()
 
         cur.execute("SELECT COUNT(*) FROM users")
@@ -3315,7 +3323,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text == "👥 Foydalanuvchilar":
         if user_id not in ADMINS:
             return
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2 = conn2.cursor()
         cur2.execute("SELECT COUNT(*) FROM users")
         total = cur2.fetchone()[0]
@@ -3392,7 +3400,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             pass  # o'quvchi uchun allaqachon handled
         else:
             # Admin uchun ham xuddi o'quvchi kabi
-            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            conn2 = _get_db_conn(); cur2 = conn2.cursor()
             cur2.execute("""
                 SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
                 ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade
@@ -3413,7 +3421,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text == "📦 Kitob Word":
         if user_id not in ADMINS: return
         # Kitoblar ro'yxati
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id, title, fan, sinf FROM books ORDER BY id DESC LIMIT 10")
         books = cur2.fetchall(); cur2.close(); conn2.close()
         if not books:
@@ -3435,7 +3443,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text and message.text.startswith("📊 Hisobotlar"):
         if user_id not in ADMINS: return
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # O'qilmagan xatolar
         cur2.execute("SELECT COUNT(*) FROM error_log WHERE is_read=FALSE")
         unread = cur2.fetchone()[0] or 0
@@ -3530,7 +3538,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "📚 Kitoblar ▾":
         if user_id not in ADMINS: return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("SELECT id,title,sinf,total_pages FROM books ORDER BY id DESC LIMIT 10")
             books=cur2.fetchall()
@@ -3584,7 +3592,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "🎨 AI Rasm yaratish":
         if user_id not in ADMINS: return
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT grade FROM (
                 SELECT DISTINCT d.grade FROM dts_tree d
@@ -3622,7 +3630,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text == "🎓 Kitob o'qit":
         if user_id not in ADMINS: return
         # Oxirgi yuklangan kitobni o'qitamiz
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 5")
         books = cur2.fetchall(); cur2.close(); conn2.close()
         if not books:
@@ -3645,7 +3653,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "🔧 Test tuzatmalar":
         if user_id not in ADMINS: return
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT id, test_id, topic_code, question, comment, created_at
             FROM test_corrections WHERE status='new'
@@ -3670,7 +3678,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text and ("🆘 Xatolar" in message.text):
         if user_id not in ADMINS:
             return
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("""
             SELECT id, user_id, username, error_text, created_at
@@ -3711,7 +3719,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text == "📖 Darslar holati":
         if user_id not in ADMINS:
             return
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("""
             SELECT
@@ -3762,7 +3770,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     elif message.text == "📚 Mavzular statistikasi":
         if user_id not in ADMINS:
             return
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("""
             SELECT
@@ -3993,7 +4001,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 _wbr.close()
             if rasm_kodlar:
                 # DB ga saqlaymiz (redeploy bo'lsa ham saqlanadi)
-                conn_rq=psycopg2.connect(DATABASE_URL);cur_rq=conn_rq.cursor()
+                conn_rq=_get_db_conn();cur_rq=conn_rq.cursor()
                 cur_rq.execute("""CREATE TABLE IF NOT EXISTS rasm_queue
                     (id SERIAL PRIMARY KEY, user_id BIGINT, kod TEXT, done BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW())""")
                 cur_rq.execute("DELETE FROM rasm_queue WHERE user_id=%s",(user_id,))
@@ -4415,7 +4423,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
     elif message.text == "📊 Generator statistikasi":
 
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur = conn.cursor()
 
         cur.execute("""
@@ -4558,7 +4566,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             if message.from_user.id not in ADMINS:
                 return
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4624,7 +4632,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             temp_user[message.from_user.id]["admin_district"] = message.text
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4652,7 +4660,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             school = message.text
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4720,7 +4728,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         # 🏠 HOME
         elif message.text in (HOME, HOME2):
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
             cur.execute("SELECT role FROM users WHERE user_id=%s", (message.from_user.id,))
             user = cur.fetchone()
@@ -4774,7 +4782,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         elif user_state.get(message.from_user.id) == "change_role":
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4831,7 +4839,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         elif user_state.get(message.from_user.id) == "change_district":
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4920,7 +4928,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         elif user_state.get(user_id) == "change_school_class":
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4959,7 +4967,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         # ===== SINFNI ALMASHTIRISH =====
         elif message.text == "🎓 Sinfni almashtirish":
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -4997,7 +5005,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         elif user_state.get(message.from_user.id) == "change_class":
 
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = _get_db_conn()
             cur = conn.cursor()
 
             cur.execute("""
@@ -5040,7 +5048,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             # oxiri
             if data["index"] >= len(data["surveys"]) - 1:
 
-                conn = psycopg2.connect(DATABASE_URL)
+                conn = _get_db_conn()
                 cur = conn.cursor()
 
                 cur.execute("""
@@ -5168,7 +5176,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await _dts.dts_navigator(call, page=page); return
         if d.startswith("dts_del_topic:"):
             tc = d[14:]
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            conn2=_get_db_conn();cur2=conn2.cursor()
             cur2.execute("UPDATE dts_tree SET is_deleted=TRUE WHERE topic_code=%s",(tc,))
             # Agar sinf bo'sh qolsa — sinf ham "yo'qoladi" (barcha topiklar o'chirilgan)
             conn2.commit();cur2.close();conn2.close()
@@ -5205,7 +5213,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("sinash_subj:"):
         parts2 = call.data.split(":", 2)
         grade2 = parts2[1]; subj2 = parts2[2]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # Mavzu darajasida DISTINCT — kichik mavzular ko'rinmaydi
         cur2.execute("""
             SELECT d.mavzu_name, d.mavzu_code,
@@ -5240,7 +5248,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("mustah_subj:"):
         parts2 = call.data.split(":", 2)
         grade2 = parts2[1]; subj2 = parts2[2]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT tl.topic_code, d.kichik_name
             FROM teacher_lessons tl
@@ -5276,7 +5284,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("mustah_other:"):
         page = int(call.data.split(":")[1])
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (call.from_user.id,))
         _gr = cur2.fetchone(); _my_grade = str(_gr[0]) if _gr else "1"
         cur2.execute("""
@@ -5317,7 +5325,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("mustah_all:"):
         grade = call.data.split(":")[1]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # O'z sinfi + CEFR kabi boshqalar
         cur2.execute("""
             SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
@@ -5345,7 +5353,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "err_unread":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""SELECT id,user_id,username,error_text,created_at FROM error_log WHERE is_read=FALSE ORDER BY created_at DESC LIMIT 10""")
         rows2 = cur2.fetchall()
         cur2.execute("UPDATE error_log SET is_read=TRUE WHERE is_read=FALSE")
@@ -5360,7 +5368,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "err_read":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""SELECT username,error_text,created_at FROM error_log WHERE is_read=TRUE ORDER BY created_at DESC LIMIT 10""")
         rows2 = cur2.fetchall(); cur2.close(); conn2.close()
         await call.answer()
@@ -5374,7 +5382,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "err_clear":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("DELETE FROM error_log WHERE is_read=TRUE")
         deleted = cur2.rowcount; conn2.commit(); cur2.close(); conn2.close()
         await call.answer(f"{deleted} ta o'qilgan xato o'chirildi", show_alert=True)
@@ -5428,7 +5436,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "menu_kitob_oqit":
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
         books2 = cur2.fetchall(); cur2.close(); conn2.close()
         if not books2:
@@ -5443,7 +5451,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         ); return
 
     if call.data == "menu_kitob_word":
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
         books2 = cur2.fetchall(); cur2.close(); conn2.close()
         if not books2:
@@ -5460,7 +5468,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("rasm_grade:"):
         gr = call.data.split(":")[1]
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT DISTINCT d.subject_name FROM dts_tree d
             JOIN generated_tests g ON g.topic_code=d.topic_code
             WHERE d.grade=%s AND d.is_deleted=FALSE ORDER BY d.subject_name""", (gr,))
@@ -5477,7 +5485,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("rasm_fan:"):
         parts2=call.data.split(":",2); gr,fan2=parts2[1],parts2[2]
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT DISTINCT d.kichik_name, d.topic_code,
             COUNT(g.id) as cnt,
             EXISTS(SELECT 1 FROM images i WHERE i.name LIKE d.topic_code||'-%') as has_img
@@ -5502,7 +5510,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("mtt_gr:"):
         gr = call.data[7:]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name", (gr,))
         fans = [r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
         rows2 = [[InlineKeyboardButton(text=f"📚 {f}", callback_data=f"mtt_fan:{gr}:{f}")] for f in fans]
@@ -5667,7 +5675,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2 = call.data.split(":")
         tc, fan2, sinf2 = parts2[1], parts2[2], parts2[3] if len(parts2)>3 else "1"
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute(
             "SELECT question FROM generated_tests WHERE topic_code=%s LIMIT 5",
             (tc,)
@@ -5691,7 +5699,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2 = call.data.split(":")
         tc, fan2, sinf2, num = parts2[1], parts2[2], parts2[3], int(parts2[4])
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute(
             "SELECT id, question FROM generated_tests WHERE topic_code=%s LIMIT %s",
             (tc, num)
@@ -5705,7 +5713,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 from rasim_generator import generate_and_save
                 fid = await generate_and_save(tc, question, fan2, sinf2, num, bot, call.message.chat.id)
                 if fid:
-                    conn3 = psycopg2.connect(DATABASE_URL); cur3 = conn3.cursor()
+                    conn3 = _get_db_conn(); cur3 = conn3.cursor()
                     cur3.execute("UPDATE generated_tests SET image_url=%s WHERE id=%s",
                                 (f"{tc}-{num}", tid))
                     conn3.commit(); cur3.close(); conn3.close()
@@ -5768,7 +5776,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "menu_bilim_sin":
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT grade FROM (
             SELECT DISTINCT d.grade FROM generated_tests g
             JOIN dts_tree d ON d.topic_code=g.topic_code WHERE d.is_deleted=FALSE
@@ -5793,7 +5801,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_davom:"):
         book_id2=int(call.data[12:])
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT MAX(page_num) FROM book_pages WHERE book_id=%s",(book_id2,))
         last=(cur2.fetchone() or [0])[0] or 0
         cur2.close(); conn2.close()
@@ -5825,7 +5833,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_del_page:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("DELETE FROM book_exercises WHERE book_id=%s AND page_num=%s",(book_id2,page2))
         cur2.execute("DELETE FROM book_pages WHERE book_id=%s AND page_num=%s",(book_id2,page2))
         conn2.commit(); cur2.close(); conn2.close()
@@ -5848,7 +5856,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data.split(":"); book_id2=int(parts2[1]); last_page=int(parts2[2])
         await call.answer()
         admin_state.pop(user_id, None)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(last_page,book_id2))
         conn2.commit(); cur2.close(); conn2.close()
         await call.message.answer(f"✅ Kitob saqlandi!\n📄 {last_page} bet\n🔑 ID: {book_id2}")
@@ -5881,7 +5889,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("kitob_info:"):
         book_id=int(call.data[11:])
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT title,sinf,fan,muallif,total_pages FROM books WHERE id=%s",(book_id,))
         b=cur2.fetchone()
         cur2.execute("SELECT COUNT(*) FROM book_exercises WHERE book_id=%s",(book_id,))
@@ -5907,7 +5915,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         pg=get_page(book_id2,page2)
         if not pg:
             await call.message.answer("❌ Bet topilmadi"); return
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
         tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         nav=[]
@@ -5976,7 +5984,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("kitob_del:"):
         book_id2=int(call.data[10:]); await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT title FROM books WHERE id=%s",(book_id2,))
         b2=cur2.fetchone(); cur2.close(); conn2.close()
         title2=b2[0] if b2 else "Kitob"
@@ -6001,7 +6009,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("sin_gr:"):
         gr=call.data[7:]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT d.subject_name, COUNT(DISTINCT g.topic_code) as cnt
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.grade=%s AND d.is_deleted=FALSE
@@ -6028,7 +6036,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         await call.answer()
         PAGE = 10
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         # MAVZU darajasi — kichik mavzular ko'rinmaydi
         cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, COUNT(g.id) as cnt
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
@@ -6061,7 +6069,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("sin_mavzu:"):
         tc2=call.data[10:]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s",(tc2,))
         cnt2=cur2.fetchone()[0]
         cur2.execute("SELECT kichik_name FROM dts_tree WHERE topic_code=%s LIMIT 1",(tc2,))
@@ -6083,7 +6091,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("stnav_grade:"):
         grade = call.data.split(":")[1]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT DISTINCT subject_name FROM dts_tree
             WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name
@@ -6102,7 +6110,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("stnav_subj:"):
         parts2 = call.data.split(":")
         grade, subj = parts2[1], ":".join(parts2[2:])
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT DISTINCT mavzu_name, mavzu_code FROM dts_tree
             WHERE grade=%s AND subject_name=%s AND is_deleted=FALSE
@@ -6127,7 +6135,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("stnav_topic:"):
         parts2 = call.data.split(":")
         grade, subj, mavzu_code = parts2[1], parts2[2], parts2[3]
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # Kichik mavzular
         cur2.execute("""
             SELECT DISTINCT kichik_name, topic_code FROM dts_tree
@@ -6170,7 +6178,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("ts_mavzu:"):
         mavzu_code = call.data[9:]
         # Shu mavzu_code dagi barcha topic_code lar bo'yicha testlar
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""SELECT DISTINCT topic_code FROM dts_tree
             WHERE mavzu_code=%s AND is_deleted=FALSE""", (mavzu_code,))
         topic_codes = [r[0] for r in cur2.fetchall()]
@@ -6203,7 +6211,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("ts_start:"):
         topic_code = call.data.split(":")[1]
         # Test sonini tekshirish
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (topic_code,))
         cnt = cur2.fetchone()[0]; cur2.close(); conn2.close()
         if cnt == 0:
@@ -6325,7 +6333,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("admin_fix_test:"):
         # Admin tuzatish paneli
         tid = int(call.data.split(":")[1])
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT g.id, g.topic_code, g.question, g.option_a, g.option_b, g.option_c, g.option_d,
                    g.correct_answer, g.explanation, g.image_url, g.question_type,
@@ -6364,7 +6372,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tid=int(call.data.split(":")[1])
         await call.answer()
         admin_state[user_id]=f"edit_test_field:{tid}:question"
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT question FROM generated_tests WHERE id=%s",(tid,))
         row2=cur2.fetchone();cur2.close();conn2.close()
         await call.message.answer(f"✏️ Yangi savolni yozing:\n\nHozirgi:\n{row2[0] if row2 else ''}")
@@ -6373,7 +6381,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("edit_ans:"):
         tid=int(call.data.split(":")[1])
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT option_a,option_b,option_c,option_d,correct_answer FROM generated_tests WHERE id=%s",(tid,))
         row2=cur2.fetchone();cur2.close();conn2.close()
         if row2:
@@ -6390,7 +6398,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("set_ans:"):
         parts2=call.data.split(":");tid=int(parts2[1]);ans=parts2[2]
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE generated_tests SET correct_answer=%s WHERE id=%s",(ans,tid))
         conn2.commit();cur2.close();conn2.close()
         await call.answer(f"✅ To'g'ri javob {ans} ga o'zgartirildi",show_alert=True)
@@ -6400,7 +6408,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tid=int(call.data.split(":")[1])
         await call.answer()
         admin_state[user_id]=f"edit_test_field:{tid}:explanation"
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT explanation FROM generated_tests WHERE id=%s",(tid,))
         row2=cur2.fetchone();cur2.close();conn2.close()
         await call.message.answer(f"💡 Yangi izohni yozing:\n\nHozirgi:\n{row2[0] if row2 else '-'}")
@@ -6410,7 +6418,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tid=int(call.data.split(":")[1])
         await call.answer()
         admin_state[user_id]=f"edit_test_field:{tid}:image_url"
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT image_url FROM generated_tests WHERE id=%s",(tid,))
         row2=cur2.fetchone();cur2.close();conn2.close()
         await call.message.answer(f"🖼 Yangi rasm kodini yozing:\n\nHozirgi: {row2[0] if row2 else '-'}\n\nMasalan: 3-02-1-001-1")
@@ -6418,7 +6426,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("fix_ok:"):
         tid = int(call.data.split(":")[1])
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("UPDATE test_corrections SET status='resolved' WHERE test_id=%s", (tid,))
         conn2.commit(); cur2.close(); conn2.close()
         await call.answer("✅ Belgilandi")
@@ -6428,7 +6436,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("del_test:"):
         if user_id not in ADMINS: return
         tid = int(call.data.split(":")[1])
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("DELETE FROM generated_tests WHERE id=%s", (tid,))
         cur2.execute("UPDATE test_corrections SET status='deleted' WHERE test_id=%s", (tid,))
         conn2.commit(); cur2.close(); conn2.close()
@@ -6446,7 +6454,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if not tc:
             await call.answer("❌ Mavzu tanlanmagan — qayta tanlang", show_alert=True)
             return
-        conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
         diff_f = "" if diff=="all" else f"AND difficulty='{diff}'"
         type_f = "" if write=="mix" else ("" if write else "AND question_type != 'write_answer'")
         img    = st2.get("ts_img", "mix")
@@ -6534,7 +6542,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 cell = ws.cell(row=1, column=col, value=h)
                 cell.font = Font(bold=True, color="FFFFFF")
                 cell.fill = PatternFill("solid", fgColor="2E86AB")
-            conn_t = psycopg2.connect(DATABASE_URL)
+            conn_t = _get_db_conn()
             cur_t = conn_t.cursor()
             cur_t.execute("SELECT grade FROM dts_tree WHERE topic_code=%s LIMIT 1", (topic_code,))
             row_t = cur_t.fetchone()
@@ -6566,7 +6574,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             topic_code = parts[1]
             await call.answer("🤖 AI yaratmoqda...", show_alert=True)
             # DTS dan ma'lumot olish
-            conn_g = psycopg2.connect(DATABASE_URL)
+            conn_g = _get_db_conn()
             cur_g = conn_g.cursor()
             cur_g.execute("""
                 SELECT grade, subject_name, mavzu_name, kichik_name
@@ -6580,7 +6588,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 msg = await call.message.answer(f"🤖 AI ishlamoqda...\n📌 {kichik}")
                 try:
                     questions = await _generate_questions(grade, subject, mavzu, kichik, topic_code)
-                    conn_s = psycopg2.connect(DATABASE_URL)
+                    conn_s = _get_db_conn()
                     cur_s = conn_s.cursor()
                     for q in questions:
                         cur_s.execute("""
@@ -6613,7 +6621,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         elif action == "del_yes":
             topic_code = parts[1]
-            conn_d = psycopg2.connect(DATABASE_URL)
+            conn_d = _get_db_conn()
             cur_d = conn_d.cursor()
             cur_d.execute("DELETE FROM generated_tests WHERE topic_code=%s", (topic_code,))
             cnt = cur_d.rowcount
@@ -6640,7 +6648,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         elif action == "view":
             topic_code = parts[1]
             offset = int(parts[2]) if len(parts) > 2 else 0
-            conn_v = psycopg2.connect(DATABASE_URL)
+            conn_v = _get_db_conn()
             cur_v = conn_v.cursor()
             cur_v.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s", (topic_code,))
             total_v = cur_v.fetchone()[0]
@@ -6688,7 +6696,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "go_home_dashboard":
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
         row = cur2.fetchone()
@@ -6720,7 +6728,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "go_home":
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
         row = cur2.fetchone()
@@ -6784,7 +6792,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if next_topic and next_topic[3] == subj:
             await open_teacher_lesson(call.message, next_topic[0], _user_id=call.from_user.id)
         else:
-            conn2 = psycopg2.connect(DATABASE_URL)
+            conn2 = _get_db_conn()
             cur2  = conn2.cursor()
             cur2.execute("""
                 SELECT t.topic_code FROM dts_tree t
@@ -6805,7 +6813,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "exam_later":
         await call.answer("⏰ Keyinroq eslatiladi")
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur  = conn.cursor()
         cur.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
         row  = cur.fetchone()
@@ -6858,7 +6866,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "tg_yangi":
         await call.answer()
         if user_id not in ADMINS:
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            conn2=_get_db_conn();cur2=conn2.cursor()
             cur2.execute("SELECT COUNT(*) FROM togaraklar WHERE teacher_id=%s AND aktiv=TRUE",(user_id,))
             cnt2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
             if cnt2 >= 1:
@@ -6880,7 +6888,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
                f"📅 To'lov sanasi: har oyning {t['oylik_sana']}-kuni")
         # Pending so'rovlar sonini ko'rsat
-        conn3=psycopg2.connect(DATABASE_URL);cur3=conn3.cursor()
+        conn3=_get_db_conn();cur3=conn3.cursor()
         cur3.execute("SELECT COUNT(*) FROM togarak_requests r JOIN togaraklar t ON t.id=r.togarak_id WHERE r.togarak_id=%s AND r.status='pending' AND t.teacher_id=%s",(tgid,user_id))
         pend_cnt=(cur3.fetchone() or [0])[0]; cur3.close(); conn3.close()
         pend_txt=f"📨 So'rovlar ({pend_cnt})" if pend_cnt else "📨 So'rovlar"
@@ -7022,7 +7030,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         from togarak import join_togarak
         # O'qituvchi to'garakni boshqarishini tekshirish
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid2,user_id))
         if not cur2.fetchone():
             cur2.close();conn2.close()
@@ -7094,7 +7102,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_azolar_msg:"):
         tgid=int(call.data[14:]); await call.answer()
         from togarak import get_togarak_azolar
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT teacher_id FROM togaraklar WHERE id=%s",(tgid,))
         t2=cur2.fetchone()
         cur2.execute("SELECT user_id FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(tgid,))
@@ -7107,7 +7115,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             if a["uid"]==user_id: continue
             rows2.append([InlineKeyboardButton(text=f"👤 {a['ism']} ({a['sinf'] or '-'})",callback_data=f"tg_pm:{tgid}:{a['uid']}:0")])
         if t2 and t2[0]!=user_id:
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            conn2=_get_db_conn();cur2=conn2.cursor()
             cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(t2[0],))
             tname=(cur2.fetchone() or ["O'qituvchi"])[0]; cur2.close(); conn2.close()
             rows2.insert(0,[InlineKeyboardButton(text=f"👨‍🏫 {tname}",callback_data=f"tg_pm:{tgid}:{t2[0]}:0")])
@@ -7119,7 +7127,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data.split(":"); tgid,uid2,page=int(parts2[1]),int(parts2[2]),int(parts2[3])
         await call.answer()
         from togarak import get_personal_messages
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
         uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         msgs=get_personal_messages(tgid,user_id,uid2,30)
@@ -7149,7 +7157,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
         await call.answer()
         admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
         uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         await call.message.answer(f"✍️ {uname} ga xabar yozing:",
@@ -7187,7 +7195,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from datetime import datetime
         bugun_id=datetime.now().weekday()
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("SELECT boshlanish,tugash FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid,bugun_id))
             j=cur2.fetchone()
@@ -7219,7 +7227,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("tg_reja_add:"):
         tgid=int(call.data[12:]); await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         # Faqat 1-11 bo'lmagan maxsus sinflar
         cur2.execute("""SELECT DISTINCT grade FROM dts_tree
             WHERE grade IS NOT NULL AND is_deleted=FALSE
@@ -7235,7 +7243,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_reja_sinf:"):
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name",(sinf,))
         fanlar=cur2.fetchall(); cur2.close(); conn2.close()
         rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
@@ -7245,7 +7253,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_reja_fan:"):
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         # Bo'lim qadami yo'q — to'g'ridan mavzular
         cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
             FROM dts_tree WHERE grade=%s AND subject_name=%s
@@ -7266,7 +7274,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_reja_bob:"):
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]; bob=parts2[3]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         # Faqat mavzu darajasi — DISTINCT mavzu_code bo'yicha
         cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
             FROM dts_tree WHERE grade=%s AND subject=%s AND bo_lim LIKE %s
@@ -7288,7 +7296,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[18:].split(":"); tgid=int(parts2[0]); code=parts2[1]
         await call.answer()
         # mavzu_code dan mavzu_name ni olish
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT mavzu_name FROM dts_tree WHERE mavzu_code=%s LIMIT 1",(code,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         mavzu_name = row2[0] if row2 else code
@@ -7439,7 +7447,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("stg_hw_do:"):
         parts2=call.data.split(":"); hw_id,tgid=int(parts2[1]),int(parts2[2])
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT mavzu,topshiriq FROM homework WHERE id=%s",(hw_id,))
         hw=cur2.fetchone(); cur2.close(); conn2.close()
         if not hw: await call.message.answer("❌ Topilmadi"); return
@@ -7542,7 +7550,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[15:].split(":"); tgid=int(parts2[0]); code=parts2[1]
         await call.answer()
         # Mavzu test sozlamalari
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=%s",(code,))
         cnt=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         if cnt==0:
@@ -7609,7 +7617,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("parent_child:"):
         child_id=int(call.data[13:]); await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
         child=cur2.fetchone(); cur2.close(); conn2.close()
         if not child: await call.message.answer("❌ Topilmadi"); return
@@ -7629,7 +7637,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         child_id=int(call.data[16:]); await call.answer()
         from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress
         tgs=get_student_togaraklar(child_id)
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
         child=cur2.fetchone(); cur2.close(); conn2.close()
         txt=f"📊 {child[0] if child else '?'} rivojlanishi\n{'─'*20}\n\n"
@@ -7650,7 +7658,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tgs=get_student_togaraklar(child_id)
         txt="📋 Yoqlama\n"+"─"*20+"\n\n"
         for t in tgs:
-            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            conn2=_get_db_conn();cur2=conn2.cursor()
             cur2.execute("""SELECT sana,holat FROM togarak_yoqlama
                 WHERE togarak_id=%s AND user_id=%s ORDER BY sana DESC LIMIT 10""",
                 (t["id"],child_id))
@@ -7679,7 +7687,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("parent_imtihon:"):
         child_id=int(call.data[15:]); await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s",(child_id,))
         cls=(cur2.fetchone() or [None])[0]
         sinf=str(cls or "").replace("-sinf","").strip()
@@ -7698,7 +7706,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("parent_test:"):
         parts2=call.data[12:].split(":"); child_id=int(parts2[0]); tcode=parts2[1]
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT question,option_a,option_b,option_c,option_d,
             correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
             FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 10""",(tcode,))
@@ -7719,7 +7727,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("parent_msg_teacher:"):
         teacher_id=int(call.data[19:]); await call.answer()
         admin_state[user_id]=f"parent_send_msg:{teacher_id}"
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(teacher_id,))
         tname=(cur2.fetchone() or ["O'qituvchi"])[0]; cur2.close(); conn2.close()
         await call.message.answer(f"✍️ {tname} ga xabar yozing:")
@@ -7744,7 +7752,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "kb_switch_acc":
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""
             SELECT id, account_index, full_name, role
             FROM user_accounts WHERE telegram_id=%s
@@ -7760,7 +7768,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("kb_activate:"):
         acc_id2=int(call.data[12:]); await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         # Avval barchasini nofaol
         cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
         # Tanlanganni faol
@@ -7789,7 +7797,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "kb_togaraklar":
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
         role2=str((cur2.fetchone() or [""])[0]); cur2.close(); conn2.close()
         from togarak import get_teacher_togaraklar, get_student_togaraklar
@@ -7831,7 +7839,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("kb_set_role:"):
         rol = call.data[12:]; await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol,user_id))
         conn2.commit();cur2.close();conn2.close()
         from keyboards import get_main_keyboard
@@ -7840,7 +7848,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("kb_set_class:"):
         cls = call.data[13:]; await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE users SET class=%s WHERE user_id=%s",(f"{cls}-sinf",user_id))
         conn2.commit();cur2.close();conn2.close()
         await call.message.answer(f"✅ Sinf o'zgartirildi: {cls}-sinf")
@@ -7865,7 +7873,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data == "kb_delete_confirm":
         await call.answer()
-        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("DELETE FROM users WHERE user_id=%s",(user_id,))
         conn2.commit();cur2.close();conn2.close()
         user_state.pop(user_id,None); temp_user.pop(user_id,None)
@@ -7985,7 +7993,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         uid = call.from_user.id
         # lesson_progress dan step olish
         try:
-            _conn = psycopg2.connect(DATABASE_URL); _cur = _conn.cursor()
+            _conn = _get_db_conn(); _cur = _conn.cursor()
             _cur.execute("SELECT current_step FROM lesson_progress WHERE user_id=%s AND topic_code=%s", (uid, tc))
             _row = _cur.fetchone()
             _step = _row[0] if _row else 0
@@ -8019,7 +8027,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         tc = call.data.split(":")[1]
         try:
-            _conn = psycopg2.connect(DATABASE_URL); _cur = _conn.cursor()
+            _conn = _get_db_conn(); _cur = _conn.cursor()
             _cur.execute("DELETE FROM lesson_progress WHERE user_id=%s", (call.from_user.id,))
             _conn.commit(); _cur.close(); _conn.close()
         except: pass
@@ -8119,7 +8127,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             return
 
         await call.answer()
-        conn2 = psycopg2.connect(DATABASE_URL)
+        conn2 = _get_db_conn()
         cur2  = conn2.cursor()
         cur2.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
         row = cur2.fetchone()
@@ -8164,7 +8172,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             us[user_id] = {}
         # O'quvchi sinfi
         try:
-            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cn = _get_db_conn(); _cc = _cn.cursor()
             _cc.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
             _gr = _cc.fetchone()
             _my_g = str(_gr[0]) if _gr and _gr[0] else "1"
@@ -8179,7 +8187,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         # Barcha mavjud sinflar
         try:
-            _cn = psycopg2.connect(DATABASE_URL); _cc = _cn.cursor()
+            _cn = _get_db_conn(); _cc = _cn.cursor()
             _cc.execute("""SELECT grade FROM (SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE) _g
                 ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 9999 END, grade""")
             _all_gr = [r[0] for r in _cc.fetchall()]
@@ -8333,7 +8341,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             return
         elif call.data == "tset_start":
             # Test boshlash — tanlangan sinflardan
-            conn2 = psycopg2.connect(DATABASE_URL)
+            conn2 = _get_db_conn()
             cur2  = conn2.cursor()
 
             sel_grades = s.get("grades", [])
@@ -8387,7 +8395,7 @@ async def notify_on_restart():
     """Bot yangilanganda foydalanuvchilarga xabar — dars/test holatini saqlab."""
     print("🔄 Foydalanuvchilarga xabar yuborilmoqda...")
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = _get_db_conn()
         cur  = conn.cursor()
         cur.execute("SELECT user_id, role FROM users")
         users = cur.fetchall()
@@ -8464,19 +8472,19 @@ async def brain_handler(message: Message, state: FSMContext):
     if message.text in menu_buttons: return
     try:
         from brain import process_message as _brain
-        conn_ = psycopg2.connect(DATABASE_URL); cur_ = conn_.cursor()
+        conn_ = _get_db_conn(); cur_ = conn_.cursor()
         cur_.execute("SELECT class FROM users WHERE user_id=%s", (uid,))
         gr_ = cur_.fetchone()
         grade_ = str(gr_[0]) if gr_ else None
         cur_.close(); conn_.close()
-        conn2_ = psycopg2.connect(DATABASE_URL); cur2_ = conn2_.cursor()
+        conn2_ = _get_db_conn(); cur2_ = conn2_.cursor()
         cur2_.execute("SELECT role FROM users WHERE user_id=%s",(uid,))
         role_ = str((cur2_.fetchone() or [""])[0]); cur2_.close(); conn2_.close()
         res = await _brain(message.text, uid, grade_, role=role_)
         if res.get("message"):
             await message.answer(res["message"])
         if res.get("action") == "START_TEST" and res.get("topic"):
-            conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
+            conn2 = _get_db_conn(); cur2 = conn2.cursor()
             cur2.execute("""
                 SELECT question,option_a,option_b,option_c,option_d,
                        correct_answer,explanation,question_type,is_latex,
@@ -8519,7 +8527,7 @@ async def main():
             if now.weekday() == 0 and now.hour == 8 and now.minute == 0:
                 try:
                     from features import get_weekly_report
-                    conn_ = psycopg2.connect(DATABASE_URL); cur_ = conn_.cursor()
+                    conn_ = _get_db_conn(); cur_ = conn_.cursor()
                     # Barcha ota-onalarga hisobot
                     cur_.execute("""SELECT p.parent_id, p.child_id, u.full_name,
                         a.togarak_id, t.nomi FROM parent_child p
@@ -8545,12 +8553,29 @@ async def main():
     except Exception as e:
         print(f'router_extra: {e}')
     asyncio.create_task(weekly_report_task())
-    # To'lov eslatma
     try:
         from router_extra import tolov_eslatma_task
         asyncio.create_task(tolov_eslatma_task(bot))
     except: pass
-    await dp.start_polling(bot)
+
+    # Webhook yoki polling
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL","")
+    if WEBHOOK_URL:
+        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+        from aiohttp import web as _web2
+        WEBHOOK_PATH = f"/webhook/{bot.token}"
+        await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
+        print(f"✅ Webhook: {WEBHOOK_URL}{WEBHOOK_PATH}")
+        app2 = _web2.Application()
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app2, path=WEBHOOK_PATH)
+        setup_application(app2, dp, bot=bot)
+        runner2 = _web2.AppRunner(app2)
+        await runner2.setup()
+        site2 = _web2.TCPSite(runner2, "0.0.0.0", 8080)
+        await site2.start()
+        await asyncio.Event().wait()
+    else:
+        await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
