@@ -293,3 +293,73 @@ def get_group_members(togarak_id: int) -> list:
         WHERE a.togarak_id=%s AND a.aktiv=TRUE""", (togarak_id,))
     rows = cur.fetchall(); cur.close(); conn.close()
     return [r[0] for r in rows]
+
+
+# ══ CHIQISH SO'ROVI ══
+def send_leave_request(togarak_id: int, user_id: int) -> dict:
+    conn = db(); cur = conn.cursor()
+    cur.execute("SELECT t.teacher_id, t.nomi, u.full_name FROM togaraklar t, users u WHERE t.id=%s AND u.user_id=%s",(togarak_id,user_id))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row: return {"ok":False,"msg":"❌ Topilmadi"}
+    return {"ok":True,"teacher_id":row[0],"tg_nomi":row[1],"user_name":row[2]}
+
+def confirm_leave(togarak_id: int, user_id: int) -> bool:
+    conn = db(); cur = conn.cursor()
+    cur.execute("UPDATE togarak_azolar SET aktiv=FALSE WHERE togarak_id=%s AND user_id=%s",(togarak_id,user_id))
+    ok=cur.rowcount>0; conn.commit(); cur.close(); conn.close()
+    return ok
+
+# ══ BAHOLASH ══
+def save_baho(togarak_id, user_id, baho, izoh="", teacher_id=None):
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO togarak_baholar(togarak_id,user_id,baho,izoh,teacher_id)
+            VALUES(%s,%s,%s,%s,%s)""", (togarak_id,user_id,baho,izoh,teacher_id))
+        conn.commit()
+    except: conn.rollback()
+    cur.close(); conn.close()
+
+def get_baholar(togarak_id, user_id=None):
+    conn = db(); cur = conn.cursor()
+    if user_id:
+        cur.execute("""SELECT b.baho, b.izoh, b.created_at, u.full_name
+            FROM togarak_baholar b JOIN users u ON u.user_id=b.teacher_id
+            WHERE b.togarak_id=%s AND b.user_id=%s ORDER BY b.created_at DESC LIMIT 10""",
+            (togarak_id,user_id))
+    else:
+        cur.execute("""SELECT u.full_name, AVG(b.baho)::numeric(4,1), COUNT(b.id)
+            FROM togarak_baholar b JOIN users u ON u.user_id=b.user_id
+            WHERE b.togarak_id=%s GROUP BY u.full_name ORDER BY u.full_name""", (togarak_id,))
+    rows=cur.fetchall(); cur.close(); conn.close()
+    return rows
+
+# ══ TO'LOV ══
+def save_tolov(togarak_id, user_id, summa, oy, teacher_id):
+    conn = db(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO togarak_tolovlar(togarak_id,user_id,summa,oy,teacher_id)
+            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(togarak_id,user_id,oy)
+            DO UPDATE SET summa=EXCLUDED.summa""",
+            (togarak_id,user_id,summa,oy,teacher_id))
+        conn.commit()
+    except: conn.rollback()
+    cur.close(); conn.close()
+
+def get_tolov_status(togarak_id, user_id=None):
+    conn = db(); cur = conn.cursor()
+    if user_id:
+        cur.execute("""SELECT oy, summa, created_at FROM togarak_tolovlar
+            WHERE togarak_id=%s AND user_id=%s ORDER BY oy DESC LIMIT 6""",
+            (togarak_id,user_id))
+    else:
+        from datetime import date
+        cur_month = date.today().strftime("%Y-%m")
+        cur.execute("""SELECT u.full_name, u.class,
+            CASE WHEN t.id IS NOT NULL THEN '✅' ELSE '❌' END as holat
+            FROM togarak_azolar a JOIN users u ON u.user_id=a.user_id
+            LEFT JOIN togarak_tolovlar t ON t.togarak_id=a.togarak_id
+                AND t.user_id=a.user_id AND t.oy=%s
+            WHERE a.togarak_id=%s AND a.aktiv=TRUE ORDER BY u.full_name""",
+            (cur_month, togarak_id))
+    rows=cur.fetchall(); cur.close(); conn.close()
+    return rows
