@@ -7993,7 +7993,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         for m in page_msgs:
             vaqt=str(m["vaqt"])[11:16] if m["vaqt"] else ""
             me=m["sender"]==user_id
-            txt+=f"{"➡️ Siz" if me else "⬅️ "+m["ism"]} {vaqt}\n{m["matn"]}\n\n"
+            txt+=f"{'-> Siz' if me else '<- '+m['ism']} {vaqt}\n{m['matn']}\n\n"
         nav=[]
         if p>0: nav.append(InlineKeyboardButton(text="⬅️",callback_data=f"stg_dm:{tgid}:{uid2}:{p-1}"))
         if (p+1)*per<total: nav.append(InlineKeyboardButton(text="➡️",callback_data=f"stg_dm:{tgid}:{uid2}:{p+1}"))
