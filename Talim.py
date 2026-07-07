@@ -6813,11 +6813,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_rm:"):
         parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
         await call.answer()
-        from togarak import remove_azо
+        from togarak import remove_azо, get_togarak_azolar
         if remove_azо(tgid,uid2,user_id):
             await call.answer("✅ O'chirildi",show_alert=True)
-            # Yangilash
-            call.data = f"tg_azolar:{tgid}"
+            # A'zolar ro'yhatini qayta ko'rsat
+            azolar = get_togarak_azolar(tgid)
+            txt = f"👥 A'zolar ({len(azolar)} ta):\n\n"
+            rows2=[]
+            for a in azolar:
+                txt += f"• {a['ism']} — {a['sinf'] or '—'}\n"
+                rows2.append([InlineKeyboardButton(text=f"❌ {a['ism'][:20]}",callback_data=f"tg_rm:{tgid}:{a['uid']}")])
+            rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+            try: await call.message.edit_text(txt[:2000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+            except: pass
         return
 
     if call.data.startswith("tg_yoqlama:"):
@@ -6846,11 +6854,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_yq:"):
         parts2=call.data.split(":"); tgid,uid2,holat=int(parts2[1]),int(parts2[2]),parts2[3]
         await call.answer()
-        from togarak import save_yoqlama
+        from togarak import save_yoqlama, get_yoqlama_bugun
         save_yoqlama(tgid, uid2, holat)
-        # Yoqlamani yangilash
-        call.data = f"tg_yoqlama:{tgid}"
-        from togarak import get_yoqlama_bugun
+        # Yangilash — call.data o'zgartirmasdan
         azolar = get_yoqlama_bugun(tgid)
         rows2=[]
         for a in azolar:
@@ -6863,8 +6869,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             ])
         rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")])
         keldi=sum(1 for a in azolar if a["holat"]=="keldi")
-        try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        except: pass
+        caption=f"📋 Bugungi yoqlama\n✅ Keldi: {keldi}/{len(azolar)}"
+        try:
+            await call.message.edit_text(caption, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except:
+            try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+            except: pass
         return
 
     if call.data.startswith("tg_stat:"):
