@@ -8,14 +8,14 @@ def get_main_keyboard(role=None, unread_errors=0):
             [KeyboardButton(text="🎯 Bugungi reja"),    KeyboardButton(text="🧪 Bilimni sinash")],
             [KeyboardButton(text="📚 Bilimni mustahkamlash"), KeyboardButton(text="📈 Rivojlanishim")],
             [KeyboardButton(text="📚 To'garaklar"),     KeyboardButton(text="🎨 Rasm chizdir")],
-            [KeyboardButton(text="👤 Kabinet")],
+            [KeyboardButton(text="🤖 Yordamchi"),       KeyboardButton(text="👤 Kabinet")],
         ]
 
     elif any(x in r for x in ("qituvchi","teacher")):
         keyboard = [
             [KeyboardButton(text="🧠 Bilimni sinash"),  KeyboardButton(text="📊 Bilim darajam")],
             [KeyboardButton(text="📚 To'garaklar"),     KeyboardButton(text="🎨 Rasm chizdir")],
-            [KeyboardButton(text="👤 Kabinet")],
+            [KeyboardButton(text="🤖 Yordamchi"),       KeyboardButton(text="👤 Kabinet")],
         ]
 
     elif "admin" in r:
@@ -27,8 +27,8 @@ def get_main_keyboard(role=None, unread_errors=0):
             [KeyboardButton(text="🖼 Rasmlar boshqaruvi"), KeyboardButton(text="🎨 AI Rasm yaratish")],
             [KeyboardButton(text=f"📊 Hisobotlar & Xatolar{err}")],
             [KeyboardButton(text="👥 Foydalanuvchilar"), KeyboardButton(text="🧭 DTS topik boshqaruvi")],
-            [KeyboardButton(text="📖 Darslar holati"),   KeyboardButton(text="⚙️ Akkaunt sozlamalari")],
-            [KeyboardButton(text="📚 To'garaklar")],
+            [KeyboardButton(text="📚 To'garaklar"),     KeyboardButton(text="🤖 Yordamchi")],
+            [KeyboardButton(text="📖 Darslar holati"),   KeyboardButton(text="👤 Kabinet")],
         ]
 
     else:
