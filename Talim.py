@@ -1896,7 +1896,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         user_state.pop(user_id, None)
         if rol == "student":
             # Sinf tanlash
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             temp_user[user_id]["full_name"] = name
             rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4)] for j in range(1, 12, 4)]
             await message.answer(
