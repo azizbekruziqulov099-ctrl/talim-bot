@@ -1671,6 +1671,45 @@ async def handle_all(
         await _error_and_home(message, user_id, _e, "Xatolik")
 
 
+async def _rq_save(source, user_id, name, rol, sinf):
+    """Tez kirish — foydalanuvchini saqlash."""
+    conn2=psycopg2.connect(DATABASE_URL); cur2=conn2.cursor()
+    rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
+    sinf_txt = f"{sinf}-sinf" if sinf else ""
+    try:
+        cur2.execute("""
+            INSERT INTO users(user_id,full_name,role,class,is_verified)
+            VALUES(%s,%s,%s,%s,TRUE)
+            ON CONFLICT(user_id) DO UPDATE
+            SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
+        """, (user_id, name, rol_uz, sinf_txt))
+        conn2.commit()
+    except Exception as e:
+        print(f"rq_save: {e}")
+    cur2.close(); conn2.close()
+    user_state.pop(user_id, None)
+    temp_user.pop(user_id, None)
+    from keyboards import get_main_keyboard
+    kb = get_main_keyboard(rol_uz)
+    if hasattr(source, "answer"):
+        await source.answer(
+            f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}",
+            reply_markup=kb
+        )
+    else:
+        await source.message.answer(
+            f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}",
+            reply_markup=kb
+        )
+
+async def _save_quick_user(call, user_id):
+    """rq_sinf callbackdan saqlash."""
+    data = temp_user.get(user_id, {})
+    name = data.get("full_name","Foydalanuvchi")
+    rol  = data.get("role","student")
+    sinf = data.get("class")
+    await _rq_save(call, user_id, name, rol, sinf)
+
 async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # Test paytida yozilgan xabarni o'chirish
@@ -1848,6 +1887,25 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         for r in results[:5]:
             txt+=f"📄 Bet {r['page']}: {r['text'][:80]}...\n\n"
         await message.answer(txt[:2000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    # Tez kirish — ism yozish
+    if str(user_state.get(user_id) or "").startswith("rq_name:") and message.text:
+        rol = str(user_state[user_id]).split(":")[1]
+        name = message.text.strip()
+        user_state.pop(user_id, None)
+        if rol == "student":
+            # Sinf tanlash
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            temp_user[user_id]["full_name"] = name
+            rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4)] for j in range(1, 12, 4)]
+            await message.answer(
+                f"✅ {name}\n\nSinfni tanlang:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+            )
+        else:
+            # O'qituvchi/ota-ona — to'g'ridan saqlash
+            await _rq_save(message, user_id, name, rol, None)
         return
 
     # Kitob o'chirish — parol tasdiqlash
@@ -6298,6 +6356,50 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer("▶️ Davom etilmoqda!")
         try: await call.message.delete()
         except: pass
+        return
+
+    if call.data.startswith("reg_quick:"):
+        await call.answer()
+        user_id2 = call.from_user.id
+        temp_user[user_id2] = {"quick": True}
+        # Rol tanlash
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await call.message.edit_text(
+            "⚡ Tez kirish\n\nRolni tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data="rq_rol:student")],
+                [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data="rq_rol:teacher")],
+                [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="rq_rol:parent")],
+            ])
+        )
+        return
+
+    if call.data.startswith("rq_rol:"):
+        rol = call.data[7:]; await call.answer()
+        user_id2 = call.from_user.id
+        temp_user[user_id2]["role"] = rol
+        user_state[user_id2] = f"rq_name:{rol}"
+        rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
+        await call.message.edit_text(f"⚡ {rol_uz}\n\nF.I.Sh yozing:\nMasalan: Aliyev Ali Aliyevich")
+        return
+
+    if call.data.startswith("reg_full:"):
+        await call.answer()
+        # To'liq ro'yxat — avvalgi oqim
+        from register import _ik, ROLES
+        user_id2 = call.from_user.id
+        temp_user[user_id2] = {}
+        user_state[user_id2] = "reg_wait_inline"
+        await call.message.edit_text("📋 Ro'yxatdan o'tish\n\nRolni tanlang:", reply_markup=_ik(ROLES,"role",cols=1))
+        return
+
+    if call.data.startswith("rq_sinf:"):
+        # Sinf tanlash
+        sinf = call.data[8:]; await call.answer()
+        user_id2 = call.from_user.id
+        temp_user[user_id2]["class"] = sinf
+        # Saqlash
+        await _save_quick_user(call, user_id2)
         return
 
     if call.data.startswith("reg:"):
