@@ -2067,6 +2067,41 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(f"✅ {labels.get(field,field)} yangilandi: {val}")
         return
 
+    if user_state.get(user_id) == "parent_link_id" and message.text:
+        user_state.pop(user_id, None)
+        try: child_id = int(message.text.strip())
+        except:
+            await message.answer("❌ Faqat raqam (ID) yozing!"); return
+        # Farzand borligini tekshirish
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
+        child=cur2.fetchone()
+        if not child:
+            cur2.close(); conn2.close()
+            await message.answer("❌ Bu ID bilan foydalanuvchi topilmadi!"); return
+        try:
+            cur2.execute("INSERT INTO parent_child(parent_id,child_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                        (user_id,child_id))
+            conn2.commit()
+        except: pass
+        cur2.close(); conn2.close()
+        await message.answer(f"✅ {child[0]} ({child[1] or '-'}) sizning farzandingiz sifatida ulandi!")
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("parent_send_msg:") and message.text:
+        teacher_id=int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id, None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
+        sender=(cur2.fetchone() or ["Ota-ona"])[0]; cur2.close(); conn2.close()
+        try:
+            await message.bot.send_message(teacher_id,
+                f"📨 Ota-ona xabari ({sender}):\n{message.text}")
+            await message.answer("✅ O'qituvchiga yuborildi!")
+        except:
+            await message.answer("❌ O'qituvchiga yuborib bo'lmadi.")
+        return
+
     # Kitob o'chirish — parol tasdiqlash
     if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
         book_id2=int(str(admin_state[user_id]).split(":")[1])
@@ -2319,6 +2354,81 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
+    # ── OTA-ONA MENYUSI ──
+    if message.text == "👶 Farzandim":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT u.user_id,u.full_name,u.class FROM parent_child p
+            JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
+        bolalar=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(
+            text=f"👶 {b[1]} ({b[2] or '-'})",
+            callback_data=f"parent_child:{b[0]}"
+        )] for b in bolalar]
+        rows2.append([InlineKeyboardButton(text="➕ Farzand ulash",callback_data="parent_link")])
+        txt = f"👶 Farzandlarim ({len(bolalar)} ta):" if bolalar else "👶 Hali farzand ulanmagan.\n\nFarzandingiz bot ID sini oling va ulang."
+        await message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if message.text == "📊 Nazorat":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
+            JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
+        bolalar=cur2.fetchall(); cur2.close(); conn2.close()
+        if not bolalar: await message.answer("👶 Avval farzand ulang!"); return
+        rows2=[[InlineKeyboardButton(
+            text=f"📊 {b[1]}",callback_data=f"parent_progress:{b[0]}"
+        )] for b in bolalar]
+        await message.answer("📊 Qaysi farzandni ko'rmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if message.text == "📋 Yoqlama":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
+            JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
+        bolalar=cur2.fetchall(); cur2.close(); conn2.close()
+        if not bolalar: await message.answer("👶 Avval farzand ulang!"); return
+        rows2=[[InlineKeyboardButton(text=f"📋 {b[1]}",callback_data=f"parent_yoqlama:{b[0]}")] for b in bolalar]
+        await message.answer("📋 Qaysi farzandning yoqlamasini ko'rmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if message.text == "⭐ Baholar":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT u.user_id,u.full_name FROM parent_child p
+            JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
+        bolalar=cur2.fetchall(); cur2.close(); conn2.close()
+        if not bolalar: await message.answer("👶 Avval farzand ulang!"); return
+        rows2=[[InlineKeyboardButton(text=f"⭐ {b[1]}",callback_data=f"parent_baho:{b[0]}")] for b in bolalar]
+        await message.answer("⭐ Qaysi farzandning baholarini ko'rmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if message.text == "📝 Uy imtihoni":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT u.user_id,u.full_name,u.class FROM parent_child p
+            JOIN users u ON u.user_id=p.child_id WHERE p.parent_id=%s""",(user_id,))
+        bolalar=cur2.fetchall(); cur2.close(); conn2.close()
+        if not bolalar: await message.answer("👶 Avval farzand ulang!"); return
+        rows2=[[InlineKeyboardButton(text=f"📝 {b[1]} ({b[2]})",callback_data=f"parent_imtihon:{b[0]}")] for b in bolalar]
+        await message.answer("📝 Kim uchun test yaratmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if message.text == "💬 O'qituvchi":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT DISTINCT t.teacher_id, u.full_name, tg.nomi
+            FROM parent_child p
+            JOIN togarak_azolar a ON a.user_id=p.child_id
+            JOIN togaraklar tg ON tg.id=a.togarak_id AND tg.aktiv=TRUE
+            JOIN users t ON TRUE
+            JOIN users u ON u.user_id=tg.teacher_id
+            WHERE p.parent_id=%s AND tg.teacher_id=u.user_id""",(user_id,))
+        oqituvchilar=cur2.fetchall(); cur2.close(); conn2.close()
+        if not oqituvchilar:
+            await message.answer("👨‍🏫 Farzandingiz hali hech qaysi to'garakda yo'q."); return
+        rows2=[[InlineKeyboardButton(
+            text=f"👨‍🏫 {o[1]} ({o[2]})",callback_data=f"parent_msg_teacher:{o[0]}"
+        )] for o in oqituvchilar]
+        await message.answer("👨‍🏫 Qaysi o'qituvchiga murojaat qilmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
     if message.text == "🎨 Rasm chizdir":
         conn2 = psycopg2.connect(DATABASE_URL); cur2 = conn2.cursor()
         try:
@@ -2348,6 +2458,10 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             "• «maktabda dars»\n"
             "• «qishki manzara»"
         )
+        return
+
+    if message.text == "/id":
+        await message.answer(f"🆔 Sizning Telegram ID ingiz:\n<code>{user_id}</code>\n\nOta-onangizga yuboring!", parse_mode="HTML")
         return
 
     if message.text == "/stop":
@@ -7103,6 +7217,134 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from togarak import leave_togarak
         if leave_togarak(tgid,user_id):
             await call.message.answer("✅ To'garakdan chiqdingiz!")
+        return
+
+    # ── OTA-ONA CALLBACKLAR ──
+    if call.data == "parent_link":
+        await call.answer()
+        user_state[user_id]="parent_link_id"
+        await call.message.answer(
+            "👶 Farzandingizning Telegram ID sini yozing.\n\n"
+            "Farzandingiz botda /id yozsin — ID ni ko'radi."
+        )
+        return
+
+    if call.data.startswith("parent_child:"):
+        child_id=int(call.data[13:]); await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
+        child=cur2.fetchone(); cur2.close(); conn2.close()
+        if not child: await call.message.answer("❌ Topilmadi"); return
+        rows2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Rivojlanish",callback_data=f"parent_progress:{child_id}"),
+             InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"parent_yoqlama:{child_id}")],
+            [InlineKeyboardButton(text="⭐ Baholar",callback_data=f"parent_baho:{child_id}"),
+             InlineKeyboardButton(text="📝 Test ber",callback_data=f"parent_imtihon:{child_id}")],
+        ])
+        await call.message.answer(
+            f"👶 {child[0]} ({child[1] or '-'})",
+            reply_markup=rows2
+        )
+        return
+
+    if call.data.startswith("parent_progress:"):
+        child_id=int(call.data[16:]); await call.answer()
+        from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress
+        tgs=get_student_togaraklar(child_id)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
+        child=cur2.fetchone(); cur2.close(); conn2.close()
+        txt=f"📊 {child[0] if child else '?'} rivojlanishi\n{'─'*20}\n\n"
+        if not tgs: txt+="Hali to'garakka a'zo emas."
+        for t in tgs:
+            prog=get_togarak_progress(t["id"])
+            sp=get_student_progress(t["id"],child_id)
+            txt+=f"📚 {t['nomi']}\n"
+            txt+=f"  📖 O'tildi: {prog['pct']}%\n"
+            txt+=f"  📋 Davomat: {sp['yoqlama_pct']}%\n"
+            txt+=f"  ⭐ Baho: {sp['avg_baho']}\n\n"
+        await call.message.answer(txt[:3000])
+        return
+
+    if call.data.startswith("parent_yoqlama:"):
+        child_id=int(call.data[15:]); await call.answer()
+        from togarak import get_student_togaraklar
+        tgs=get_student_togaraklar(child_id)
+        txt="📋 Yoqlama\n"+"─"*20+"\n\n"
+        for t in tgs:
+            conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+            cur2.execute("""SELECT sana,holat FROM togarak_yoqlama
+                WHERE togarak_id=%s AND user_id=%s ORDER BY sana DESC LIMIT 10""",
+                (t["id"],child_id))
+            rows2=cur2.fetchall(); cur2.close(); conn2.close()
+            txt+=f"📚 {t['nomi']}:\n"
+            for y in rows2:
+                icon="✅" if y[1]=="keldi" else ("⏰" if y[1]=="kech" else "❌")
+                txt+=f"  {icon} {str(y[0])[:10]}\n"
+            txt+="\n"
+        await call.message.answer(txt[:3000])
+        return
+
+    if call.data.startswith("parent_baho:"):
+        child_id=int(call.data[12:]); await call.answer()
+        from togarak import get_student_togaraklar, get_baholar
+        tgs=get_student_togaraklar(child_id)
+        txt="⭐ Baholar\n"+"─"*20+"\n\n"
+        for t in tgs:
+            baholar=get_baholar(t["id"],child_id)
+            txt+=f"📚 {t['nomi']}:\n"
+            for b in baholar[:5]:
+                txt+=f"  ⭐{b[0]}/5 — {b[1] or ''}\n"
+            txt+="\n"
+        await call.message.answer(txt[:3000])
+        return
+
+    if call.data.startswith("parent_imtihon:"):
+        child_id=int(call.data[15:]); await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT class FROM users WHERE user_id=%s",(child_id,))
+        cls=(cur2.fetchone() or [None])[0]
+        sinf=str(cls or "").replace("-sinf","").strip()
+        cur2.execute("""SELECT topic_code,mavzu FROM dts_tree
+            WHERE sinf=%s AND NOT is_deleted ORDER BY RANDOM() LIMIT 10""",(sinf,))
+        topics=cur2.fetchall(); cur2.close(); conn2.close()
+        if not topics:
+            await call.message.answer("❌ Mavzular topilmadi. Sinf belgilanmagan bo'lishi mumkin."); return
+        rows2=[[InlineKeyboardButton(
+            text=f"📌 {t[1][:40]}",callback_data=f"parent_test:{child_id}:{t[0]}"
+        )] for t in topics]
+        await call.message.answer("📝 Qaysi mavzudan test bermoqchisiz?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("parent_test:"):
+        parts2=call.data[12:].split(":"); child_id=int(parts2[0]); tcode=parts2[1]
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("""SELECT question,option_a,option_b,option_c,option_d,
+            correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
+            FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 10""",(tcode,))
+        tests=cur2.fetchall(); cur2.close(); conn2.close()
+        if not tests:
+            await call.message.answer("❌ Bu mavzuda testlar yo'q!"); return
+        # Farzandga test yuborish
+        try:
+            await call.bot.send_message(child_id,
+                f"📝 Ota-onangiz sizga test yubordi!\nMavzu: {tcode}")
+            from test_engine import start_test
+            await start_test(child_id, tests, call.message)
+            await call.message.answer("✅ Test farzandingizga yuborildi!")
+        except Exception as e:
+            await call.message.answer(f"❌ Xato: {e}")
+        return
+
+    if call.data.startswith("parent_msg_teacher:"):
+        teacher_id=int(call.data[19:]); await call.answer()
+        admin_state[user_id]=f"parent_send_msg:{teacher_id}"
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(teacher_id,))
+        tname=(cur2.fetchone() or ["O'qituvchi"])[0]; cur2.close(); conn2.close()
+        await call.message.answer(f"✍️ {tname} ga xabar yozing:")
         return
 
     # ── KABINET CALLBACKLAR ──
