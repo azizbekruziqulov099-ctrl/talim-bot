@@ -5079,7 +5079,7 @@ def _mk_ts_kb(st2, cnt_total):
     cnt   = st2.get("ts_count", 20)
     diff  = st2.get("ts_diff", "all")
     timed = st2.get("ts_timed", "mix")   # True/False/"mix"
-    write = st2.get("ts_write", "mix")   # True/False/"mix"
+    write = st2.get("ts_write", False)   # True/False/"mix"
     img   = st2.get("ts_img", "mix")     # True/False/"mix"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{c(cnt==20)}20 ta",    callback_data="ts_cnt_20"),
@@ -6461,7 +6461,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             return
         await call.answer()
         from test_engine import start_test
-        await start_test(user_id, tests, call.message)
+        timed_ = st2.get("ts_timed", True)
+        await start_test(user_id, tests, call.message, timed=timed_)
         from storage import test_sessions as _ts
         if user_id in _ts:
             _ts[user_id]["topic_code"] = tc
