@@ -6825,8 +6825,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.answer(
                 f"📨 So'rov #{r['id']}\n👤 {r['ism']} — {r['sinf'] or '-'}\n📚 {r['tg_nomi']}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{r['id']}"),
-                    InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{r['id']}"),
+                    InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{r['uid']}|{r['tg_id']}"),
+                    InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{r['uid']}|{r['tg_id']}"),
                 ]])
             )
         return
