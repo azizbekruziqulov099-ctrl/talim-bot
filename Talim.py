@@ -6660,6 +6660,21 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ── KABINET CALLBACKLAR ──
+    if call.data == "kb_togaraklar":
+        await call.answer()
+        from togarak import get_student_togaraklar
+        tgs = get_student_togaraklar(user_id)
+        rows2 = [[InlineKeyboardButton(
+            text=f"📚 {t['nomi']} | {t['teacher']}",
+            callback_data=f"stg_info:{t['id']}"
+        )] for t in tgs]
+        rows2.append([InlineKeyboardButton(text="🔑 To'garakka qo'shilish", callback_data="stg_join")])
+        await call.message.answer(
+            f"📚 Mening to'garaklarim ({len(tgs)} ta):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return
+
     if call.data.startswith("kb_change:"):
         field = call.data[10:]; await call.answer()
         prompts = {
@@ -6736,7 +6751,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         user_id2 = call.from_user.id
         temp_user[user_id2] = {"quick": True}
         # Rol tanlash
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await call.message.edit_text(
             "⚡ Tez kirish\n\nRolni tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
