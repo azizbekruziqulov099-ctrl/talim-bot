@@ -2680,13 +2680,14 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "📈 Rivojlanishim":
-        from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress, get_reja
+        from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress
         from datetime import datetime
         tgs = get_student_togaraklar(user_id)
         bugun_id = datetime.now().weekday()
         KUNLAR = ["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
 
         txt = "📈 Rivojlanishim\n" + "─"*20 + "\n\n"
+        rows2 = []
 
         if not tgs:
             txt += "📚 Hali hech qaysi to'garakka a'zo emassiz.\n"
@@ -2694,47 +2695,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             for t in tgs:
                 prog = get_togarak_progress(t["id"])
                 sp = get_student_progress(t["id"], user_id)
-
-                # Bilim darajasi
                 bdaraja = "⭐ A'lo" if sp["avg_baho"]>=4.5 else ("👍 Yaxshi" if sp["avg_baho"]>=3.5 else ("📖 O'rta" if sp["avg_baho"]>0 else "—"))
-
-                # Bugungi va keyingi dars
                 conn2=_get_db_conn();cur2=conn2.cursor()
                 try:
                     cur2.execute("SELECT boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],bugun_id))
                     j=cur2.fetchone()
-                    # Keyingi dars kuni
-                    for d in range(1,8):
-                        next_id=(bugun_id+d)%7
-                        cur2.execute("SELECT kun_nomi,boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],next_id))
-                        nj=cur2.fetchone()
-                        if nj: break
-                    else: nj=None
-                except: j=None; nj=None
+                except: j=None
                 cur2.close(); conn2.close()
-
-                # Reja progress — 10 lik albomlar
-                reja = get_reja(t["id"])
-                total_r = len(reja); done_r = sum(1 for r in reja if r["completed"])
-                albom_no = done_r // 10 + 1
-                albom_pos = done_r % 10
-                bar = "█"*albom_pos + "░"*(10-albom_pos)
-
                 txt += f"📚 {t['nomi']}\n"
-                txt += f"  🧠 Bilim: {bdaraja}\n"
-                txt += f"  📋 Davomat: {sp['yoqlama_pct']}%\n"
-                if j: txt += f"  🕐 Bugun: {j[0]}\n"
-                if nj: txt += f"  ➡️ Keyingi: {nj[0]} {nj[1]}\n"
-                txt += f"  📗 {albom_no}-albom: [{bar}] {albom_pos}/10\n"
-                txt += f"  📊 Jami: {done_r}/{total_r} mavzu o'tildi\n\n"
+                txt += f"  🧠 Bilim: {bdaraja} | 📋 Davomat: {sp['yoqlama_pct']}%\n"
+                if j: txt += f"  🕐 Bugungi dars: {j[0]}\n"
+                txt += f"  📊 O'tildi: {prog['pct']}% ({prog['done']}/{prog['total']})\n\n"
+                rows2.append([
+                    InlineKeyboardButton(text=f"📚 {t['nomi']} — Mavzular",callback_data=f"stg_albomlar:{t['id']}"),
+                ])
 
-        rows2 = []
-        for t in tgs:
-            prog = get_togarak_progress(t["id"])
-            rows2.append([InlineKeyboardButton(
-                text=f"📚 {t['nomi']} — albomlar",
-                callback_data=f"stg_albomlar:{t['id']}"
-            )])
         rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
         await message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         await student_progress(message)
@@ -7267,28 +7242,22 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         parts2=call.data[16:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        # sinf="all" bo'lsa sinf filtrsiz
         if sinf=="all":
-            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
-                FROM dts_tree WHERE subject_name=%s
-                AND is_deleted=FALSE AND mavzu_code IS NOT NULL
-                ORDER BY mavzu_code""",(fan,))
+            cur2.execute("""SELECT DISTINCT mavzu_name FROM dts_tree
+                WHERE UPPER(subject_name)=UPPER(%s) AND is_deleted=FALSE
+                AND mavzu_name IS NOT NULL ORDER BY mavzu_name""",(fan,))
         else:
-            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
-                FROM dts_tree WHERE grade=%s AND subject_name=%s
-                AND is_deleted=FALSE AND mavzu_code IS NOT NULL
-                ORDER BY mavzu_code""",(sinf,fan))
+            cur2.execute("""SELECT DISTINCT mavzu_name FROM dts_tree
+                WHERE grade=%s AND UPPER(subject_name)=UPPER(%s) AND is_deleted=FALSE
+                AND mavzu_name IS NOT NULL ORDER BY mavzu_name""",(sinf,fan))
         mavzular=cur2.fetchall()
         cur2.execute("DELETE FROM togarak_reja WHERE togarak_id=%s",(tgid,))
-        for i,(code,name) in enumerate(mavzular,1):
-            cur2.execute("INSERT INTO togarak_reja(togarak_id,topic_code,tartib,tur) VALUES(%s,%s,%s,'dars')",
-                        (tgid,name or code,i))
+        for i,(name,) in enumerate(mavzular,1):
+            cur2.execute("INSERT INTO togarak_reja(togarak_id,topic_code,tartib,tur) VALUES(%s,%s,%s,'dars')",(tgid,name,i))
         conn2.commit(); cur2.close(); conn2.close()
-        await call.message.answer(
-            f"✅ {fan} — {len(mavzular)} ta mavzu rejaga qo'shildi!\n"
-            f"O'quvchilar endi ko'ra oladi."
-        )
+        await call.message.answer(f"✅ {fan} — {len(mavzular)} ta mavzu rejaga qo'shildi!")
         return
+
 
 
     if call.data.startswith("tg_reja_fan:"):
@@ -7608,8 +7577,110 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 callback_data=f"stg_albom_open:{tgid}:{i}"
             )])
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="☑️ Mavzular tanlash (test)",callback_data=f"stg_select_mavzu:{tgid}:0")])
         try: await call.message.edit_text(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_select_mavzu:"):
+        # Ko'p mavzu tanlash → test
+        parts2=call.data[18:].split(":"); tgid=int(parts2[0]); page=int(parts2[1]) if len(parts2)>1 else 0
+        await call.answer()
+        # Tanlangan mavzular session da
+        sel_key=f"sel_mavzu:{user_id}:{tgid}"
+        selected=set(temp_user.get(sel_key,[]))
+        # Mavzularni olish
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT fan FROM togaraklar WHERE id=%s",(tgid,))
+        fan=(cur2.fetchone() or [None])[0]
+        if fan:
+            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+                FROM dts_tree WHERE subject_name=%s AND is_deleted=FALSE
+                AND mavzu_code IS NOT NULL ORDER BY mavzu_code""",(fan,))
+        else:
+            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+                FROM dts_tree WHERE is_deleted=FALSE AND mavzu_code IS NOT NULL
+                ORDER BY mavzu_code LIMIT 100""")
+        barcha=cur2.fetchall(); cur2.close(); conn2.close()
+        PER=8; total=len(barcha)
+        page_items=barcha[page*PER:(page+1)*PER]
+        rows2=[]
+        for m in page_items:
+            mc=m[0]; mn=(m[1] or m[0])[:35]
+            icon="☑️" if mc in selected else "🔲"
+            rows2.append([InlineKeyboardButton(
+                text=f"{icon} {mn}",
+                callback_data=f"stg_toggle:{tgid}:{mc}:{page}"
+            )])
+        nav=[]
+        if page>0: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"stg_select_mavzu:{tgid}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page*PER+1}-{min((page+1)*PER,total)}/{total}",callback_data="noop"))
+        if (page+1)*PER<total: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"stg_select_mavzu:{tgid}:{page+1}"))
+        if nav: rows2.append(nav)
+        if selected:
+            rows2.append([InlineKeyboardButton(text=f"🧪 Test boshlash ({len(selected)} mavzu)",callback_data=f"stg_multi_test:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
+        txt=f"☑️ Mavzularni belgilang ({len(selected)} ta tanlandi):"
+        try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_toggle:"):
+        parts2=call.data[11:].split(":"); tgid,mc,page=int(parts2[0]),parts2[1],int(parts2[2])
+        await call.answer()
+        sel_key=f"sel_mavzu:{user_id}:{tgid}"
+        selected=set(temp_user.get(sel_key,[]))
+        if mc in selected: selected.discard(mc)
+        else: selected.add(mc)
+        temp_user[sel_key]=list(selected)
+        # Sahifani yangilash
+        call2_data=f"stg_select_mavzu:{tgid}:{page}"
+        # Inline update
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT fan FROM togaraklar WHERE id=%s",(tgid,))
+        fan=(cur2.fetchone() or [None])[0]
+        cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+            FROM dts_tree WHERE subject_name=%s AND is_deleted=FALSE
+            AND mavzu_code IS NOT NULL ORDER BY mavzu_code""",(fan,)) if fan else None
+        barcha=cur2.fetchall() if fan else []; PER=8; total=len(barcha)
+        page_items=barcha[page*PER:(page+1)*PER]; cur2.close(); conn2.close()
+        rows2=[]
+        for m in page_items:
+            mc2=m[0]; mn=(m[1] or m[0])[:35]
+            icon="☑️" if mc2 in selected else "🔲"
+            rows2.append([InlineKeyboardButton(text=f"{icon} {mn}",callback_data=f"stg_toggle:{tgid}:{mc2}:{page}")])
+        nav=[]
+        if page>0: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"stg_select_mavzu:{tgid}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page*PER+1}-{min((page+1)*PER,total)}/{total}",callback_data="noop"))
+        if (page+1)*PER<total: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"stg_select_mavzu:{tgid}:{page+1}"))
+        if nav: rows2.append(nav)
+        if selected: rows2.append([InlineKeyboardButton(text=f"🧪 Test boshlash ({len(selected)} mavzu)",callback_data=f"stg_multi_test:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
+        try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: pass
+        return
+
+    if call.data.startswith("stg_multi_test:"):
+        tgid=int(call.data[15:]); await call.answer()
+        sel_key=f"sel_mavzu:{user_id}:{tgid}"
+        selected=list(temp_user.get(sel_key,[]))
+        if not selected: await call.message.answer("❌ Mavzu tanlanmagan!"); return
+        temp_user.pop(sel_key,None)
+        # Barcha tanlangan mavzulardan test
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        codes_in="','".join(selected)
+        cur2.execute(f"""SELECT topic_code FROM dts_tree
+            WHERE mavzu_code IN ('{codes_in}') AND is_deleted=FALSE""")
+        topic_codes=[r[0] for r in cur2.fetchall()]
+        if not topic_codes: topic_codes=selected
+        cur2.execute("""SELECT question,option_a,option_b,option_c,option_d,
+            correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
+            FROM generated_tests WHERE topic_code=ANY(%s) ORDER BY RANDOM() LIMIT 20""",(topic_codes,))
+        tests=cur2.fetchall(); cur2.close(); conn2.close()
+        if not tests: await call.message.answer("❌ Test topilmadi!"); return
+        await call.message.answer(f"🧪 {len(selected)} mavzudan {len(tests)} ta test boshlanmoqda...")
+        from test_engine import start_test
+        await start_test(user_id, tests, call.message)
         return
 
     if call.data.startswith("stg_fan_albom:"):
