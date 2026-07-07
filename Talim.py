@@ -7026,6 +7026,21 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         ]]))
         return
 
+    if call.data.startswith("tg_sozla:"):
+        tgid=int(call.data[9:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT nomi FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        tg2=cur2.fetchone(); cur2.close(); conn2.close()
+        if not tg2: await call.message.answer("❌ Ruxsat yo'q!"); return
+        rows2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔑 Parolni ko'r",       callback_data=f"tg_show_parol:{tgid}"),
+             InlineKeyboardButton(text="🔄 Parol almashtir",    callback_data=f"tg_change_parol:{tgid}")],
+            [InlineKeyboardButton(text="🗑 To'garakni o'chir",  callback_data=f"tg_del:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",             callback_data=f"tg_info:{tgid}")],
+        ])
+        await call.message.answer(f"⚙️ Sozlamalar — {tg2[0]}",reply_markup=rows2)
+        return
+
     if call.data.startswith("tg_show_parol:"):
         tgid=int(call.data[14:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
@@ -7570,13 +7585,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
              f"💰 So'nggi to'lov: {last_tolov:,} so'm\n"
              f"📅 To'lov kuni: har oyning {t['oylik_sana']}-kuni")
         kb2=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📚 Mavzular (albom)",callback_data=f"stg_albomlar:{tgid}"),
-             InlineKeyboardButton(text="📊 Baholarim",  callback_data=f"stg_baholar:{tgid}")],
-            [InlineKeyboardButton(text="📝 Uyga vazifa",callback_data=f"stg_hw:{tgid}"),
-             InlineKeyboardButton(text="🏆 Reyting",    callback_data=f"stg_reyting:{tgid}")],
-            [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"stg_chat:{tgid}")],
-            [InlineKeyboardButton(text="🏅 Yutuqlarim",     callback_data=f"stg_badges:{tgid}"),
-             InlineKeyboardButton(text="🚪 Chiqish",        callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="📚 Mavzular",    callback_data=f"stg_albomlar:{tgid}"),
+             InlineKeyboardButton(text="📊 Baholarim",   callback_data=f"stg_baholar:{tgid}")],
+            [InlineKeyboardButton(text="📝 Vazifalar",   callback_data=f"stg_hw:{tgid}"),
+             InlineKeyboardButton(text="🏆 Reyting",     callback_data=f"stg_reyting:{tgid}")],
+            [InlineKeyboardButton(text="💬 Chat",        callback_data=f"stg_chat:{tgid}")],
+            [InlineKeyboardButton(text="🚪 Chiqish",     callback_data=f"stg_leave_req:{tgid}")],
         ])
         await call.message.answer(txt, reply_markup=kb2)
         return
@@ -7926,14 +7940,82 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("stg_chat:"):
         tgid=int(call.data[9:]); await call.answer()
-        admin_state[user_id]=f"tg_send_msg:{tgid}:all"
-        await call.message.answer(
-            "💬 Guruh chatiga xabar yozing:\n(O'qituvchi va barcha a'zolarga yuboriladi)",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="❌ Bekor",callback_data="cancel_msg")
-            ]])
-        )
+        from togarak import get_guruh_xabarlar
+        msgs=get_guruh_xabarlar(tgid,20)
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT a.user_id,u.full_name FROM togarak_azolar a JOIN users u ON u.user_id=a.user_id WHERE a.togarak_id=%s AND a.aktiv=TRUE",(tgid,))
+        azolar=cur2.fetchall()
+        cur2.execute("SELECT teacher_id,nomi FROM togaraklar WHERE id=%s",(tgid,))
+        tg2=cur2.fetchone(); cur2.close(); conn2.close()
+        txt=f"💬 Guruh chat\n{'─'*20}\n"
+        if not msgs: txt+="(Hali xabarlar yo'q)\n"
+        for m in msgs[-15:]:
+            vaqt=str(m["vaqt"])[11:16] if m["vaqt"] else ""
+            txt+=f"👤 {m['ism']} {vaqt}\n{m['matn']}\n\n"
+        rows2=[
+            [InlineKeyboardButton(text="✍️ Xabar yozish",callback_data=f"stg_chat_write:{tgid}"),
+             InlineKeyboardButton(text="🔄",callback_data=f"stg_chat:{tgid}")]
+        ]
+        dm_row=[]
+        for az in azolar:
+            if az[0]==user_id: continue
+            name=(az[1] or "?").split()[0]
+            dm_row.append(InlineKeyboardButton(text=f"👤{name}",callback_data=f"stg_dm:{tgid}:{az[0]}:0"))
+        if tg2 and tg2[0]!=user_id:
+            conn2=_get_db_conn();cur2=conn2.cursor()
+            cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(tg2[0],))
+            tn=((cur2.fetchone() or ["O'q"])[0] or "O'q").split()[0]; cur2.close(); conn2.close()
+            dm_row.insert(0,InlineKeyboardButton(text=f"👨‍🏫{tn}",callback_data=f"stg_dm:{tgid}:{tg2[0]}:0"))
+        if dm_row: rows2.append(dm_row[:4])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
+    if call.data.startswith("stg_chat_write:"):
+        tgid=int(call.data[15:]); await call.answer()
+        admin_state[user_id]=f"tg_send_msg:{tgid}:all"
+        await call.message.answer("✍️ Xabar yozing:",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor",callback_data=f"stg_chat:{tgid}")]]))
+        return
+
+    if call.data.startswith("stg_dm:"):
+        parts2=call.data[7:].split(":"); tgid,uid2,pg=int(parts2[0]),int(parts2[1]),int(parts2[2])
+        await call.answer()
+        from togarak import get_personal_messages
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
+        uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+        msgs=get_personal_messages(tgid,user_id,uid2,30)
+        per=10; total=len(msgs); p=max(0,min(pg,(total-1)//per if total else 0))
+        page_msgs=msgs[p*per:(p+1)*per]
+        txt=f"💬 {uname}\n{'─'*20}\n"
+        if not page_msgs: txt+="(Hali xabar yo'q)"
+        for m in page_msgs:
+            vaqt=str(m["vaqt"])[11:16] if m["vaqt"] else ""
+            me=m["sender"]==user_id
+            txt+=f"{"➡️ Siz" if me else "⬅️ "+m["ism"]} {vaqt}\n{m["matn"]}\n\n"
+        nav=[]
+        if p>0: nav.append(InlineKeyboardButton(text="⬅️",callback_data=f"stg_dm:{tgid}:{uid2}:{p-1}"))
+        if (p+1)*per<total: nav.append(InlineKeyboardButton(text="➡️",callback_data=f"stg_dm:{tgid}:{uid2}:{p+1}"))
+        rows2=[]
+        if nav: rows2.append(nav)
+        rows2.append([InlineKeyboardButton(text="✍️ Xabar",callback_data=f"stg_dm_write:{tgid}:{uid2}"),InlineKeyboardButton(text="🔄",callback_data=f"stg_dm:{tgid}:{uid2}:{p}")])
+        rows2.append([InlineKeyboardButton(text="⬅️ Chat",callback_data=f"stg_chat:{tgid}")])
+        admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_dm_write:"):
+        parts2=call.data[13:].split(":"); tgid,uid2=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
+        uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+        await call.message.answer(f"✍️ {uname} ga:",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor",callback_data=f"stg_dm:{tgid}:{uid2}:0")]]))
+        return
+
 
     if call.data.startswith("stg_leave:"):
         tgid=int(call.data[10:]); await call.answer()
