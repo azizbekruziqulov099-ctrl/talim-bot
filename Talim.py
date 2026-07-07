@@ -1706,7 +1706,6 @@ async def _rq_save(source, user_id, name, rol, sinf):
     cur2.close(); conn2.close()
     user_state.pop(user_id, None)
     temp_user.pop(user_id, None)
-    from keyboards import get_main_keyboard
     kb = get_main_keyboard(rol_uz)
     if hasattr(source, "answer"):
         await source.answer(f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}", reply_markup=kb)
@@ -6443,7 +6442,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         diff_f = "" if diff=="all" else f"AND difficulty='{diff}'"
-        type_f = "" if write=="mix" else ("" if write else "AND question_type != 'write_answer'")
+        # write: False=faqat test, True=faqat yozma, "mix"=aralash
+        if write == "mix": type_f = ""
+        elif write == True: type_f = "AND question_type = 'write_answer'"
+        else: type_f = "AND question_type != 'write_answer'"
         img    = st2.get("ts_img", "mix")
         img_f  = "" if img=="mix" else ("AND image_url IS NOT NULL AND image_url != ''" if img==True else "AND (image_url IS NULL OR image_url = '')")
         cur2.execute(f"""
