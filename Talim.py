@@ -2016,6 +2016,59 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await message.answer(f"✅ '{message.text.strip()}' rejaga qo'shildi!")
         return
 
+    if str(admin_state.get(user_id) or "").startswith("hw_submit:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        hw_id3,tgid3=int(parts3[1]),int(parts3[2])
+        admin_state.pop(user_id,None)
+        from features import submit_homework
+        submit_homework(hw_id3,user_id,message.text.strip())
+        # O'qituvchiga xabar
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT teacher_id,mavzu FROM homework WHERE id=%s",(hw_id3,))
+        hw2=cur2.fetchone()
+        cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
+        uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+        if hw2:
+            try: await message.bot.send_message(hw2[0],
+                f"📝 Yangi topshiriq!\n👤 {uname}\n📌 {hw2[1]}\n\n{message.text[:200]}")
+            except: pass
+        await message.answer("✅ Vazifa topshirildi!")
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("hw_new:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        tgid3,step=int(parts3[1]),parts3[2]
+        if step=="mavzu":
+            temp_user[user_id]["hw_mavzu"]=message.text.strip()
+            admin_state[user_id]=f"hw_new:{tgid3}:topshiriq"
+            await message.answer("📝 Topshiriq matnini yozing:")
+        elif step=="topshiriq":
+            temp_user[user_id]["hw_topshiriq"]=message.text.strip()
+            admin_state[user_id]=f"hw_new:{tgid3}:deadline"
+            await message.answer("📅 Deadline sanasini yozing (DD.MM.YYYY) yoki 'yoq' deng:")
+        elif step=="deadline":
+            admin_state.pop(user_id,None)
+            mavzu=temp_user[user_id].get("hw_mavzu","")
+            topshiriq=temp_user[user_id].get("hw_topshiriq","")
+            deadline=None
+            if message.text.strip().lower() not in ("yoq","yo'q","-"):
+                try:
+                    from datetime import datetime
+                    deadline=datetime.strptime(message.text.strip(),"%d.%m.%Y").date()
+                except: pass
+            from features import add_homework
+            from togarak import get_group_members, send_group_message
+            hw_id=add_homework(tgid3,user_id,mavzu,topshiriq,deadline)
+            # A'zolarga xabar
+            members=get_group_members(tgid3)
+            dl_txt=str(deadline) if deadline else "muddatsiz"
+            for uid3 in members:
+                try: await message.bot.send_message(uid3,
+                    f"📝 Yangi uyga vazifa!\n📌 {mavzu}\n{topshiriq}\n📅 {dl_txt}")
+                except: pass
+            await message.answer(f"✅ Vazifa qo'shildi va {len(members)} ta o'quvchiga yuborildi!")
+        return
+
     # Guruhga xabar yuborish
     if str(admin_state.get(user_id) or "").startswith("tg_send_msg:") and message.text:
         parts3=str(admin_state[user_id]).split(":")
@@ -7088,6 +7141,66 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.message.answer("Maxsus kun nomini yozing\n(Masalan: Imtihon, Laboratoriya, Sayohat):")
         return
 
+    if call.data.startswith("tg_hw:"):
+        tgid=int(call.data[6:]); await call.answer()
+        from features import get_homeworks
+        hws=get_homeworks(tgid)
+        rows2=[[InlineKeyboardButton(
+            text=f"📝 {h['mavzu']} ({h['topshirildi']} ta topshirdi)",
+            callback_data=f"tg_hw_view:{h['id']}"
+        )] for h in hws]
+        rows2.append([InlineKeyboardButton(text="➕ Yangi vazifa",callback_data=f"tg_hw_new:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+        txt=f"📝 Uyga vazifalar ({len(hws)} ta aktiv)"
+        try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_hw_new:"):
+        tgid=int(call.data[10:]); await call.answer()
+        admin_state[user_id]=f"hw_new:{tgid}:mavzu"
+        await call.message.answer("📝 Yangi vazifa\n\nVazifa mavzusini yozing:")
+        return
+
+    if call.data.startswith("tg_hw_view:"):
+        hw_id=int(call.data[11:]); await call.answer()
+        from features import get_hw_submits
+        subs=get_hw_submits(hw_id)
+        txt=f"📝 Topshiriqlar ({len(subs)} ta):\n\n"
+        for sb in subs:
+            icon="✅" if sb["baho"] else "⏳"
+            txt+=f"{icon} {sb['ism']}: {sb['javob'][:50]}\n"
+        await call.message.answer(txt[:3000])
+        return
+
+    if call.data.startswith("tg_reyting:"):
+        tgid=int(call.data[11:]); await call.answer()
+        from features import get_reyting
+        r=get_reyting(tgid)
+        txt="🏆 Reyting\n"+"─"*20+"\n\n"
+        medals=["🥇","🥈","🥉"]
+        for i,st in enumerate(r):
+            m=medals[i] if i<3 else f"{i+1}."
+            txt+=f"{m} {st['ism']} ({st['sinf'] or '-'})\n"
+            txt+=f"  ⭐{st['baho']} | 📋{st['davomat']}% | 📝{st['hw']}\n\n"
+        await call.message.answer(txt[:3000])
+        return
+
+    if call.data.startswith("tg_hisobot:"):
+        tgid=int(call.data[11:]); await call.answer()
+        await call.message.answer("📊 Hisobot tayyorlanmoqda...")
+        try:
+            from features import generate_excel_report
+            from aiogram.types import BufferedInputFile
+            data=generate_excel_report(tgid)
+            await call.message.answer_document(
+                BufferedInputFile(data,"hisobot.xlsx"),
+                caption="📊 To'garak hisoboti"
+            )
+        except Exception as e:
+            await call.message.answer(f"❌ Hisobot xato: {e}")
+        return
+
     if call.data.startswith("tg_pending:"):
         tgid=int(call.data[11:]); await call.answer()
         from togarak import get_pending_requests
@@ -7137,10 +7250,51 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         kb2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Baholarim",  callback_data=f"stg_baholar:{tgid}"),
              InlineKeyboardButton(text="💰 To'lovlar",  callback_data=f"stg_tolovlar:{tgid}")],
+            [InlineKeyboardButton(text="📝 Uyga vazifa",callback_data=f"stg_hw:{tgid}"),
+             InlineKeyboardButton(text="🏆 Reyting",    callback_data=f"stg_reyting:{tgid}")],
             [InlineKeyboardButton(text="💬 Guruh chat", callback_data=f"stg_chat:{tgid}")],
             [InlineKeyboardButton(text="🚪 Chiqish so'rovi", callback_data=f"stg_leave_req:{tgid}")],
         ])
         await call.message.answer(txt, reply_markup=kb2)
+        return
+
+    if call.data.startswith("stg_hw:"):
+        tgid=int(call.data[7:]); await call.answer()
+        from features import get_student_homeworks
+        hws=get_student_homeworks(tgid,user_id)
+        if not hws: await call.message.answer("📝 Hozircha uyga vazifa yo'q!"); return
+        rows2=[]
+        for h in hws:
+            status="✅" if h["javob"] else "⏳"
+            rows2.append([InlineKeyboardButton(
+                text=f"{status} {h['mavzu']} | {str(h['deadline'])[:10] if h['deadline'] else '-'}",
+                callback_data=f"stg_hw_do:{h['id']}:{tgid}"
+            )])
+        await call.message.answer("📝 Uyga vazifalar:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_hw_do:"):
+        parts2=call.data.split(":"); hw_id,tgid=int(parts2[1]),int(parts2[2])
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT mavzu,topshiriq FROM homework WHERE id=%s",(hw_id,))
+        hw=cur2.fetchone(); cur2.close(); conn2.close()
+        if not hw: await call.message.answer("❌ Topilmadi"); return
+        admin_state[user_id]=f"hw_submit:{hw_id}:{tgid}"
+        await call.message.answer(f"📝 {hw[0]}\n\n{hw[1]}\n\nJavobingizni yozing:")
+        return
+
+    if call.data.startswith("stg_reyting:"):
+        tgid=int(call.data[12:]); await call.answer()
+        from features import get_reyting
+        r=get_reyting(tgid)
+        txt="🏆 Reyting\n"+"─"*20+"\n\n"
+        medals=["🥇","🥈","🥉"]
+        for i,st in enumerate(r):
+            m=medals[i] if i<3 else f"{i+1}."
+            me=" ← Siz" if st["uid"]==user_id else ""
+            txt+=f"{m} {st['ism']}{me}\n  ⭐{st['baho']} | 📋{st['davomat']}%\n\n"
+        await call.message.answer(txt[:2000])
         return
 
     if call.data.startswith("stg_leave_req:"):
@@ -8131,6 +8285,36 @@ async def main():
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
+    # Haftalik hisobot — har dushanba
+    async def weekly_report_task():
+        while True:
+            import asyncio
+            from datetime import datetime
+            now = datetime.now()
+            # Har dushanba 08:00 da
+            if now.weekday() == 0 and now.hour == 8 and now.minute == 0:
+                try:
+                    from features import get_weekly_report
+                    conn_ = psycopg2.connect(DATABASE_URL); cur_ = conn_.cursor()
+                    # Barcha ota-onalarga hisobot
+                    cur_.execute("""SELECT p.parent_id, p.child_id, u.full_name,
+                        a.togarak_id, t.nomi FROM parent_child p
+                        JOIN users u ON u.user_id=p.child_id
+                        JOIN togarak_azolar a ON a.user_id=p.child_id AND a.aktiv=TRUE
+                        JOIN togaraklar t ON t.id=a.togarak_id AND t.aktiv=TRUE""")
+                    rows_ = cur_.fetchall(); cur_.close(); conn_.close()
+                    for r in rows_:
+                        rep = get_weekly_report(r[3], r[1])
+                        txt = (f"📊 Haftalik hisobot\n👤 {r[2]}\n📚 {r[4]}\n\n"
+                               f"📋 Davomat: {rep['keldi']} kun keldi\n"
+                               f"⭐ O'rt.baho: {rep['avg_baho']}\n"
+                               f"📝 Vazifa: {rep['hw_done']} ta topshirdi")
+                        try: await bot.send_message(r[0], txt)
+                        except: pass
+                except Exception as e:
+                    print(f"weekly_report: {e}")
+            await asyncio.sleep(60)
+    asyncio.create_task(weekly_report_task())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
