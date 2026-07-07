@@ -7229,33 +7229,25 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         tgid=int(call.data[12:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT nomi,fan FROM togaraklar WHERE id=%s",(tgid,))
-        tg2=cur2.fetchone()
-        # To'garak fani bo'yicha mavzular
-        tg_fan=tg2[1] if tg2 else None
+        tg2=cur2.fetchone(); tg_fan=tg2[1] if tg2 else None
         if tg_fan:
-            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
-                FROM dts_tree WHERE subject_name=%s AND is_deleted=FALSE
-                AND mavzu_code IS NOT NULL ORDER BY mavzu_code""",(tg_fan,))
-            mavzular=cur2.fetchall(); cur2.close(); conn2.close()
-            if not mavzular:
-                await call.message.answer(f"❌ '{tg_fan}' fani uchun mavzu topilmadi!"); return
-            PER=10; total=len(mavzular)
-            rows2=[[InlineKeyboardButton(
-                text=f"📌 {(m[1] or m[0])[:40]}",
-                callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}"
-            )] for m in mavzular[:PER]]
-            rows2.append([InlineKeyboardButton(text=f"Hammasi ({total} ta)",callback_data=f"tg_reja_fan:{tgid}:all:{tg_fan}:0")])
-            rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
-            await call.message.answer(f"📌 {tg_fan} — Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+            # Fan mavjud — bitta tugma bilan hammasini qo'shish
+            cur2.execute("SELECT COUNT(DISTINCT mavzu_code) FROM dts_tree WHERE subject_name=%s AND is_deleted=FALSE AND mavzu_code IS NOT NULL",(tg_fan,))
+            total=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+            rows2=[
+                [InlineKeyboardButton(text=f"✅ {tg_fan} — HAMMASI ({total} ta mavzu)",callback_data=f"tg_reja_fan_add:{tgid}:all:{tg_fan}")],
+                [InlineKeyboardButton(text="🔄 Sinf bo'yicha tanlash",callback_data=f"tg_reja_sinf_choose:{tgid}")],
+                [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")],
+            ]
+            await call.message.answer(f"➕ Mavzu qo'shish — {tg_fan}:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         else:
-            cur2.execute("""SELECT DISTINCT grade FROM dts_tree
-                WHERE grade IS NOT NULL AND is_deleted=FALSE
-                AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11)
-                ORDER BY grade""")
+            cur2.execute("SELECT DISTINCT grade FROM dts_tree WHERE grade IS NOT NULL AND is_deleted=FALSE AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11) ORDER BY grade")
             sinflar=cur2.fetchall(); cur2.close(); conn2.close()
             rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
+            rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
             await call.message.answer("Qaysi sinfdan mavzu?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
 
     if call.data.startswith("tg_reja_sinf:"):
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
@@ -7263,9 +7255,38 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT DISTINCT subject_name FROM dts_tree WHERE grade=%s AND is_deleted=FALSE ORDER BY subject_name",(sinf,))
         fanlar=cur2.fetchall(); cur2.close(); conn2.close()
-        rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
-        await call.message.answer(f"📚 {sinf} - qaysi fan?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan_add:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
+        await call.message.answer(f"📚 Fan tanlang — barcha mavzular qo'shiladi:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
+    if call.data.startswith("tg_reja_fan_add:"):
+        parts2=call.data[16:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
+        await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        # sinf="all" bo'lsa sinf filtrsiz
+        if sinf=="all":
+            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+                FROM dts_tree WHERE subject_name=%s
+                AND is_deleted=FALSE AND mavzu_code IS NOT NULL
+                ORDER BY mavzu_code""",(fan,))
+        else:
+            cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
+                FROM dts_tree WHERE grade=%s AND subject_name=%s
+                AND is_deleted=FALSE AND mavzu_code IS NOT NULL
+                ORDER BY mavzu_code""",(sinf,fan))
+        mavzular=cur2.fetchall()
+        cur2.execute("DELETE FROM togarak_reja WHERE togarak_id=%s",(tgid,))
+        for i,(code,name) in enumerate(mavzular,1):
+            cur2.execute("INSERT INTO togarak_reja(togarak_id,topic_code,tartib,tur) VALUES(%s,%s,%s,'dars')",
+                        (tgid,name or code,i))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.message.answer(
+            f"✅ {fan} — {len(mavzular)} ta mavzu rejaga qo'shildi!\n"
+            f"O'quvchilar endi ko'ra oladi."
+        )
+        return
+
 
     if call.data.startswith("tg_reja_fan:"):
         parts2=call.data[12:].split(":")
