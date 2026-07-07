@@ -24,13 +24,30 @@ def render_text(t):
     return t.strip()
 
 def _tts_clean(t):
-    """TTS uchun tinish belgilarini o'chirish."""
+    """TTS uchun math va tinish belgilarini o'zbek tilida o'qitish."""
     if not t: return ""
     t = str(t).strip()
     t = re.sub(r'\[en\](.*?)\[/en\]', r'\1', t, flags=re.DOTALL)
     t = re.sub(r'\[uz\](.*?)\[/uz\]', r'\1', t, flags=re.DOTALL)
-    # Tinish belgilari: / - = + * % # @ ! kerakmas
-    t = re.sub(r'[/\-=+*%#@!]', ' ', t)
+    t = re.sub(r'\[ru\](.*?)\[/ru\]', r'\1', t, flags=re.DOTALL)
+    # Math belgilarini o'zbek tilida
+    t = t.replace("×", " ko'paytirish ").replace("·", " ko'paytirish ")
+    t = t.replace("÷", " bo'lish ")
+    t = t.replace(" + ", " qo'shish ").replace("+", " qo'shish ")
+    t = t.replace(" - ", " ayirish ")
+    t = t.replace("= ?", " teng nima").replace("=?", " teng nima")
+    t = t.replace("= ...", " teng nima").replace("=…", " teng nima")
+    t = t.replace(" = ", " teng ").replace("=", " teng ")
+    t = t.replace("?", " nima").replace("…", " ").replace("...", " ")
+    t = t.replace("²", " kvadrat").replace("³", " kub")
+    t = t.replace("√", " ildiz ").replace("%", " foiz")
+    # Kasr: 1/2 → bir ikkinchi
+    def kasr(m):
+        suf={"2":"ikkinchi","3":"uchdan bir","4":"to'rtdan bir","5":"beshdаn bir","10":"o'ndan bir"}
+        n,d=m.group(1),m.group(2)
+        return f"{n} {suf.get(d, d+'-dan bir')}"
+    t = re.sub(r'\b(\d+)/(\d+)\b', kasr, t)
+    t = re.sub(r'[\-=#@!*]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
 
@@ -322,7 +339,7 @@ async def speak_all_question(user_id):
         except: pass
 
 # ── Test boshlash ──
-async def start_test(user_id, tests, message):
+async def start_test(user_id, tests, message, timed=True):
     if not tests:
         await message.answer("❌ Test topilmadi"); return
     old = test_sessions.get(user_id, {})
@@ -344,6 +361,7 @@ async def start_test(user_id, tests, message):
         "q_has_photo":   False,
         "voice_msgs":    [], "answered": False,
         "topic_code":    "",
+        "timed":         timed,
     }
     await show_question(user_id)
 
@@ -371,6 +389,12 @@ async def show_question(user_id, message=None):
     d_s = render_text(str(d or ""))
     try: tl = int(tl) if tl and int(tl) > 0 else 0
     except: tl = 0
+    # Yozma savollarda default 60 sekund
+    if qtype == "write_answer" and tl == 0:
+        tl = 60
+    # ts_timed=False bo'lsa timer o'chiq
+    if not s.get("timed", True):
+        tl = 0
 
     photo = await _photo_for(test, user_id)
 
@@ -387,7 +411,6 @@ async def show_question(user_id, message=None):
         ])
         q_text = f"✍️ {cur+1}/{total}\n\n{q_s}\n\n📝 Javobingizni yozing:"
         await _edit_question(s, q_text, kb, photo)
-        # Avto TTS
         asyncio.create_task(speak_all_question(user_id))
         if tl > 0:
             async def write_cd():
@@ -396,11 +419,24 @@ async def show_question(user_id, message=None):
                     await asyncio.sleep(5); left = max(0, left-5)
                     sx = test_sessions.get(user_id)
                     if not sx or sx.get("answered"): return
+                    # Timer tugmasini yangilash
+                    try:
+                        new_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="🔊 O'qib berish", callback_data="speak_all"),
+                            InlineKeyboardButton(text=f"⏱ {left}s", callback_data="noop_timer"),
+                            InlineKeyboardButton(text="🛑", callback_data="test_stop"),
+                        ]])
+                        await bot.edit_message_reply_markup(
+                            chat_id=sx["board_chat_id"], message_id=sx["q_msg_id"],
+                            reply_markup=new_kb)
+                    except: pass
                 sx = test_sessions.get(user_id)
                 if not sx or sx.get("answered"): return
                 sx["answered"] = True; sx["wrong"] += 1
-                sx["timer_task"] = None; user_state[user_id] = None
-                await _advance(user_id)
+                sx["timer_task"] = None; user_state[user_id] = "in_test"
+                await _edit_board(sx, _board_text(sx, "⏱ Vaqt tugadi!"))
+                await asyncio.sleep(1.5)
+                if test_sessions.get(user_id): await _advance(user_id)
             s["timer_task"] = asyncio.create_task(write_cd())
         return
 
@@ -570,9 +606,19 @@ async def check_text_answer(user_id, user_answer, message):
     if expl:
         result_text += f"\n\n💡 {expl[:300]}"
     await _edit_board(s, _board_text(s))
+    # Yangi xabar yubormasdan mavjud savolni edit qilamiz
     try:
-        await message.answer(result_text, reply_markup=noop_kb)
-    except: pass
+        noop_full = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=result_text[:40], callback_data="noop")
+        ]] if len(result_text) < 40 else [])
+        await bot.edit_message_text(
+            text=result_text[:3000],
+            chat_id=s["board_chat_id"],
+            message_id=s["q_msg_id"],
+            reply_markup=noop_kb
+        )
+    except:
+        pass
     await asyncio.sleep(2)
     if test_sessions.get(user_id):
         await _advance(user_id)
