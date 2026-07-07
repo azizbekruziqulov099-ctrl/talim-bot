@@ -1964,17 +1964,49 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         try: tgid = int(message.text.strip())
         except:
             await message.answer("❌ ID raqam bo'lishi kerak!"); return
-        user_state[user_id] = f"stg_join_parol:{tgid}"
-        await message.answer(f"🔑 {tgid}-to'garak parolini yozing:")
+        user_state.pop(user_id, None)
+        from togarak import send_join_request
+        res = send_join_request(tgid, user_id)
+        if res["ok"]:
+            # O'qituvchiga xabar yuborish
+            try:
+                conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+                cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(user_id,))
+                u=cur2.fetchone(); cur2.close(); conn2.close()
+                uname = f"{u[0]} ({u[1] or ''})" if u else str(user_id)
+                await message.bot.send_message(
+                    res["teacher_id"],
+                    f"📨 Yangi so'rov!\n👤 {uname}\n📚 {res['togarak_nomi']}\n\nQabul qilasizmi?",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{user_id}_{tgid}"),
+                        InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{user_id}_{tgid}"),
+                    ]])
+                )
+            except Exception as e:
+                print(f"teacher notify: {e}")
+            await message.answer(f"✅ So'rov yuborildi!\n⏳ O'qituvchi tasdiqlashini kuting.")
+        else:
+            await message.answer(res["msg"])
         return
 
-    if str(user_state.get(user_id) or "").startswith("stg_join_parol:") and message.text:
-        tgid = int(str(user_state[user_id]).split(":")[1])
-        parol = message.text.strip()
-        user_state.pop(user_id,None)
-        from togarak import join_togarak
-        result = join_togarak(tgid, user_id, parol)
-        await message.answer(result["msg"])
+
+    # Guruhga xabar yuborish
+    if str(admin_state.get(user_id) or "").startswith("tg_send_msg:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        tgid3=int(parts3[1]); mode=parts3[2]
+        admin_state.pop(user_id,None)
+        from togarak import get_group_members, send_group_message
+        matn=message.text.strip()
+        members=get_group_members(tgid3)
+        sent=0
+        for uid3 in members:
+            if uid3==user_id: continue
+            try:
+                await message.bot.send_message(uid3, f"📢 To'garak xabari:\n\n{matn}")
+                sent+=1
+            except: pass
+        send_group_message(tgid3, user_id, matn)
+        await message.answer(f"✅ Xabar {sent} ta a'zoga yuborildi!")
         return
 
     # To'garak o'chirish tasdiqlash
@@ -6534,9 +6566,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             [InlineKeyboardButton(text="👥 A'zolar",    callback_data=f"tg_azolar:{tgid}"),
              InlineKeyboardButton(text="📋 Yoqlama",    callback_data=f"tg_yoqlama:{tgid}")],
             [InlineKeyboardButton(text="📊 Statistika", callback_data=f"tg_stat:{tgid}"),
-             InlineKeyboardButton(text="⚙️ Sozlash",    callback_data=f"tg_sozla:{tgid}")],
-            [InlineKeyboardButton(text="🗑 O'chirish",  callback_data=f"tg_del:{tgid}")],
-            [InlineKeyboardButton(text="⬅️ Orqaga",     callback_data="tg_back")],
+             InlineKeyboardButton(text="📨 So'rovlar",  callback_data=f"tg_pending:{tgid}")],
+            [InlineKeyboardButton(text="📢 Guruhga xabar", callback_data=f"tg_msg_group:{tgid}")],
+            [InlineKeyboardButton(text="🗑 O'chirish",  callback_data=f"tg_del:{tgid}"),
+             InlineKeyboardButton(text="⬅️ Orqaga",     callback_data="tg_back")],
         ])
         try: await call.message.edit_text(txt, reply_markup=kb2)
         except: await call.message.answer(txt, reply_markup=kb2)
@@ -6647,6 +6680,70 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         kb2.inline_keyboard.append([InlineKeyboardButton(text="➕ Yangi to'garak",callback_data="tg_yangi")])
         try: await call.message.edit_text(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
         except: await call.message.answer(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
+        return
+
+    # ── TO'GARAK SO'ROVLAR ──
+    if call.data.startswith("tg_req_approve:"):
+        parts2=call.data[15:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        from togarak import join_togarak
+        # O'qituvchi to'garakni boshqarishini tekshirish
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid2,user_id))
+        if not cur2.fetchone():
+            cur2.close();conn2.close()
+            await call.message.edit_text("❌ Ruxsat yo'q!"); return
+        # Parolsiz qo'shish
+        cur2.execute("SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(tgid2,))
+        cnt2=cur2.fetchone()[0]
+        cur2.execute("SELECT max_talaba,nomi FROM togaraklar WHERE id=%s",(tgid2,))
+        t2=cur2.fetchone()
+        if cnt2 >= t2[0]:
+            cur2.close();conn2.close()
+            await call.message.edit_text(f"❌ To'garak to'ldi!"); return
+        try:
+            cur2.execute("INSERT INTO togarak_azolar(togarak_id,user_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(tgid2,uid2))
+            conn2.commit()
+        except: conn2.rollback()
+        cur2.close();conn2.close()
+        # O'quvchiga xabar
+        try:
+            await call.bot.send_message(uid2, f"✅ '{t2[1]}' to'garakka qabul qilindingiz!")
+        except: pass
+        await call.message.edit_text("✅ O'quvchi qabul qilindi!", reply_markup=None)
+        return
+
+    if call.data.startswith("tg_req_reject:"):
+        parts2=call.data[14:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        try:
+            await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
+        except: pass
+        await call.message.edit_text("❌ Rad etildi.", reply_markup=None)
+        return
+
+    if call.data.startswith("tg_pending:"):
+        tgid=int(call.data[11:]); await call.answer()
+        from togarak import get_pending_requests
+        reqs=[r for r in get_pending_requests(user_id) if r["tg_id"]==tgid]
+        if not reqs:
+            await call.message.answer("✅ Kutayotgan so'rovlar yo'q!"); return
+        for r in reqs:
+            await call.message.answer(
+                f"📨 So'rov #{r['id']}\n👤 {r['ism']} — {r['sinf'] or '-'}\n📚 {r['tg_nomi']}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{r['id']}"),
+                    InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{r['id']}"),
+                ]])
+            )
+        return
+
+    if call.data.startswith("tg_msg_group:"):
+        tgid=int(call.data[13:]); await call.answer()
+        admin_state[user_id]=f"tg_send_msg:{tgid}:all"
+        await call.message.answer(
+            "📢 Guruhga xabar yozing:\n(Barcha a'zolarga yuboriladi)"
+        )
         return
 
     # ── O'QUVCHI TO'GARAK ──
