@@ -2145,8 +2145,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if (user_id not in ADMINS
             and message.text
             and not message.text.startswith("/")
-            and user_state.get(user_id) not in ("text_answer","in_test","in_lesson")
-            and not isinstance(user_state.get(user_id), dict)):
+            and user_state.get(user_id) == "ai_mode"):  # FAQAT ai_mode da ishlaydi
         _skip = {
             "⚙️ Sozlamalar","🎯 Bugungi reja","📚 Bilimni mustahkamlash",
             "🧪 Bilimni sinash","📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet",
@@ -2293,18 +2292,48 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
+    if message.text == "/stop":
+        user_state.pop(user_id, None)
+        await message.answer("✅ AI yordamchi o'chirildi.")
+        return
+
     if message.text == "🤖 Yordamchi":
-        await message.answer(
-            "🤖 Ta'lim yordamchisi\n\n"
-            "Menga istalgan savolni yozing!\n\n"
-            "Masalan:\n"
-            "• «kasr nima?»\n"
-            "• «matematika misol ber»\n"
-            "• «masala yechishni o'rgat»\n"
-            "• «test ber»\n"
-            "• «dars boshlash»\n\n"
-            "O'zbek, rus yoki ingliz tilida gaplashsangiz bo'ladi 👇"
-        )
+        # Rolni aniqlash
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        role2 = str(row2[0] if row2 else "")
+        is_admin = user_id in ADMINS
+
+        if is_admin:
+            txt = ("🤖 Admin AI Yordamchi\n\n"
+                   "Nima qila olaman:\n"
+                   "• Foydalanuvchilar statistikasi\n"
+                   "• Test yaratish maslahatlar\n"
+                   "• DTS mavzu tahlili\n"
+                   "• Excel/shablon yordam\n\n"
+                   "Savolingizni yozing 👇")
+        elif "qituvchi" in role2:
+            txt = ("🤖 O'qituvchi AI Yordamchi\n\n"
+                   "Nima qila olaman:\n"
+                   "• Dars rejalari tuzish\n"
+                   "• Savollar yaratish\n"
+                   "• Mavzuni tushuntirish\n"
+                   "• To'garak rejalash\n\n"
+                   "Savolingizni yozing 👇")
+        else:
+            txt = ("🤖 O'quvchi AI Yordamchi\n\n"
+                   "Nima qila olaman:\n"
+                   "• Mavzuni tushuntiraman\n"
+                   "• Misol yechamiz\n"
+                   "• Test beraman\n"
+                   "• Kitobdan misol beraman\n\n"
+                   "Savolingizni yozing 👇")
+
+        user_state[user_id] = "ai_mode"
+        await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ AI ni o'chirish", callback_data="ai_stop")
+        ]]))
         return
 
     if message.text == "🧪 Bilimni sinash":
@@ -6704,19 +6733,28 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
         return
 
+    if call.data == "ai_stop":
+        await call.answer()
+        user_state.pop(user_id, None)
+        await call.message.answer("✅ AI yordamchi o'chirildi.")
+        return
+
     if call.data == "kb_togaraklar":
         await call.answer()
-        from togarak import get_student_togaraklar
-        tgs = get_student_togaraklar(user_id)
-        rows2 = [[InlineKeyboardButton(
-            text=f"📚 {t['nomi']} | {t['teacher']}",
-            callback_data=f"stg_info:{t['id']}"
-        )] for t in tgs]
-        rows2.append([InlineKeyboardButton(text="🔑 To'garakka qo'shilish", callback_data="stg_join")])
-        await call.message.answer(
-            f"📚 Mening to'garaklarim ({len(tgs)} ta):",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        )
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
+        role2=str((cur2.fetchone() or [""])[0]); cur2.close(); conn2.close()
+        from togarak import get_teacher_togaraklar, get_student_togaraklar
+        if "qituvchi" in role2:
+            tgs = get_teacher_togaraklar(user_id)
+            rows2=[[InlineKeyboardButton(text=f"📚 {t['nomi']} ({t['azolar']}/{t['max']})",callback_data=f"tg_info:{t['id']}")] for t in tgs]
+            rows2.append([InlineKeyboardButton(text="➕ Yangi to'garak", callback_data="tg_yangi")])
+            await call.message.answer(f"📚 Mening to'garaklarim ({len(tgs)} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        else:
+            tgs = get_student_togaraklar(user_id)
+            rows2=[[InlineKeyboardButton(text=f"📚 {t['nomi']}",callback_data=f"stg_info:{t['id']}")] for t in tgs]
+            rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
+            await call.message.answer(f"📚 To'garaklar ({len(tgs)} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("kb_change:"):
@@ -7368,6 +7406,7 @@ async def brain_handler(message: Message, state: FSMContext):
     if uid in ADMINS: return
     if not message.text: return  # Rasm, video va h.k. — o'tkazib yuborish
     if user_state.get(uid) in ("text_answer", "in_test"): return
+    if user_state.get(uid) != "ai_mode": return
     if message.text.startswith("/"): return
     # Tugmalar (menyu) — brain ga kirmasin
     menu_buttons = {
@@ -7382,7 +7421,10 @@ async def brain_handler(message: Message, state: FSMContext):
         gr_ = cur_.fetchone()
         grade_ = str(gr_[0]) if gr_ else None
         cur_.close(); conn_.close()
-        res = await _brain(message.text, uid, grade_)
+        conn2_ = psycopg2.connect(DATABASE_URL); cur2_ = conn2_.cursor()
+        cur2_.execute("SELECT role FROM users WHERE user_id=%s",(uid,))
+        role_ = str((cur2_.fetchone() or [""])[0]); cur2_.close(); conn2_.close()
+        res = await _brain(message.text, uid, grade_, role=role_)
         if res.get("message"):
             await message.answer(res["message"])
         if res.get("action") == "START_TEST" and res.get("topic"):
