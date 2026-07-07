@@ -6713,9 +6713,15 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             cur2.close();conn2.close()
             await call.message.edit_text(f"❌ To'garak to'ldi!"); return
         try:
-            cur2.execute("INSERT INTO togarak_azolar(togarak_id,user_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(tgid2,uid2))
+            cur2.execute("""
+                INSERT INTO togarak_azolar(togarak_id,user_id,aktiv)
+                VALUES(%s,%s,TRUE)
+                ON CONFLICT(togarak_id,user_id) DO UPDATE SET aktiv=TRUE
+            """,(tgid2,uid2))
             conn2.commit()
-        except: conn2.rollback()
+        except Exception as e:
+            print(f"approve insert: {e}")
+            conn2.rollback()
         cur2.close();conn2.close()
         # O'quvchiga xabar
         try:
