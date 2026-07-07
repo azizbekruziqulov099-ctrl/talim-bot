@@ -1907,6 +1907,22 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await _rq_save(message, user_id, name, rol, None)
         return
 
+    # Kabinet o'zgartirish
+    if str(user_state.get(user_id) or "").startswith("kb_change_") and message.text:
+        field = str(user_state[user_id]).replace("kb_change_","")
+        val = message.text.strip()
+        user_state.pop(user_id, None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        col_map = {"name":"full_name","bdate":"birth_date","school":"school"}
+        col = col_map.get(field)
+        if col:
+            cur2.execute(f"UPDATE users SET {col}=%s WHERE user_id=%s",(val,user_id))
+            conn2.commit()
+        cur2.close(); conn2.close()
+        labels = {"name":"Ism","bdate":"Tug'ilgan sana","school":"Maktab"}
+        await message.answer(f"✅ {labels.get(field,field)} yangilandi: {val}")
+        return
+
     # Kitob o'chirish — parol tasdiqlash
     if str(admin_state.get(user_id) or "").startswith("kitob_del_confirm:") and message.text:
         book_id2=int(str(admin_state[user_id]).split(":")[1])
@@ -6356,6 +6372,78 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.delete()
         except: pass
         return
+
+    # ── KABINET CALLBACKLAR ──
+    if call.data.startswith("kb_change:"):
+        field = call.data[10:]; await call.answer()
+        prompts = {
+            "name":   "✏️ Yangi ismingizni yozing (F.I.Sh):",
+            "role":   None,
+            "class":  None,
+            "bdate":  "🎂 Tug'ilgan sanangizni yozing (KK.OO.YYYY):",
+            "school": "🏛 Maktab nomini yozing:",
+        }
+        if field == "role":
+            await call.message.answer("🎭 Yangi rolni tanlang:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data="kb_set_role:O'quvchi")],
+                    [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data="kb_set_role:O'qituvchi")],
+                    [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="kb_set_role:Ota-ona")],
+                ]))
+        elif field == "class":
+            rows2=[[InlineKeyboardButton(text=f"{i}-sinf",callback_data=f"kb_set_class:{i}") for i in range(j,j+4)] for j in range(1,12,4)]
+            await call.message.answer("🏫 Sinfni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        else:
+            user_state[user_id] = f"kb_change_{field}"
+            await call.message.answer(prompts[field])
+        return
+
+    if call.data.startswith("kb_set_role:"):
+        rol = call.data[12:]; await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol,user_id))
+        conn2.commit();cur2.close();conn2.close()
+        from keyboards import get_main_keyboard
+        await call.message.answer(f"✅ Rol o'zgartirildi: {rol}", reply_markup=get_main_keyboard(rol))
+        return
+
+    if call.data.startswith("kb_set_class:"):
+        cls = call.data[13:]; await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("UPDATE users SET class=%s WHERE user_id=%s",(f"{cls}-sinf",user_id))
+        conn2.commit();cur2.close();conn2.close()
+        await call.message.answer(f"✅ Sinf o'zgartirildi: {cls}-sinf")
+        return
+
+    if call.data == "kb_rereg":
+        await call.answer()
+        from register import start_registration
+        await start_registration(call.message)
+        return
+
+    if call.data == "kb_delete":
+        await call.answer()
+        await call.message.answer(
+            "⚠️ Profilni o'chirishni tasdiqlaysizmi?\n\nBarcha ma'lumotlar o'chadi!",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Ha, o'chir", callback_data="kb_delete_confirm"),
+                InlineKeyboardButton(text="❌ Yo'q", callback_data="kb_delete_cancel"),
+            ]])
+        )
+        return
+
+    if call.data == "kb_delete_confirm":
+        await call.answer()
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("DELETE FROM users WHERE user_id=%s",(user_id,))
+        conn2.commit();cur2.close();conn2.close()
+        user_state.pop(user_id,None); temp_user.pop(user_id,None)
+        from aiogram.types import ReplyKeyboardRemove
+        await call.message.answer("✅ Profil o'chirildi. Qayta kirish uchun /start bosing", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if call.data == "kb_delete_cancel":
+        await call.answer("❌ Bekor qilindi"); return
 
     if call.data.startswith("reg_quick:"):
         await call.answer()
