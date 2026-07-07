@@ -7251,24 +7251,32 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("tg_reja_fan:"):
-        parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
+        parts2=call.data[12:].split(":")
+        tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
+        page=int(parts2[3]) if len(parts2)>3 else 0
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        # Bo'lim qadami yo'q — to'g'ridan mavzular
         cur2.execute("""SELECT DISTINCT ON (mavzu_code) mavzu_code, mavzu_name
             FROM dts_tree WHERE grade=%s AND subject_name=%s
             AND is_deleted=FALSE AND mavzu_code IS NOT NULL
-            ORDER BY mavzu_code LIMIT 30""", (sinf,fan))
-        mavzular=cur2.fetchall(); cur2.close(); conn2.close()
-        if not mavzular:
+            ORDER BY mavzu_code""", (sinf,fan))
+        barcha=cur2.fetchall(); cur2.close(); conn2.close()
+        if not barcha:
             await call.message.answer("❌ Mavzu topilmadi!"); return
+        PER=10; total=len(barcha)
+        page_items=barcha[page*PER:(page+1)*PER]
         rows2=[[InlineKeyboardButton(
             text=f"📌 {(m[1] or m[0])[:40]}",
             callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}"
-        )] for m in mavzular]
+        )] for m in page_items]
+        nav=[]
+        if page>0: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{fan}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page*PER+1}-{min((page+1)*PER,total)}/{total}",callback_data="noop"))
+        if (page+1)*PER<total: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"tg_reja_fan:{tgid}:{sinf}:{fan}:{page+1}"))
+        if nav: rows2.append(nav)
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
-        await call.message.answer(f"📌 Mavzuni tanlang ({len(mavzular)} ta):",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        try: await call.message.edit_text(f"📌 Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📌 Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_reja_bob:"):
@@ -7506,9 +7514,32 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("stg_albomlar:"):
         tgid=int(call.data[13:]); await call.answer()
-        from togarak import get_reja, get_student_progress
+        from togarak import get_reja
         reja=get_reja(tgid)
-        if not reja: await call.message.answer("📚 Reja mavjud emas!"); return
+        if not reja:
+            # Reja yo'q — shu to'garakdagi testlar bo'yicha mavzular ko'rsat
+            conn2=_get_db_conn();cur2=conn2.cursor()
+            cur2.execute("""SELECT DISTINCT d.mavzu_name, d.mavzu_code, COUNT(g.id)
+                FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
+                WHERE d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
+                GROUP BY d.mavzu_name, d.mavzu_code ORDER BY d.mavzu_code LIMIT 50""")
+            mavzular=cur2.fetchall(); cur2.close(); conn2.close()
+            if not mavzular:
+                await call.message.answer("📚 Mavzu topilmadi!\n\nO'qituvchi reja qo'shishi kerak."); return
+            ALBOM=10; total=len(mavzular)
+            ICONS=["📗","📘","📙","📕","📓"]
+            rows2=[]
+            for i in range(0,total,ALBOM):
+                chunk=mavzular[i:i+ALBOM]
+                n=i//ALBOM+1
+                icon=ICONS[min(n-1,len(ICONS)-1)]
+                rows2.append([InlineKeyboardButton(
+                    text=f"{icon} {n}-albom ({len(chunk)} ta mavzu)",
+                    callback_data=f"stg_free_albom:{tgid}:{i}"
+                )])
+            rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
+            await call.message.answer(f"📚 Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+            return
         ALBOM=10; total=len(reja)
         ICONS=["📗","📘","📙","📕","📓"]
         rows2=[]
@@ -7525,6 +7556,24 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
         try: await call.message.edit_text(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("stg_free_albom:"):
+        parts2=call.data[16:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT DISTINCT d.mavzu_name, d.mavzu_code, COUNT(g.id)
+            FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
+            WHERE d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
+            GROUP BY d.mavzu_name, d.mavzu_code ORDER BY d.mavzu_code LIMIT 50""")
+        mavzular=cur2.fetchall()[start:start+10]; cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(
+            text=f"📖 {(m[0] or m[1])[:40]} ({m[2]} test)",
+            callback_data=f"ts_mavzu:{m[1]}"
+        )] for m in mavzular]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
+        albom_n=start//10+1
+        await call.message.answer(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("stg_albom_open:"):
