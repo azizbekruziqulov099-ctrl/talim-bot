@@ -202,7 +202,7 @@ YORDAM = {
 }
 
 async def process_message(text: str, user_id: int,
-                          grade: str = None, yosh: int = 10) -> dict:
+                          grade: str = None, yosh: int = 10, role: str = "student") -> dict:
     lang    = detect_lang(text)
     fixed   = fix_text(text)
     intent  = get_intent(fixed)
@@ -210,12 +210,20 @@ async def process_message(text: str, user_id: int,
 
     # Salom
     if intent == "GREET":
-        result["message"] = SALOM.get(lang, SALOM["uz"])
+        if "qituvchi" in str(role):
+            result["message"] = "👋 Salom, muallim! Dars rejasi, savol yaratish yoki boshqa narsada yordam bera olaman."
+        elif "admin" in str(role).lower():
+            result["message"] = "👋 Salom, admin! Statistika, DTS tahlili yoki boshqa narsada yordam bera olaman."
+        else:
+            result["message"] = SALOM.get(lang, SALOM["uz"])
         return result
 
     # Yordam
     if intent == "HELP":
-        result["message"] = YORDAM.get(lang, YORDAM["uz"])
+        if "qituvchi" in str(role):
+            result["message"] = "📋 Men qila olamanlar:\n• Dars rejasi\n• Savol yaratish\n• Mavzu tushuntirish\n• To'garak rejalash"
+        else:
+            result["message"] = YORDAM.get(lang, YORDAM["uz"])
         return result
 
     # Statistika
