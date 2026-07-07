@@ -1262,16 +1262,29 @@ async def student_profile(message):
     DB = os.getenv("DATABASE_URL")
     uid = message.from_user.id
     conn = psycopg2.connect(DB); cur = conn.cursor()
-    cur.execute("SELECT full_name,role,class,birth_date,school,region FROM users WHERE user_id=%s",(uid,))
-    row = cur.fetchone(); cur.close(); conn.close()
+
+    # Aktiv akkauntni olish
+    cur.execute("""
+        SELECT a.id, a.account_index, a.full_name, a.role, a.class, a.birth_date, a.school
+        FROM user_accounts a
+        WHERE a.telegram_id=%s AND a.is_active=TRUE
+        LIMIT 1
+    """, (uid,))
+    row = cur.fetchone()
+
+    # Jami akkauntlar soni
+    cur.execute("SELECT COUNT(*) FROM user_accounts WHERE telegram_id=%s", (uid,))
+    total_acc = (cur.fetchone() or [0])[0]
+    cur.close(); conn.close()
+
     if not row:
         await message.answer("❌ Profil topilmadi. /start bosing"); return
 
-    name,role,cls,bdate,school,region = row
+    acc_id, acc_idx, name, role, cls, bdate, school = row
     is_teacher = "qituvchi" in str(role or "")
 
     txt = (
-        f"👤 Kabinet\n{'─'*20}\n"
+        f"👤 Kabinet  [{acc_idx+1}/{total_acc}]\n{'─'*20}\n"
         f"📛 Ism: {name or '—'}\n"
         f"🎭 Rol: {role or '—'}\n"
         + (f"🏫 Sinf: {cls or '—'}\n" if not is_teacher else "")
@@ -1286,19 +1299,19 @@ async def student_profile(message):
         [InlineKeyboardButton(text="🎂 Sana",   callback_data="kb_change:bdate"),
          InlineKeyboardButton(text="🏛 Maktab", callback_data="kb_change:school")],
     ]
-
     if not is_teacher:
-        rows2.append([
-            InlineKeyboardButton(text="🏫 Sinf", callback_data="kb_change:class")
-        ])
-        # To'garaklar
-        rows2.append([
-            InlineKeyboardButton(text="📚 To'garaklarim", callback_data="kb_togaraklar")
-        ])
+        rows2.append([InlineKeyboardButton(text="🏫 Sinf", callback_data="kb_change:class")])
+        rows2.append([InlineKeyboardButton(text="📚 To'garaklarim", callback_data="kb_togaraklar")])
 
-    rows2.append([
-        InlineKeyboardButton(text="🔄 Qayta ro'yxat", callback_data="kb_rereg"),
-        InlineKeyboardButton(text="🗑 O'chir",         callback_data="kb_delete"),
-    ])
+    # Ko'p akkaunt tugmalari
+    acc_row = []
+    if total_acc > 1:
+        acc_row.append(InlineKeyboardButton(text="🔄 Akkaunt almashtir", callback_data="kb_switch_acc"))
+    if total_acc < 3:
+        acc_row.append(InlineKeyboardButton(text="➕ Yangi akkaunt", callback_data="kb_new_acc"))
+    if acc_row:
+        rows2.append(acc_row)
+
+    rows2.append([InlineKeyboardButton(text="🔄 Qayta ro'yxat", callback_data="kb_rereg")])
 
     await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
