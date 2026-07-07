@@ -1257,4 +1257,34 @@ async def student_community(message):
     await message.answer("🌍 Hamjamiyat")
 
 async def student_profile(message):
-    await message.answer("👤 Kabinet")
+    import psycopg2, os
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    DB = os.getenv("DATABASE_URL")
+    uid = message.from_user.id
+    conn = psycopg2.connect(DB); cur = conn.cursor()
+    cur.execute("SELECT full_name,role,class,birth_date,school,region FROM users WHERE user_id=%s",(uid,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row:
+        await message.answer("❌ Profil topilmadi. /start bosing"); return
+
+    name,role,cls,bdate,school,region = row
+    txt = (
+        f"👤 Kabinet\n\n"
+        f"{'─'*20}\n"
+        f"📛 Ism: {name or '—'}\n"
+        f"🎭 Rol: {role or '—'}\n"
+        f"🏫 Sinf: {cls or '—'}\n"
+        f"🎂 Tug'ilgan: {bdate or '—'}\n"
+        f"🏛 Maktab: {school or '—'}\n"
+        f"{'─'*20}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Ism o'zgartir",    callback_data="kb_change:name"),
+         InlineKeyboardButton(text="🎭 Rol o'zgartir",    callback_data="kb_change:role")],
+        [InlineKeyboardButton(text="🏫 Sinf o'zgartir",  callback_data="kb_change:class"),
+         InlineKeyboardButton(text="🎂 Sana o'zgartir",  callback_data="kb_change:bdate")],
+        [InlineKeyboardButton(text="🏛 Maktab o'zgartir",callback_data="kb_change:school")],
+        [InlineKeyboardButton(text="🔄 Qayta ro'yxat",   callback_data="kb_rereg"),
+         InlineKeyboardButton(text="🗑 Profilni o'chir",  callback_data="kb_delete")],
+    ])
+    await message.answer(txt, reply_markup=kb)
