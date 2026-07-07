@@ -7228,26 +7228,29 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("tg_reja_add:"):
         tgid=int(call.data[12:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("SELECT nomi,fan FROM togaraklar WHERE id=%s",(tgid,))
-        tg2=cur2.fetchone(); tg_fan=tg2[1] if tg2 else None
-        if tg_fan:
-            # Fan mavjud — bitta tugma bilan hammasini qo'shish
-            cur2.execute("SELECT COUNT(DISTINCT mavzu_code) FROM dts_tree WHERE subject_name=%s AND is_deleted=FALSE AND mavzu_code IS NOT NULL",(tg_fan,))
-            total=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
-            rows2=[
-                [InlineKeyboardButton(text=f"✅ {tg_fan} — HAMMASI ({total} ta mavzu)",callback_data=f"tg_reja_fan_add:{tgid}:all:{tg_fan}")],
-                [InlineKeyboardButton(text="🔄 Sinf bo'yicha tanlash",callback_data=f"tg_reja_sinf_choose:{tgid}")],
-                [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")],
-            ]
-            await call.message.answer(f"➕ Mavzu qo'shish — {tg_fan}:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        else:
-            cur2.execute("SELECT DISTINCT grade FROM dts_tree WHERE grade IS NOT NULL AND is_deleted=FALSE AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11) ORDER BY grade")
-            sinflar=cur2.fetchall(); cur2.close(); conn2.close()
-            rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
-            rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
-            await call.message.answer("Qaysi sinfdan mavzu?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        cur2.execute("""SELECT DISTINCT grade FROM dts_tree
+            WHERE grade IS NOT NULL AND is_deleted=FALSE
+            AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11)
+            ORDER BY grade""")
+        sinflar=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
+        await call.message.answer("🏫 Sinf tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
+
+    if call.data.startswith("tg_reja_sinf_choose:"):
+        tgid=int(call.data[20:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT DISTINCT grade FROM dts_tree
+            WHERE grade IS NOT NULL AND is_deleted=FALSE
+            AND NOT (grade ~ '^[0-9]+$' AND grade::int BETWEEN 1 AND 11)
+            ORDER BY grade""")
+        sinflar=cur2.fetchall(); cur2.close(); conn2.close()
+        rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
+        await call.message.answer("Sinf tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
 
     if call.data.startswith("tg_reja_sinf:"):
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
