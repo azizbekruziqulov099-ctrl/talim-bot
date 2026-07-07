@@ -50,6 +50,10 @@ import time
 import edge_tts
 from aiogram.types import FSInputFile
 import psycopg2
+try:
+    from db_pool import db as _db_pool, release as _db_release, get_user_cached, invalidate_user
+    def _db(): conn=_db_pool(); return conn
+except: _db_pool=None; _db_release=None
 import re
 import os
 import subprocess
