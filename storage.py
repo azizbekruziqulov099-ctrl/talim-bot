@@ -4,3 +4,4 @@ registration_message = {}
 reg_kbd_message = {}
 lesson_state = {}
 test_sessions = {}
+admin_state = {}
