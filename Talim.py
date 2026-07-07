@@ -1907,6 +1907,94 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await _rq_save(message, user_id, name, rol, None)
         return
 
+    # ══ TO'GARAK YARATISH STATE ══
+    if user_state.get(user_id) == "tg_create_nomi" and message.text:
+        temp_user[user_id]["tg_nomi"] = message.text.strip()
+        user_state[user_id] = "tg_create_fan"
+        await message.answer("📖 Fan nomini yozing (Matematika, Ingliz tili...):")
+        return
+
+    if user_state.get(user_id) == "tg_create_fan" and message.text:
+        temp_user[user_id]["tg_fan"] = message.text.strip()
+        user_state[user_id] = "tg_create_parol"
+        await message.answer("🔑 Parol o'rnating (harf va raqam, 4 ta va ko'p):")
+        return
+
+    if user_state.get(user_id) == "tg_create_parol" and message.text:
+        parol = message.text.strip()
+        from togarak import check_parol
+        if not check_parol(parol):
+            await message.answer("❌ Parol kamida 4 belgi bo'lsin!"); return
+        temp_user[user_id]["tg_parol"] = parol
+        user_state[user_id] = "tg_create_oylik"
+        await message.answer("💰 Oylik to'lov miqdorini yozing (so'mda, 0 = bepul):")
+        return
+
+    if user_state.get(user_id) == "tg_create_oylik" and message.text:
+        try: summa = int(message.text.strip().replace(" ","").replace(",",""))
+        except: summa = 0
+        temp_user[user_id]["tg_summa"] = summa
+        user_state[user_id] = "tg_create_sana"
+        await message.answer("📅 Oylik to'lov kunini yozing (1-28):")
+        return
+
+    if user_state.get(user_id) == "tg_create_sana" and message.text:
+        try: sana = max(1, min(28, int(message.text.strip())))
+        except: sana = 1
+        d = temp_user.get(user_id, {})
+        from togarak import create_togarak
+        tid = create_togarak(
+            teacher_id=user_id,
+            nomi=d.get("tg_nomi","To'garak"),
+            fan=d.get("tg_fan",""),
+            parol=d.get("tg_parol","0000"),
+            oylik_summa=d.get("tg_summa",0),
+            oylik_sana=sana
+        )
+        user_state.pop(user_id,None)
+        await message.answer(
+            f"✅ To'garak yaratildi!\n"
+            f"📚 {d.get('tg_nomi')}\n"
+            f"🔑 Parol: {d.get('tg_parol')}\n"
+            f"🔢 ID: {tid}\n\n"
+            f"O'quvchilarga ID va parolni bering!"
+        )
+        return
+
+    # O'quvchi to'garakka qo'shilish
+    if user_state.get(user_id) == "stg_join_id" and message.text:
+        try: tgid = int(message.text.strip())
+        except:
+            await message.answer("❌ ID raqam bo'lishi kerak!"); return
+        user_state[user_id] = f"stg_join_parol:{tgid}"
+        await message.answer(f"🔑 {tgid}-to'garak parolini yozing:")
+        return
+
+    if str(user_state.get(user_id) or "").startswith("stg_join_parol:") and message.text:
+        tgid = int(str(user_state[user_id]).split(":")[1])
+        parol = message.text.strip()
+        user_state.pop(user_id,None)
+        from togarak import join_togarak
+        result = join_togarak(tgid, user_id, parol)
+        await message.answer(result["msg"])
+        return
+
+    # To'garak o'chirish tasdiqlash
+    if str(user_state.get(user_id) or "").startswith("tg_del_confirm:") and message.text:
+        tgid = int(str(user_state[user_id]).split(":")[1])
+        user_state.pop(user_id,None)
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT parol FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        if not row2:
+            await message.answer("❌ Topilmadi!"); return
+        if message.text.strip() != row2[0]:
+            await message.answer("❌ Parol noto'g'ri!"); return
+        from togarak import delete_togarak
+        delete_togarak(tgid,user_id)
+        await message.answer("✅ To'garak o'chirildi!")
+        return
+
     # Kabinet o'zgartirish
     if str(user_state.get(user_id) or "").startswith("kb_change_") and message.text:
         field = str(user_state[user_id]).replace("kb_change_","")
@@ -2141,6 +2229,36 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             "📚 Bilimni mustahkamlash\nFan tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
+        return
+
+    if message.text == "📚 To'garaklar":
+        conn2=psycopg2.connect(DATABASE_URL);cur2=conn2.cursor()
+        cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        role2=(row2[0] if row2 else "")
+        from togarak import get_teacher_togaraklar, get_student_togaraklar, togarak_list_kb
+
+        if "qituvchi" in str(role2):
+            # O'qituvchi — o'z to'garaklari
+            tgs = get_teacher_togaraklar(user_id)
+            kb2 = togarak_list_kb(tgs, "tg")
+            kb2.inline_keyboard.append([InlineKeyboardButton(text="➕ Yangi to'garak", callback_data="tg_yangi")])
+            await message.answer(
+                f"📚 Mening to'garaklarim ({len(tgs)} ta):",
+                reply_markup=kb2
+            )
+        else:
+            # O'quvchi — a'zo bo'lgan to'garaklar
+            tgs = get_student_togaraklar(user_id)
+            rows2 = [[InlineKeyboardButton(
+                text=f"📚 {t['nomi']} | {t['teacher']}",
+                callback_data=f"stg_info:{t['id']}"
+            )] for t in tgs]
+            rows2.append([InlineKeyboardButton(text="🔑 To'garakka qo'shilish", callback_data="stg_join")])
+            await message.answer(
+                f"📚 Mening to'garaklarim ({len(tgs)} ta):",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+            )
         return
 
     if message.text == "🎨 Rasm chizdir":
@@ -6371,6 +6489,174 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer("▶️ Davom etilmoqda!")
         try: await call.message.delete()
         except: pass
+        return
+
+    # ══ TO'GARAK CALLBACKLAR ══
+    if call.data == "tg_yangi":
+        await call.answer()
+        user_state[user_id] = "tg_create_nomi"
+        await call.message.answer(
+            "➕ Yangi to'garak yaratish\n\nTo'garak nomini yozing:"
+        )
+        return
+
+    if call.data.startswith("tg_info:"):
+        tgid=int(call.data[8:]); await call.answer()
+        from togarak import get_togarak_azolar, get_teacher_togaraklar
+        tgs = {t["id"]:t for t in get_teacher_togaraklar(user_id)}
+        t = tgs.get(tgid)
+        if not t: await call.message.answer("❌ Topilmadi"); return
+        azolar = get_togarak_azolar(tgid)
+        txt = (f"📚 {t['nomi']}\n📖 Fan: {t['fan'] or '-'}\n"
+               f"🔑 Parol: {t['parol']}\n"
+               f"👥 A'zolar: {len(azolar)}/{t['max']}\n"
+               f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
+               f"📅 To'lov sanasi: har oyning {t['oylik_sana']}-kuni")
+        kb2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👥 A'zolar",    callback_data=f"tg_azolar:{tgid}"),
+             InlineKeyboardButton(text="📋 Yoqlama",    callback_data=f"tg_yoqlama:{tgid}")],
+            [InlineKeyboardButton(text="📊 Statistika", callback_data=f"tg_stat:{tgid}"),
+             InlineKeyboardButton(text="⚙️ Sozlash",    callback_data=f"tg_sozla:{tgid}")],
+            [InlineKeyboardButton(text="🗑 O'chirish",  callback_data=f"tg_del:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",     callback_data="tg_back")],
+        ])
+        try: await call.message.edit_text(txt, reply_markup=kb2)
+        except: await call.message.answer(txt, reply_markup=kb2)
+        return
+
+    if call.data.startswith("tg_azolar:"):
+        tgid=int(call.data[10:]); await call.answer()
+        from togarak import get_togarak_azolar
+        azolar = get_togarak_azolar(tgid)
+        if not azolar:
+            await call.message.answer("👥 Hali a'zo yo'q!"); return
+        txt = f"👥 A'zolar ({len(azolar)} ta):\n\n"
+        rows2=[]
+        for a in azolar:
+            txt += f"• {a['ism']} — {a['sinf'] or '-'}\n"
+            rows2.append([InlineKeyboardButton(
+                text=f"❌ {a['ism'][:20]}",
+                callback_data=f"tg_rm:{tgid}:{a['uid']}"
+            )])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"tg_info:{tgid}")])
+        await call.message.answer(txt[:2000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_rm:"):
+        parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
+        await call.answer()
+        from togarak import remove_azо
+        if remove_azо(tgid,uid2,user_id):
+            await call.answer("✅ O'chirildi",show_alert=True)
+            # Yangilash
+            call.data = f"tg_azolar:{tgid}"
+        return
+
+    if call.data.startswith("tg_yoqlama:"):
+        tgid=int(call.data[11:]); await call.answer()
+        from togarak import get_yoqlama_bugun
+        azolar = get_yoqlama_bugun(tgid)
+        if not azolar:
+            await call.message.answer("👥 A'zo yo'q"); return
+        rows2=[]
+        for a in azolar:
+            emoji = "✅" if a["holat"]=="keldi" else ("⏰" if a["holat"]=="kech" else "❌")
+            rows2.append([
+                InlineKeyboardButton(text=f"{emoji} {a['ism'][:25]}", callback_data="noop"),
+                InlineKeyboardButton(text="✅",  callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi"),
+                InlineKeyboardButton(text="⏰",  callback_data=f"tg_yq:{tgid}:{a['uid']}:kech"),
+                InlineKeyboardButton(text="❌",  callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi"),
+            ])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+        keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+        await call.message.answer(
+            f"📋 Bugungi yoqlama\n✅ Keldi: {keldi}/{len(azolar)}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return
+
+    if call.data.startswith("tg_yq:"):
+        parts2=call.data.split(":"); tgid,uid2,holat=int(parts2[1]),int(parts2[2]),parts2[3]
+        await call.answer()
+        from togarak import save_yoqlama
+        save_yoqlama(tgid, uid2, holat)
+        # Yoqlamani yangilash
+        call.data = f"tg_yoqlama:{tgid}"
+        from togarak import get_yoqlama_bugun
+        azolar = get_yoqlama_bugun(tgid)
+        rows2=[]
+        for a in azolar:
+            emoji = "✅" if a["holat"]=="keldi" else ("⏰" if a["holat"]=="kech" else "❌")
+            rows2.append([
+                InlineKeyboardButton(text=f"{emoji} {a['ism'][:25]}", callback_data="noop"),
+                InlineKeyboardButton(text="✅",callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi"),
+                InlineKeyboardButton(text="⏰",callback_data=f"tg_yq:{tgid}:{a['uid']}:kech"),
+                InlineKeyboardButton(text="❌",callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi"),
+            ])
+        rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")])
+        keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+        try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: pass
+        return
+
+    if call.data.startswith("tg_stat:"):
+        tgid=int(call.data[8:]); await call.answer()
+        from togarak import get_yoqlama_statistika
+        stat=get_yoqlama_statistika(tgid)
+        if not stat: await call.message.answer("📊 Ma'lumot yo'q"); return
+        txt="📊 Yoqlama statistikasi:\n\n"
+        for s2 in stat:
+            total=s2["keldi"]+s2["kelmadi"]+s2["kech"]
+            pct=round(s2["keldi"]*100/total) if total else 0
+            txt+=f"👤 {s2['ism']} ({s2['sinf'] or '-'})\n"
+            txt+=f"  ✅{s2['keldi']} ⏰{s2['kech']} ❌{s2['kelmadi']} | {pct}%\n\n"
+        await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")
+        ]]))
+        return
+
+    if call.data.startswith("tg_del:"):
+        tgid=int(call.data[7:]); await call.answer()
+        user_state[user_id]=f"tg_del_confirm:{tgid}"
+        await call.message.answer("⚠️ Tasdiqlaysizmi?\n\nParolni yozing:")
+        return
+
+    if call.data == "tg_back":
+        await call.answer()
+        from togarak import get_teacher_togaraklar, togarak_list_kb
+        tgs=get_teacher_togaraklar(user_id)
+        kb2=togarak_list_kb(tgs,"tg")
+        kb2.inline_keyboard.append([InlineKeyboardButton(text="➕ Yangi to'garak",callback_data="tg_yangi")])
+        try: await call.message.edit_text(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
+        except: await call.message.answer(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
+        return
+
+    # ── O'QUVCHI TO'GARAK ──
+    if call.data == "stg_join":
+        await call.answer()
+        user_state[user_id]="stg_join_id"
+        await call.message.answer("🔑 To'garak ID raqamini yozing:\n(O'qituvchingizdan so'rang)")
+        return
+
+    if call.data.startswith("stg_info:"):
+        tgid=int(call.data[9:]); await call.answer()
+        from togarak import get_student_togaraklar
+        tgs={t["id"]:t for t in get_student_togaraklar(user_id)}
+        t=tgs.get(tgid)
+        if not t: await call.message.answer("❌ Topilmadi"); return
+        txt=(f"📚 {t['nomi']}\n👨‍🏫 {t['teacher']}\n"
+             f"💰 Oylik: {t['oylik_summa']:,} so'm\n"
+             f"📅 To'lov: har oyning {t['oylik_sana']}-kuni")
+        await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🚪 Chiqish",callback_data=f"stg_leave:{tgid}")
+        ]]))
+        return
+
+    if call.data.startswith("stg_leave:"):
+        tgid=int(call.data[10:]); await call.answer()
+        from togarak import leave_togarak
+        if leave_togarak(tgid,user_id):
+            await call.message.answer("✅ To'garakdan chiqdingiz!")
         return
 
     # ── KABINET CALLBACKLAR ──
