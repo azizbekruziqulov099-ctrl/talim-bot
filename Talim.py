@@ -1978,8 +1978,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     res["teacher_id"],
                     f"📨 Yangi so'rov!\n👤 {uname}\n📚 {res['togarak_nomi']}\n\nQabul qilasizmi?",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{user_id}_{tgid}"),
-                        InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{user_id}_{tgid}"),
+                        InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{user_id}|{tgid}"),
+                        InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{user_id}|{tgid}"),
                     ]])
                 )
             except Exception as e:
@@ -6719,7 +6719,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     # ── TO'GARAK SO'ROVLAR ──
     if call.data.startswith("tg_req_approve:"):
-        parts2=call.data[15:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        parts2=call.data[15:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
         await call.answer()
         from togarak import join_togarak
         # O'qituvchi to'garakni boshqarishini tekshirish
@@ -6755,7 +6755,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("tg_req_reject:"):
-        parts2=call.data[14:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        parts2=call.data[14:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
         await call.answer()
         try:
             await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
@@ -6880,8 +6880,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                     res["teacher_id"],
                     f"⚠️ Chiqish so'rovi!\n👤 {res['user_name']}\n📚 {res['tg_nomi']}",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="✅ Ruxsat", callback_data=f"tg_leave_ok:{user_id}_{tgid}"),
-                        InlineKeyboardButton(text="❌ Yo'q",   callback_data=f"tg_leave_no:{user_id}_{tgid}"),
+                        InlineKeyboardButton(text="✅ Ruxsat", callback_data=f"tg_leave_ok:{user_id}|{tgid}"),
+                        InlineKeyboardButton(text="❌ Yo'q",   callback_data=f"tg_leave_no:{user_id}|{tgid}"),
                     ]])
                 )
             except: pass
@@ -6889,7 +6889,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("tg_leave_ok:"):
-        parts2=call.data[12:].split("_"); uid2,tgid2=int(parts2[0]),int(parts2[1])
+        parts2=call.data[12:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
         await call.answer()
         from togarak import confirm_leave
         confirm_leave(tgid2,uid2)
@@ -6899,7 +6899,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("tg_leave_no:"):
-        parts2=call.data[12:].split("_"); uid2=int(parts2[0])
+        parts2=call.data[12:].split("|"); uid2=int(parts2[0])
         await call.answer()
         try: await call.bot.send_message(uid2,"❌ Chiqish so'rovingiz rad etildi.")
         except: pass
