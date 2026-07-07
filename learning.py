@@ -1301,7 +1301,7 @@ async def student_profile(message):
     ]
     if not is_teacher:
         rows2.append([InlineKeyboardButton(text="🏫 Sinf", callback_data="kb_change:class")])
-        rows2.append([InlineKeyboardButton(text="📚 To'garaklarim", callback_data="kb_togaraklar")])
+    rows2.append([InlineKeyboardButton(text="📚 To'garaklarim", callback_data="kb_togaraklar")])
 
     # Ko'p akkaunt tugmalari
     acc_row = []
