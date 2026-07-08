@@ -1733,6 +1733,24 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
 
     # ── TO'GARAK STATE HANDLERS (yuqoriga ko'chirilgan) ──
+    if str(admin_state.get(user_id) or "").startswith("tg_kun_vaqt:") and message.text:
+        parts3=str(admin_state[user_id]).split(":")
+        tgid3=int(parts3[1]); sana3=parts3[2]; reja_id3=int(parts3[3])
+        admin_state.pop(user_id,None)
+        vaqt=message.text.strip()
+        from datetime import datetime
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
+        d=datetime.strptime(sana3,"%Y-%m-%d").date()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
+                        (sana3, KUNLAR[d.weekday()], vaqt, reja_id3))
+            conn2.commit()
+        except Exception as e: conn2.rollback(); print(f"kun_vaqt: {e}")
+        cur2.close(); conn2.close()
+        await message.answer(f"✅ {KUNLAR[d.weekday()]} {d.strftime('%d.%m')} — {vaqt}\nDars belgilandi!")
+        return
+
     if str(admin_state.get(user_id) or "").startswith("tg_reja_vaqt_save:") and message.text:
         parts3=str(admin_state[user_id]).split(":"); tgid3,reja_id3,kun_id3=int(parts3[1]),int(parts3[2]),int(parts3[3])
         admin_state.pop(user_id,None)
