@@ -250,6 +250,9 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         rol = call.data[12:]; await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol,user_id))
+        try:
+            cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol,user_id))
+        except: pass
         conn2.commit();cur2.close();conn2.close()
         from keyboards import get_main_keyboard
         await call.message.answer(f"✅ Rol o'zgartirildi: {rol}", reply_markup=get_main_keyboard(rol))
