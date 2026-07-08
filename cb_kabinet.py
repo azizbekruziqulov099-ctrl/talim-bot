@@ -14,27 +14,25 @@ def render_text(t):
     return t.strip()
 
 def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
-    """Yangi akkaunt yaratish — ishonchli."""
+    """Yangi akkaunt — alohida effektiv user_id bilan."""
     conn=_get_db_conn();cur=conn.cursor()
     try:
-        # Yangi index
         cur.execute("SELECT COALESCE(MAX(account_index),-1)+1 FROM user_accounts WHERE telegram_id=%s",(telegram_id,))
         new_idx=cur.fetchone()[0]
-        print(f"[new_acc] telegram={telegram_id} name={name} rol={rol_uz} idx={new_idx}")
-        # Barchasini nofaol
+        # Effektiv user_id: idx=0 → telegram_id, idx>0 → telegram_id*1000+idx
+        eff_uid = telegram_id if new_idx==0 else telegram_id*1000+new_idx
+        print(f"[new_acc] telegram={telegram_id} name={name} rol={rol_uz} idx={new_idx} eff_uid={eff_uid}")
         cur.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(telegram_id,))
-        # Yangi qo'shish
         cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
             VALUES(%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,name,rol_uz,sinf_txt))
-        # users ni yangilaymiz (aktiv akkaunt)
-        # users yangilash (ON CONFLICT ishlamaydi — UPDATE keyin INSERT)
+        # users da alohida qator (effektiv uid)
         cur.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
-                    (name,rol_uz,sinf_txt,telegram_id))
+                    (name,rol_uz,sinf_txt,eff_uid))
         if cur.rowcount==0:
             cur.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
-                        (telegram_id,name,rol_uz,sinf_txt))
+                        (eff_uid,name,rol_uz,sinf_txt))
         conn.commit()
-        print(f"[new_acc] ✅ saqlandi idx={new_idx}")
+        print(f"[new_acc] ✅ saqlandi eff_uid={eff_uid}")
         ok=True
     except Exception as e:
         import traceback; traceback.print_exc()
