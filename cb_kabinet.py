@@ -333,14 +333,42 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     if call.data.startswith("rq_sinf:"):
-        # Sinf tanlash
+        # Sinf tanlash — to'liq saqlash (mustaqil)
         sinf = call.data[8:]; await call.answer()
         user_id2 = call.from_user.id
-        if user_id2 not in temp_user or not isinstance(temp_user.get(user_id2),dict):
-            temp_user[user_id2] = {}
-        temp_user[user_id2]["class"] = sinf
-        # Saqlash
-        await _save_quick_user(call, user_id2)
+        data = temp_user.get(user_id2, {}) if isinstance(temp_user.get(user_id2),dict) else {}
+        name = data.get("full_name","Foydalanuvchi")
+        rol = data.get("role","student")
+        sinf_txt = f"{sinf}-sinf"
+        rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("""
+                INSERT INTO users(user_id,full_name,role,class,is_verified)
+                VALUES(%s,%s,%s,%s,TRUE)
+                ON CONFLICT(user_id) DO UPDATE
+                SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
+            """, (user_id2, name, rol_uz, sinf_txt))
+            cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id2,))
+            max_idx=(cur2.fetchone() or [None])[0]
+            new_idx = 0 if max_idx is None else max_idx+1
+            cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id2,))
+            cur2.execute("""
+                INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
+                VALUES(%s,%s,%s,%s,%s,TRUE)
+                ON CONFLICT(telegram_id,account_index) DO UPDATE
+                SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
+            """, (user_id2, new_idx, name, rol_uz, sinf_txt))
+            conn2.commit()
+        except Exception as e:
+            print(f"rq_sinf save: {e}"); conn2.rollback()
+        cur2.close();conn2.close()
+        temp_user.pop(user_id2,None); user_state.pop(user_id2,None)
+        from keyboards import get_main_keyboard
+        await call.message.answer(
+            f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}",
+            reply_markup=get_main_keyboard(rol_uz)
+        )
         return True
 
     if call.data.startswith("reg:"):
