@@ -96,22 +96,39 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             except: pass
         return True
 
-    if (call.data.startswith("tg_yoqlama:") or call.data.startswith("tg_toggle:")
-        or call.data.startswith("tg_kech:") or call.data.startswith("tg_kech_set:")):
+    if (call.data.startswith("tg_yoqlama:") or call.data.startswith("tg_pick:")
+        or call.data.startswith("tg_set:") or call.data.startswith("tg_kech:")
+        or call.data.startswith("tg_kech_set:")):
         from togarak import save_yoqlama, get_yoqlama_bugun
         d=call.data
 
-        # ═══ AMAL ═══
-        if d.startswith("tg_toggle:"):
-            # Ismni bosdi — keldi <-> kelmadi
-            p2=d[10:].split(":"); tgid=int(p2[0]); uid2=int(p2[1]); page=int(p2[2])
-            hozir=None
+        # ═══ ISMNI BOSDI — tanlov oynasi ═══
+        if d.startswith("tg_pick:"):
+            p2=d[8:].split(":"); tgid=int(p2[0]); uid2=int(p2[1]); page=int(p2[2])
+            await call.answer()
+            conn2=_get_db_conn();cur2=conn2.cursor()
+            cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
+            ism=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
+            # Hozirgi holat
+            hozir=None; izoh=None
             for a in get_yoqlama_bugun(tgid):
-                if a["uid"]==uid2: hozir=a["holat"]; break
-            # keldi(yoki kech) -> kelmadi -> keldi
-            yangi="kelmadi" if hozir in ("keldi","kech") else "keldi"
-            save_yoqlama(tgid,uid2,yangi)
-            await call.answer("🔴 Kelmadi" if yangi=="kelmadi" else "🟢 Keldi")
+                if a["uid"]==uid2: hozir=a["holat"]; izoh=a.get("izoh"); break
+            hs="✅ keldi" if hozir=="keldi" else ("🕐 "+(izoh or "kech") if hozir=="kech" else "❌ kelmadi")
+            rows2=[
+                [InlineKeyboardButton(text="✅ Keldi",callback_data=f"tg_set:{tgid}:{uid2}:keldi:{page}")],
+                [InlineKeyboardButton(text="🕐 Kech qoldi",callback_data=f"tg_kech:{tgid}:{uid2}:{page}")],
+                [InlineKeyboardButton(text="❌ Kelmadi",callback_data=f"tg_set:{tgid}:{uid2}:kelmadi:{page}")],
+                [InlineKeyboardButton(text="⬅️ Ortga",callback_data=f"tg_yoqlama:{tgid}:{page}")],
+            ]
+            await call.message.edit_text(
+                f"👤 <b>{ism}</b>\nHozir: {hs}\n\nHolatni tanlang:",
+                parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+            return True
+
+        elif d.startswith("tg_set:"):
+            p2=d.split(":"); tgid=int(p2[1]); uid2=int(p2[2]); holat=p2[3]; page=int(p2[4])
+            save_yoqlama(tgid,uid2,holat)
+            await call.answer("✅ Keldi" if holat=="keldi" else "❌ Kelmadi")
 
         elif d.startswith("tg_kech_set:"):
             p2=d[12:].split(":"); tgid=int(p2[0]); uid2=int(p2[1]); dq=int(p2[2]); page=int(p2[3])
@@ -140,7 +157,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                 br.append(InlineKeyboardButton(text=lbl,callback_data=f"tg_kech_set:{tgid}:{uid2}:{dq}:{page}"))
                 if len(br)==3: rows2.append(br); br=[]
             if br: rows2.append(br)
-            rows2.append([InlineKeyboardButton(text="⬅️ Ortga",callback_data=f"tg_yoqlama:{tgid}:{page}")])
+            rows2.append([InlineKeyboardButton(text="⬅️ Ortga",callback_data=f"tg_pick:{tgid}:{uid2}:{page}")])
             await call.message.edit_text(f"🕐 <b>{ism}</b> necha daqiqa kechikdi?",
                 parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             return True
@@ -158,19 +175,19 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         from datetime import datetime
         bugun=datetime.now().strftime("%d.%m.%Y")
 
-        # Hamma default KELDI (✅). Kelmagan = ❌. Kech = 🕐
+        # Har o'quvchi = 1 tugma. Bosса tanlov chiqadi.
         rows2=[]
         for idx,a in enumerate(page_az):
             nom=page*PER+idx+1
             h=a["holat"]
             if h=="kelmadi": belgi="❌"
             elif h=="kech": belgi="🕐"
-            else: belgi="✅"  # keldi (default)
-            ism=a["ism"][:20]
-            rows2.append([
-                InlineKeyboardButton(text=f"{belgi} {nom}. {ism}",callback_data=f"tg_toggle:{tgid}:{a['uid']}:{page}"),
-                InlineKeyboardButton(text="🕐",callback_data=f"tg_kech:{tgid}:{a['uid']}:{page}"),
-            ])
+            else: belgi="✅"
+            ism=a["ism"][:22]
+            rows2.append([InlineKeyboardButton(
+                text=f"{belgi} {nom}. {ism}",
+                callback_data=f"tg_pick:{tgid}:{a['uid']}:{page}"
+            )])
 
         if max_page>0:
             nav=[]
@@ -183,12 +200,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         kelmadi=[a for a in azolar if a["holat"]=="kelmadi"]
         kechlar=[a for a in azolar if a["holat"]=="kech"]
         keldi_soni=total-len(kelmadi)-len(kechlar)
-
-        # Faqat muammoni ko'rsatamiz
         info=""
         if kelmadi:
-            info+="\n❌ Kelmaganlar:\n"
-            for a in kelmadi: info+=f"   • {a['ism'].split()[0]}\n"
+            info+="\n❌ Kelmaganlar: "+", ".join(a['ism'].split()[0] for a in kelmadi)+"\n"
         if kechlar:
             info+="\n🕐 Kechikkanlar:\n"
             for a in kechlar: info+=f"   • {a['ism'].split()[0]}: {a.get('izoh') or 'kech'}\n"
@@ -197,10 +211,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
 
         txt=(f"📋 <b>Yoqlama · {bugun}</b>\n"
              f"━━━━━━━━━━━━━━━\n"
-             f"✅ Keldi: {keldi_soni} / {total}\n"
+             f"✅ {keldi_soni}   🕐 {len(kechlar)}   ❌ {len(kelmadi)}   (jami {total})\n"
              f"{info}\n"
-             f"👇 Kelmaganini bossangiz ❌ bo'ladi\n"
-             f"🕐 kech qolgan bo'lsa vaqtini qo'ying")
+             f"👇 O'quvchini bosing → holatini o'zgartiring")
 
         try: await call.message.edit_text(txt,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except:
