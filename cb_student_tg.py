@@ -51,8 +51,8 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
              InlineKeyboardButton(text="📊 Baholarim",     callback_data=f"stg_baholar:{tgid}")],
             [InlineKeyboardButton(text="📝 Vazifalar",     callback_data=f"stg_hw:{tgid}"),
              InlineKeyboardButton(text="🏆 Reyting",       callback_data=f"stg_reyting:{tgid}")],
-            [InlineKeyboardButton(text="💬 Chat",          callback_data=f"stg_chat:{tgid}")],
-            [InlineKeyboardButton(text="🚪 Chiqish",       callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="💬 Chat",          callback_data=f"stg_chat:{tgid}"),
+             InlineKeyboardButton(text="⚙️ Sozlamalar",    callback_data=f"stg_sozla:{tgid}")],
         ])
         try: await call.message.edit_text(txt, parse_mode="HTML", reply_markup=kb2)
         except: await call.message.answer(txt, parse_mode="HTML", reply_markup=kb2)
@@ -190,6 +190,106 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             me=" ← Siz" if st["uid"]==user_id else ""
             txt+=f"{m} {st['ism']}{me}\n  ⭐{st['baho']} | 📋{st['davomat']}%\n\n"
         await call.message.answer(txt[:2000])
+        return True
+
+    if call.data.startswith("stg_sozla:"):
+        tgid=int(call.data[10:]); await call.answer()
+        from togarak import get_student_togaraklar
+        tgs={t["id"]:t for t in get_student_togaraklar(user_id)}
+        t=tgs.get(tgid)
+        if not t: await call.message.answer("❌ Topilmadi"); return True
+        # Bildirishnoma holati
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""CREATE TABLE IF NOT EXISTS togarak_settings
+            (togarak_id BIGINT, user_id BIGINT, dars_eslatma BOOLEAN DEFAULT TRUE,
+             baho_xabar BOOLEAN DEFAULT TRUE, vazifa_eslatma BOOLEAN DEFAULT TRUE,
+             UNIQUE(togarak_id,user_id))""")
+        conn2.commit()
+        cur2.execute("SELECT dars_eslatma,baho_xabar,vazifa_eslatma FROM togarak_settings WHERE togarak_id=%s AND user_id=%s",(tgid,user_id))
+        s=cur2.fetchone()
+        if not s:
+            cur2.execute("INSERT INTO togarak_settings(togarak_id,user_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",(tgid,user_id))
+            conn2.commit(); s=(True,True,True)
+        cur2.close(); conn2.close()
+        dars_e,baho_x,vazifa_e=s
+        txt=(f"⚙️ <b>Sozlamalar</b>\n"
+             f"📚 {t['nomi']}\n"
+             f"─────────────\n\n"
+             f"🔔 Bildirishnomalar:\n")
+        kb2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{'🔔' if dars_e else '🔕'} Dars eslatmasi",callback_data=f"stg_set_dars:{tgid}")],
+            [InlineKeyboardButton(text=f"{'🔔' if baho_x else '🔕'} Baho xabari",callback_data=f"stg_set_baho:{tgid}")],
+            [InlineKeyboardButton(text=f"{'🔔' if vazifa_e else '🔕'} Vazifa eslatmasi",callback_data=f"stg_set_vazifa:{tgid}")],
+            [InlineKeyboardButton(text="👨‍🏫 O'qituvchi bilan bog'lanish",callback_data=f"stg_teacher_contact:{tgid}")],
+            [InlineKeyboardButton(text="ℹ️ To'garak haqida",callback_data=f"stg_about:{tgid}")],
+            [InlineKeyboardButton(text="🚪 To'garakdan chiqish",callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")],
+        ])
+        try: await call.message.edit_text(txt, parse_mode="HTML", reply_markup=kb2)
+        except: await call.message.answer(txt, parse_mode="HTML", reply_markup=kb2)
+        return True
+
+    if call.data.startswith("stg_set_dars:") or call.data.startswith("stg_set_baho:") or call.data.startswith("stg_set_vazifa:"):
+        if "dars" in call.data: field="dars_eslatma"; tgid=int(call.data[13:])
+        elif "baho" in call.data: field="baho_xabar"; tgid=int(call.data[13:])
+        else: field="vazifa_eslatma"; tgid=int(call.data[15:])
+        await call.answer("O'zgartirildi ✓")
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute(f"UPDATE togarak_settings SET {field}=NOT {field} WHERE togarak_id=%s AND user_id=%s",(tgid,user_id))
+        conn2.commit()
+        cur2.execute("SELECT dars_eslatma,baho_xabar,vazifa_eslatma FROM togarak_settings WHERE togarak_id=%s AND user_id=%s",(tgid,user_id))
+        s=cur2.fetchone() or (True,True,True); cur2.close(); conn2.close()
+        dars_e,baho_x,vazifa_e=s
+        kb2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{'🔔' if dars_e else '🔕'} Dars eslatmasi",callback_data=f"stg_set_dars:{tgid}")],
+            [InlineKeyboardButton(text=f"{'🔔' if baho_x else '🔕'} Baho xabari",callback_data=f"stg_set_baho:{tgid}")],
+            [InlineKeyboardButton(text=f"{'🔔' if vazifa_e else '🔕'} Vazifa eslatmasi",callback_data=f"stg_set_vazifa:{tgid}")],
+            [InlineKeyboardButton(text="👨‍🏫 O'qituvchi bilan bog'lanish",callback_data=f"stg_teacher_contact:{tgid}")],
+            [InlineKeyboardButton(text="ℹ️ To'garak haqida",callback_data=f"stg_about:{tgid}")],
+            [InlineKeyboardButton(text="🚪 To'garakdan chiqish",callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")],
+        ])
+        try: await call.message.edit_reply_markup(reply_markup=kb2)
+        except: pass
+        return True
+
+    if call.data.startswith("stg_teacher_contact:"):
+        tgid=int(call.data[20:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT teacher_id FROM togaraklar WHERE id=%s",(tgid,))
+        tr=cur2.fetchone(); cur2.close(); conn2.close()
+        if tr:
+            await call.message.answer(
+                "👨‍🏫 O'qituvchiga xabar yozish uchun:\n\n"
+                "To'garak ichidagi 💬 Chat orqali bevosita yozing.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💬 Chatga o'tish",callback_data=f"stg_dm:{tgid}:{tr[0]}:0")],
+                    [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_sozla:{tgid}")],
+                ])
+            )
+        return True
+
+    if call.data.startswith("stg_about:"):
+        tgid=int(call.data[10:]); await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT t.nomi,t.fan,u.full_name,t.oylik_summa,t.oylik_sana,
+            (SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=t.id AND aktiv=TRUE),
+            (SELECT COUNT(*) FROM togarak_reja WHERE togarak_id=t.id)
+            FROM togaraklar t JOIN users u ON u.user_id=t.teacher_id WHERE t.id=%s""",(tgid,))
+        r=cur2.fetchone(); cur2.close(); conn2.close()
+        if not r: await call.message.answer("❌ Topilmadi"); return True
+        txt=(f"ℹ️ <b>To'garak haqida</b>\n"
+             f"─────────────\n"
+             f"📚 Nomi: {r[0]}\n"
+             f"📖 Fan: {r[1] or '—'}\n"
+             f"👨‍🏫 O'qituvchi: {r[2]}\n"
+             f"👥 A'zolar: {r[5]} ta\n"
+             f"📋 Mavzular: {r[6]} ta\n"
+             f"💰 Oylik: {r[3] or 0:,} so'm\n"
+             f"📅 To'lov kuni: har oyning {r[4] or 1}-kuni")
+        try: await call.message.edit_text(txt,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_sozla:{tgid}")]]))
+        except: await call.message.answer(txt,parse_mode="HTML")
         return True
 
     if call.data.startswith("stg_leave_req:"):
