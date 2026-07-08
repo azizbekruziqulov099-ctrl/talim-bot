@@ -24,29 +24,38 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("stg_info:"):
         tgid=int(call.data[9:]); await call.answer()
-        from togarak import get_student_togaraklar, get_baholar, get_tolov_status
+        from togarak import get_student_togaraklar, get_baholar, get_togarak_progress, get_student_progress
         tgs={t["id"]:t for t in get_student_togaraklar(user_id)}
         t=tgs.get(tgid)
         if not t: await call.message.answer("❌ Topilmadi"); return True
-        baholar=get_baholar(tgid,user_id)
-        tolovlar=get_tolov_status(tgid,user_id)
-        avg_baho=round(sum(b[0] for b in baholar)/len(baholar),1) if baholar else "—"
-        last_tolov=tolovlar[0][1] if tolovlar else 0
-        txt=(f"📚 {t['nomi']}\n"
+        prog=get_togarak_progress(tgid)
+        sp=get_student_progress(tgid,user_id)
+        # Bugungi dars
+        from datetime import datetime
+        bugun_id=datetime.now().weekday()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid,bugun_id))
+        bugun=cur2.fetchone(); cur2.close(); conn2.close()
+        bdaraja="⭐ A'lo" if sp["avg_baho"]>=4.5 else ("👍 Yaxshi" if sp["avg_baho"]>=3.5 else ("📖 O'rta" if sp["avg_baho"]>0 else "—"))
+        txt=(f"📚 <b>{t['nomi']}</b>\n"
              f"👨‍🏫 {t['teacher']}\n"
-             f"📊 O'rtacha baho: {avg_baho}\n"
-             f"💰 So'nggi to'lov: {last_tolov:,} so'm\n"
-             f"📅 To'lov kuni: har oyning {t['oylik_sana']}-kuni")
+             f"─────────────\n"
+             f"🧠 Bilim darajasi: {bdaraja}\n"
+             f"⭐ O'rtacha baho: {sp['avg_baho'] or '—'}\n"
+             f"📋 Davomat: {sp['yoqlama_pct']}%\n"
+             f"📊 O'tilgan darslar: {prog['pct']}% ({prog['done']}/{prog['total']})\n")
+        if bugun: txt+=f"🕐 Bugungi dars: {bugun[0]}\n"
         kb2=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📚 Mavzular",    callback_data=f"stg_albomlar:{tgid}"),
-             InlineKeyboardButton(text="📅 Jadval",      callback_data=f"stg_jadval:{tgid}:0")],
-            [InlineKeyboardButton(text="📊 Baholarim",   callback_data=f"stg_baholar:{tgid}"),
-             InlineKeyboardButton(text="🏆 Reyting",     callback_data=f"stg_reyting:{tgid}")],
-            [InlineKeyboardButton(text="📝 Vazifalar",   callback_data=f"stg_hw:{tgid}"),
-             InlineKeyboardButton(text="💬 Chat",        callback_data=f"stg_chat:{tgid}")],
-            [InlineKeyboardButton(text="🚪 Chiqish",     callback_data=f"stg_leave_req:{tgid}")],
+            [InlineKeyboardButton(text="📅 Dars jadvali",  callback_data=f"stg_jadval:{tgid}:0")],
+            [InlineKeyboardButton(text="📚 Mavzular",      callback_data=f"stg_albomlar:{tgid}"),
+             InlineKeyboardButton(text="📊 Baholarim",     callback_data=f"stg_baholar:{tgid}")],
+            [InlineKeyboardButton(text="📝 Vazifalar",     callback_data=f"stg_hw:{tgid}"),
+             InlineKeyboardButton(text="🏆 Reyting",       callback_data=f"stg_reyting:{tgid}")],
+            [InlineKeyboardButton(text="💬 Chat",          callback_data=f"stg_chat:{tgid}")],
+            [InlineKeyboardButton(text="🚪 Chiqish",       callback_data=f"stg_leave_req:{tgid}")],
         ])
-        await call.message.answer(txt, reply_markup=kb2)
+        try: await call.message.edit_text(txt, parse_mode="HTML", reply_markup=kb2)
+        except: await call.message.answer(txt, parse_mode="HTML", reply_markup=kb2)
         return True
 
     if call.data.startswith("stg_jadval:"):
