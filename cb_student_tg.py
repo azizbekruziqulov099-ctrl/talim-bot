@@ -179,7 +179,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("stg_select_mavzu:"):
         # Ko'p mavzu tanlash → test
-        parts2=call.data[18:].split(":"); tgid=int(parts2[0]); page=int(parts2[1]) if len(parts2)>1 else 0
+        parts2=call.data[17:].split(":"); tgid=int(parts2[0]); page=int(parts2[1]) if len(parts2)>1 else 0
         await call.answer()
         # Tanlangan mavzular session da
         sel_key=f"sel_mavzu:{user_id}:{tgid}"
@@ -301,7 +301,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     if call.data.startswith("stg_free_albom:"):
-        parts2=call.data[16:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
+        parts2=call.data[15:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT DISTINCT d.mavzu_name, d.mavzu_code, COUNT(g.id)
