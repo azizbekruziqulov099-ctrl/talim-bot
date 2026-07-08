@@ -2683,38 +2683,27 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if message.text == "📈 Rivojlanishim":
         from togarak import get_student_togaraklar, get_student_progress, get_togarak_progress
-        from datetime import datetime
         tgs = get_student_togaraklar(user_id)
-        bugun_id = datetime.now().weekday()
-        KUNLAR = ["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
 
         txt = "📈 Rivojlanishim\n" + "─"*20 + "\n\n"
         rows2 = []
 
         if not tgs:
-            txt += "📚 Hali hech qaysi to'garakka a'zo emassiz.\n"
+            txt += "📚 Hali hech qaysi to'garakka a'zo emassiz.\n\n"
+            txt += "To'garakka qo'shilish uchun \"📚 To'garaklar\" bo'limiga o'ting."
         else:
+            txt += "To'garaklaringiz:\n\n"
             for t in tgs:
                 prog = get_togarak_progress(t["id"])
                 sp = get_student_progress(t["id"], user_id)
-                bdaraja = "⭐ A'lo" if sp["avg_baho"]>=4.5 else ("👍 Yaxshi" if sp["avg_baho"]>=3.5 else ("📖 O'rta" if sp["avg_baho"]>0 else "—"))
-                conn2=_get_db_conn();cur2=conn2.cursor()
-                try:
-                    cur2.execute("SELECT boshlanish FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(t["id"],bugun_id))
-                    j=cur2.fetchone()
-                except: j=None
-                cur2.close(); conn2.close()
-                txt += f"📚 {t['nomi']}\n"
-                txt += f"  🧠 Bilim: {bdaraja} | 📋 Davomat: {sp['yoqlama_pct']}%\n"
-                if j: txt += f"  🕐 Bugungi dars: {j[0]}\n"
-                txt += f"  📊 O'tildi: {prog['pct']}% ({prog['done']}/{prog['total']})\n\n"
+                bdaraja = "⭐" if sp["avg_baho"]>=4.5 else ("👍" if sp["avg_baho"]>=3.5 else ("📖" if sp["avg_baho"]>0 else "—"))
+                txt += f"📚 <b>{t['nomi']}</b>\n"
+                txt += f"   {bdaraja} Baho: {sp['avg_baho'] or '—'} · 📋 {sp['yoqlama_pct']}% · 📊 {prog['pct']}%\n\n"
                 rows2.append([
-                    InlineKeyboardButton(text=f"📚 {t['nomi']} — Mavzular",callback_data=f"stg_albomlar:{t['id']}"),
+                    InlineKeyboardButton(text=f"📂 {t['nomi']}", callback_data=f"stg_info:{t['id']}"),
                 ])
 
-        rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
-        await message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        await student_progress(message)
+        await message.answer(txt[:3000], parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if message.text == "🌍 Hamjamiyat":
