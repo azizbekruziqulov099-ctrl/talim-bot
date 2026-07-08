@@ -416,7 +416,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
 
 
     if call.data.startswith("tg_reja_jadval:"):
-        tgid=int(call.data[16:]); await call.answer()
+        tgid=int(call.data[15:]); await call.answer()
         from togarak import get_reja
         reja=get_reja(tgid)
         # Har kun uchun mavzu va vaqt
