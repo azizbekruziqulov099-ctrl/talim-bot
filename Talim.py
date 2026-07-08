@@ -1681,12 +1681,11 @@ async def _rq_save(source, user_id, name, rol, sinf):
     sinf_txt = f"{sinf}-sinf" if sinf else ""
     print(f"[rq_save] user={user_id} name={name} rol={rol_uz}")
     try:
-        cur2.execute("""
-            INSERT INTO users(user_id,full_name,role,class)
-            VALUES(%s,%s,%s,%s)
-            ON CONFLICT(user_id) DO UPDATE
-            SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
-        """, (user_id, name, rol_uz, sinf_txt))
+        cur2.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
+                    (name,rol_uz,sinf_txt,user_id))
+        if cur2.rowcount==0:
+            cur2.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
+                        (user_id,name,rol_uz,sinf_txt))
         cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id,))
         max_idx=(cur2.fetchone() or [None])[0]
         new_idx = 0 if max_idx is None else max_idx + 1
