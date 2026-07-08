@@ -5911,6 +5911,60 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
 
+async def _health_server():
+    """Railway health check uchun oddiy HTTP server."""
+    from aiohttp import web
+    async def health(request):
+        return web.Response(text="OK", status=200)
+    app = web.Application()
+    app.router.add_get("/health", health)
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("✅ Health server port 8080 da ishga tushdi")
+
+# ═══ BRAIN message handler (AI yordamchi) ═══
+@dp.message()
+async def brain_handler(message: Message, state: FSMContext):
+    uid = message.from_user.id if message.from_user else 0
+    if uid in ADMINS: return
+    if not message.text: return
+    if user_state.get(uid) in ("text_answer", "in_test"): return
+    if user_state.get(uid) != "ai_mode": return
+    if message.text.startswith("/"): return
+    menu_buttons = {
+        "🎯 Bugungi reja","📚 Bilimni mustahkamlash","🧪 Bilimni sinash",
+        "📈 Rivojlanishim","🌍 Hamjamiyat","👤 Kabinet","📚 To'garaklar",
+        "🎨 Rasm chizdir","🤖 Yordamchi",
+    }
+    if message.text in menu_buttons: return
+    try:
+        from brain import process_message as _brain
+        conn_ = _get_db_conn(); cur_ = conn_.cursor()
+        cur_.execute("SELECT class, role FROM users WHERE user_id=%s", (uid,))
+        row_ = cur_.fetchone(); cur_.close(); conn_.close()
+        grade_ = str(row_[0]) if row_ and row_[0] else None
+        role_ = str(row_[1]) if row_ and row_[1] else ""
+        res = await _brain(message.text, uid, grade_, role=role_)
+        if res.get("message"):
+            await message.answer(res["message"])
+        if res.get("action") == "START_TEST" and res.get("topic"):
+            conn2 = _get_db_conn(); cur2 = conn2.cursor()
+            cur2.execute("""
+                SELECT question,option_a,option_b,option_c,option_d,
+                       correct_answer,explanation,question_type,is_latex,
+                       image_url,audio_text,language,time_limit
+                FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20
+            """, (res["topic"]["topic_code"],))
+            tests_ = cur2.fetchall(); cur2.close(); conn2.close()
+            if tests_:
+                from test_engine import start_test
+                await start_test(uid, tests_, message)
+    except Exception as e:
+        print(f"brain xato: {e}")
+
 async def main():
     print("BOT ISHGA TUSHDI 🚀")
     init_db()
