@@ -7223,29 +7223,60 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("tg_reja:"):
-        tgid=int(call.data[8:]); await call.answer()
+        parts2=call.data.split(":"); tgid=int(parts2[1]); page=int(parts2[2]) if len(parts2)>2 else 0
+        await call.answer()
         from togarak import get_reja, get_togarak_progress
-        reja=get_reja(tgid)
-        prog=get_togarak_progress(tgid)
+        reja=get_reja(tgid); prog=get_togarak_progress(tgid)
+        total=len(reja); PER=10
+        ICONS=["📗","📘","📙","📕","📓"]
         txt=f"📚 Dars rejasi\n{'─'*20}\n"
-        txt+=f"📊 O'tildi: {prog['done']}/{prog['total']} ({prog['pct']}%)\n\n"
+        txt+=f"📊 O'tildi: {prog['done']}/{total} ({prog['pct']}%)\n\n"
+        rows2=[]
         if not reja:
             txt+="(Hali mavzu qo'shilmagan)"
         else:
-            for r in reja[:20]:
-                icon="✅" if r["completed"] else ("📅" if r["tur"]=="imtihon" else "📖")
-                kun = f" | 📅{r['kun']}" if r.get("kun") else ""
-                vaqt = f" {r['dars_vaqt']}" if r.get("dars_vaqt") else ""
-                txt+=f"{icon} {r['tartib']}. {r['code'][:35]}{kun}{vaqt}\n"
-        rows2=[
-            [InlineKeyboardButton(text="➕ Mavzu qo'shish",callback_data=f"tg_reja_add:{tgid}"),
-             InlineKeyboardButton(text="📅 Jadval",callback_data=f"tg_reja_jadval:{tgid}")],
-            [InlineKeyboardButton(text="✅ Bugun o'tildi",callback_data=f"tg_reja_today:{tgid}"),
-             InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
-        ]
+            for i in range(0,total,PER):
+                chunk=reja[i:i+PER]; done_c=sum(1 for r in chunk if r["completed"])
+                n=i//PER+1; icon=ICONS[min(n-1,len(ICONS)-1)]
+                bar="█"*done_c+"░"*(len(chunk)-done_c)
+                rows2.append([InlineKeyboardButton(text=f"{icon} {n}-albom [{bar}] {done_c}/{len(chunk)}",callback_data=f"tg_reja_albom:{tgid}:{i}")])
+            txt+="Albomni bosib mavzularni ko'ring"
+        rows2.append([InlineKeyboardButton(text="➕ Mavzu qo'shish",callback_data=f"tg_reja_add:{tgid}"),InlineKeyboardButton(text="📅 Jadval",callback_data=f"tg_reja_jadval:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="✅ Bugun o'tildi",callback_data=f"tg_reja_today:{tgid}"),InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
+
+    if call.data.startswith("tg_reja_albom:"):
+        parts2=call.data[14:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        from togarak import get_reja
+        reja=get_reja(tgid); chunk=reja[start:start+10]; albom_n=start//10+1
+        KS={"Dushanba":"Du","Seshanba":"Se","Chorshanba":"Ch","Payshanba":"Pa","Juma":"Ju","Shanba":"Sh"}
+        rows2=[]
+        for r in chunk:
+            icon="✅" if r["completed"] else "📖"
+            kun=KS.get(r.get("dars_kuni",""),""); vaqt=r.get("dars_vaqt","") or ""
+            sana=f" {kun}{chr(32)+vaqt if vaqt else ""}" if kun or vaqt else ""
+            rows2.append([InlineKeyboardButton(text=f"{icon} {r['tartib']}. {r['code'][:30]}{sana}",callback_data=f"tg_reja_mavzu:{tgid}:{r['id']}")])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
+        try: await call.message.edit_text(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_reja_mavzu:"):
+        parts2=call.data[14:].split(":"); tgid,reja_id=int(parts2[0]),int(parts2[1])
+        await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT topic_code,tartib,tur,dars_kuni,dars_vaqt,completed FROM togarak_reja WHERE id=%s",(reja_id,))
+        r=cur2.fetchone(); cur2.close(); conn2.close()
+        if not r: await call.message.answer("❌ Topilmadi"); return
+        holat="✅ O'tildi" if r[5] else "📖 O'tilmagan"
+        txt=f"📌 {r[1]}-mavzu: {r[0]}\n📅 Kun: {r[3] or '—'} {r[4] or ''}\n🎯 Holat: {holat}"
+        rows2=[[InlineKeyboardButton(text="📅 Kun/vaqt",callback_data=f"tg_reja_kun_set:{tgid}:{reja_id}"),InlineKeyboardButton(text="✅ O'tildi",callback_data=f"tg_mark_done:{tgid}:{r[0]}")],[InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")]]
+        await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
 
     if call.data.startswith("tg_reja_jadval:"):
         tgid=int(call.data[16:]); await call.answer()
@@ -7263,33 +7294,40 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             vaqt=jadval.get(k,"—")
             txt+=f"📌 {k}: {vaqt}\n"
         txt+="\n⬇️ Kun tanlab dars vaqti + mavzu qo'ying:"
-        rows2=[[InlineKeyboardButton(text=f"📌 {k}",callback_data=f"tg_reja_kun_set:{tgid}:{i}")] for i,k in enumerate(KUNLAR)]
+        rows2=[[InlineKeyboardButton(text=f"📌 {k}",callback_data=f"tg_reja_kun_id:{tgid}:{i}")] for i,k in enumerate(KUNLAR)]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_reja_kun_set:"):
-        parts2=call.data[16:].split(":"); tgid,kun_id=int(parts2[0]),int(parts2[1])
+        parts2=call.data[16:].split(":"); tgid=int(parts2[0])
+        parts2=call.data[16:].split(":")
+        tgid=int(parts2[0])
+        reja_id=int(parts2[1]) if len(parts2)>1 and parts2[1].isdigit() else None
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        # Kun tanlatamiz
+        rows2=[[InlineKeyboardButton(
+            text=f"📅 {k}",
+            callback_data=f"tg_reja_mavzu_kun:{tgid}:{reja_id}:{i}" if reja_id else f"tg_reja_kun_id:{tgid}:{i}"
+        )] for i,k in enumerate(KUNLAR)]
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
+        await call.message.answer("📅 Qaysi kuni dars bo'ladi?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return
+
+    if call.data.startswith("tg_reja_kun_id:"):
+        # Jadvaldan keldi — avval kun, keyin mavzu tanlash
+        parts2=call.data[15:].split(":"); tgid,kun_id=int(parts2[0]),int(parts2[1])
         await call.answer()
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
-        # Rejadagi mavzularni ko'rsat — bu kun uchun tanlash
         from togarak import get_reja
         reja=get_reja(tgid)
-        rows2=[]
-        for r in reja:
-            if not r["completed"]:
-                rows2.append([InlineKeyboardButton(
-                    text=f"📖 {r['tartib']}. {r['code'][:35]}",
-                    callback_data=f"tg_reja_mavzu_kun:{tgid}:{r['id']}:{kun_id}"
-                )])
-        if not rows2:
-            await call.message.answer("✅ Barcha mavzular belgilangan!"); return
-        admin_state[user_id]=f"tg_reja_vaqt:{tgid}:{kun_id}"
+        rows2=[[InlineKeyboardButton(
+            text=f"📖 {r['tartib']}. {r['code'][:35]}",
+            callback_data=f"tg_reja_mavzu_kun:{tgid}:{r['id']}:{kun_id}"
+        )] for r in reja if not r["completed"]]
+        if not rows2: await call.message.answer("✅ Barcha mavzular belgilangan!"); return
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_jadval:{tgid}")])
-        await call.message.answer(
-            f"📅 {KUNLAR[kun_id]} — qaysi mavzu o'tiladi?",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        )
+        await call.message.answer(f"📅 {KUNLAR[kun_id]} — qaysi mavzu?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if call.data.startswith("tg_reja_mavzu_kun:"):
