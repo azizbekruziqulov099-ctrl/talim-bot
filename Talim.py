@@ -5091,13 +5091,34 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if call.data.startswith("stg_"):
             from cb_student_tg import handle_stg
             if await handle_stg(call,user_id,admin_state,user_state,temp_user,bot): return
-        if call.data.startswith("kb_") or call.data.startswith("parent_"):
+        if (call.data.startswith("kb_") or call.data.startswith("parent_") or
+            call.data.startswith("lesson_") or call.data.startswith("tset_") or
+            call.data.startswith("reg_") or call.data.startswith("reg:") or
+            call.data.startswith("rq_") or call.data.startswith("speak_") or
+            call.data.startswith("restart_lesson:") or call.data.startswith("resume_lesson:") or
+            call.data.startswith("test_") or
+            call.data in ("ai_stop","cancel_import","noop_timer","speak_all","speak_question",
+                          "test_settings","test_skip","test_next_from_result",
+                          "lesson_exit","lesson_finish_confirm","lesson_help","lesson_help_close",
+                          "lesson_help_next","lesson_help_prev","lesson_next","lesson_prev","lesson_speak")):
             from cb_kabinet import handle_kb
             if await handle_kb(call,user_id,admin_state,user_state,temp_user,bot): return
-        if call.data.startswith("kitob_"):
+        if (call.data.startswith("kitob_") or call.data.startswith("stnav_") or
+            call.data.startswith("sin_fan:") or call.data.startswith("sin_gr:") or
+            call.data.startswith("sin_mavzu:") or
+            call.data in ("mustah_back","stnav_back_grade","kitob_qolda","kitob_upload")):
             from cb_kitob import handle_kitob
             if await handle_kitob(call,user_id,admin_state,user_state,temp_user,bot): return
-        if call.data.startswith("ts_") or call.data.startswith("sin_"):
+        if (call.data.startswith("ts_") or call.data.startswith("sin_") or
+            call.data.startswith("menu_bilim_") or call.data.startswith("menu_kitob_") or
+            call.data.startswith("menu_ai_") or call.data.startswith("mtt_") or
+            call.data.startswith("mustah_") or call.data.startswith("sinash_") or
+            call.data.startswith("rasm_") or call.data.startswith("ai_") or
+            call.data.startswith("xl_") or call.data.startswith("rep_") or
+            call.data.startswith("err_") or
+            call.data in ("ai_rasm_auto","ai_rasm_custom","rasm_back","mtt_back",
+                          "sinash_back","menu_ai_train","rep_plan","rep_prog","rep_test",
+                          "err_clear","err_read","err_unread")):
             from cb_test_nav import handle_test_nav
             if await handle_test_nav(call,user_id,admin_state,user_state,temp_user,bot): return
     except Exception as _de: print(f"delegate: {_de}")
