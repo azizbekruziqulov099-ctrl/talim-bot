@@ -1707,10 +1707,14 @@ async def _rq_save(source, user_id, name, rol, sinf):
     user_state.pop(user_id, None)
     temp_user.pop(user_id, None)
     kb = get_main_keyboard(rol_uz)
-    if hasattr(source, "answer"):
-        await source.answer(f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}", reply_markup=kb)
+    welcome=f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}"
+    # CallbackQuery bo'lsa .message.answer, Message bo'lsa .answer
+    if hasattr(source, "message") and source.message is not None:
+        # CallbackQuery
+        await source.message.answer(welcome, reply_markup=kb)
     else:
-        await source.message.answer(f"✅ Xush kelibsiz, {name}!\n🎯 {rol_uz} {sinf_txt}", reply_markup=kb)
+        # Message
+        await source.answer(welcome, reply_markup=kb)
 
 async def _save_quick_user(call, user_id):
     """rq_sinf callbackdan saqlash."""
@@ -2010,7 +2014,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if rol == "student":
             # Sinf tanlash
             temp_user[user_id]["full_name"] = name
-            rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4)] for j in range(1, 12, 4)]
+            rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4) if i<=11] for j in range(1, 12, 4)]
             await message.answer(
                 f"✅ {name}\n\nSinfni tanlang:",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
