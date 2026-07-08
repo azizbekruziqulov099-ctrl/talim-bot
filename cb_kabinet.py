@@ -27,11 +27,12 @@ def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
         cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
             VALUES(%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,name,rol_uz,sinf_txt))
         # users ni yangilaymiz (aktiv akkaunt)
-        cur.execute("""INSERT INTO users(user_id,full_name,role,class)
-            VALUES(%s,%s,%s,%s)
-            ON CONFLICT(user_id) DO UPDATE
-            SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class""",
-            (telegram_id,name,rol_uz,sinf_txt))
+        # users yangilash (ON CONFLICT ishlamaydi — UPDATE keyin INSERT)
+        cur.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
+                    (name,rol_uz,sinf_txt,telegram_id))
+        if cur.rowcount==0:
+            cur.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
+                        (telegram_id,name,rol_uz,sinf_txt))
         conn.commit()
         print(f"[new_acc] ✅ saqlandi idx={new_idx}")
         ok=True
@@ -445,12 +446,11 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
         conn2=_get_db_conn();cur2=conn2.cursor()
         try:
-            cur2.execute("""
-                INSERT INTO users(user_id,full_name,role,class)
-                VALUES(%s,%s,%s,%s)
-                ON CONFLICT(user_id) DO UPDATE
-                SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
-            """, (user_id2, name, rol_uz, sinf_txt))
+            cur2.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
+                        (name,rol_uz,sinf_txt,user_id2))
+            if cur2.rowcount==0:
+                cur2.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
+                            (user_id2,name,rol_uz,sinf_txt))
             cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id2,))
             max_idx=(cur2.fetchone() or [None])[0]
             new_idx = 0 if max_idx is None else max_idx+1
