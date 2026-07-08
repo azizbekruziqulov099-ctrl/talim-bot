@@ -1778,28 +1778,40 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
         vaqt=message.text.strip()
         bosh,tug="","" 
-        if "-" in vaqt: bosh,tug=vaqt.split("-",1)
-        else: bosh=vaqt
+        if "-" in vaqt: bosh,tug=vaqt.split("-",1); bosh,tug=bosh.strip(),tug.strip()
+        else:
+            bosh=vaqt.strip()
+            # Avto +2 soat
+            try:
+                h,m=bosh.split(":"); h=int(h)+2
+                if h>=24: h-=24
+                tug=f"{h:02d}:{m}"
+            except: tug=""
         conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid3,kun_id3))
-            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",(tgid3,kun_id3,KUNLAR[kun_id3],bosh.strip(),tug.strip()))
+            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",(tgid3,kun_id3,KUNLAR[kun_id3],bosh,tug))
             conn2.commit()
         except Exception as e: conn2.rollback(); print(f"jadval: {e}")
-        cur2.execute("SELECT kun_id,boshlanish FROM togarak_jadval WHERE togarak_id=%s",(tgid3,))
-        mavjud={r[0]:r[1] for r in cur2.fetchall()}
+        cur2.execute("SELECT kun_id,boshlanish,tugash FROM togarak_jadval WHERE togarak_id=%s",(tgid3,))
+        mavjud={r[0]:(r[1],r[2]) for r in cur2.fetchall()}
         cur2.close(); conn2.close()
         txt="⚙️ Dars kunlarini sozlash\n"+"─"*20+"\n\n"
         for i,k in enumerate(KUNLAR):
-            txt+=(f"✅ {k}: {mavjud[i]}\n" if i in mavjud else f"⚪ {k}: —\n")
+            if i in mavjud:
+                v=mavjud[i]; vt=f"{v[0]}-{v[1]}" if v[1] else v[0]
+                txt+=f"✅ {k}: {vt}\n"
+            else: txt+=f"⚪ {k}: —\n"
         rows2=[]
         for i,k in enumerate(KUNLAR):
             if i in mavjud:
-                rows2.append([InlineKeyboardButton(text=f"✅ {k} — {mavjud[i]}",callback_data=f"tg_jadval_kun:{tgid3}:{i}"),InlineKeyboardButton(text="🗑",callback_data=f"tg_jadval_del:{tgid3}:{i}")])
+                v=mavjud[i]; vt=f"{v[0]}-{v[1]}" if v[1] else v[0]
+                rows2.append([InlineKeyboardButton(text=f"✅ {k} — {vt}",callback_data=f"tg_jadval_kun:{tgid3}:{i}"),InlineKeyboardButton(text="🗑",callback_data=f"tg_jadval_del:{tgid3}:{i}")])
             else:
                 rows2.append([InlineKeyboardButton(text=f"⚪ {k} — vaqt qo'shish",callback_data=f"tg_jadval_kun:{tgid3}:{i}")])
         rows2.append([InlineKeyboardButton(text="✅ Tayyor — jadvalga",callback_data=f"tg_reja:{tgid3}:0")])
-        await message.answer(f"✅ {KUNLAR[kun_id3]}: {bosh.strip()} belgilandi!\n\n"+txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        tug_txt=f" (tugash: {tug})" if tug else ""
+        await message.answer(f"✅ {KUNLAR[kun_id3]}: {bosh}{tug_txt} belgilandi!\n\n"+txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if str(admin_state.get(user_id) or "").startswith("tg_new_parol:") and message.text:
