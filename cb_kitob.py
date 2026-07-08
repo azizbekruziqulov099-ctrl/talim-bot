@@ -13,7 +13,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         book_id2=int(call.data[12:]); await call.answer()
         admin_state[user_id]=f"kitob_set_parol:{book_id2}"
         await call.message.answer("🔑 Yangi 4 xonali parol yozing (masalan: 1234):")
-        return
+        return True
 
     if call.data.startswith("kitob_davom:"):
         book_id2=int(call.data[12:])
@@ -33,7 +33,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
                 InlineKeyboardButton(text="✅ Kitobni tugatish",callback_data=f"kitob_qolda_tugat:{book_id2}:{last}")
             ]])
         )
-        return
+        return True
 
     if call.data.startswith("kitob_edit_page:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -45,7 +45,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer(
             f"✏️ Bet {page2} yangi matnini yozing:"
         )
-        return
+        return True
 
     if call.data.startswith("kitob_del_page:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -55,7 +55,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("DELETE FROM book_pages WHERE book_id=%s AND page_num=%s",(book_id2,page2))
         conn2.commit(); cur2.close(); conn2.close()
         await call.message.answer(f"🗑 Bet {page2} o'chirildi!")
-        return
+        return True
 
     if call.data.startswith("kitob_next_bet:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -67,7 +67,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             ]])
         )
         admin_state[user_id] = f"kitob_qolda_bet:{book_id2}:{page2}"
-        return
+        return True
 
     if call.data.startswith("kitob_qolda_tugat:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); last_page=int(parts2[2])
@@ -77,7 +77,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("UPDATE books SET total_pages=%s WHERE id=%s",(last_page,book_id2))
         conn2.commit(); cur2.close(); conn2.close()
         await call.message.answer(f"✅ Kitob saqlandi!\n📄 {last_page} bet\n🔑 ID: {book_id2}")
-        return
+        return True
 
     if call.data == "kitob_qolda":
         await call.answer()
@@ -90,7 +90,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             "<code>Matematika | Matematika | 7 | Usmonov</code>",
             parse_mode="HTML"
         )
-        return
+        return True
 
     if call.data == "kitob_upload":
         await call.answer()
@@ -101,7 +101,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             "<code>Nom | Fan | Sinf | Muallif</code>",
             parse_mode="HTML"
         )
-        return
+        return True
 
     if call.data.startswith("kitob_info:"):
         book_id=int(call.data[11:])
@@ -123,7 +123,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
                     [InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"kitob_del:{book_id}")],
                 ])
             )
-        return
+        return True
 
     if call.data.startswith("kitob_bet:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -131,7 +131,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         from kitob_bazasi import get_page, get_exercises, render_page_as_image
         pg=get_page(book_id2,page2)
         if not pg:
-            await call.message.answer("❌ Bet topilmadi"); return
+            await call.message.answer("❌ Bet topilmadi"); return True
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT total_pages FROM books WHERE id=%s",(book_id2,))
         tot2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
@@ -163,7 +163,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             try: await call.message.delete()
             except: pass
             await call.message.answer(full_txt, reply_markup=kb)
-        return
+        return True
 
     if call.data.startswith("kitob_write:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -173,7 +173,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         admin_state[user_id] = f"kitob_goto:{book_id2}"
         await call.message.answer("📄 Qaysi betga o'tmoqchisiz? Raqam yozing:")
-        return
+        return True
 
     if call.data.startswith("kitob_matn:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
@@ -181,7 +181,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         from kitob_bazasi import get_page
         pg = get_page(book_id2, page2)
         if not pg:
-            await call.message.answer("❌ Bet topilmadi"); return
+            await call.message.answer("❌ Bet topilmadi"); return True
         txt = pg.get("text","")
         for i in range(0, min(len(txt), 8000), 4000):
             await call.message.answer(txt[i:i+4000])
@@ -192,12 +192,12 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
                 [InlineKeyboardButton(text="⬅️ Betga qaytish", callback_data=f"kitob_bet:{book_id2}:{page2}")],
             ])
         )
-        return
+        return True
 
     if call.data.startswith("kitob_qidir:"):
         book_id2=int(call.data[12:]); await call.answer()
         admin_state[user_id]=f"kitob_search:{book_id2}"
-        await call.message.answer("🔍 So'z yozing:"); return
+        await call.message.answer("🔍 So'z yozing:"); return True
 
     if call.data.startswith("kitob_del:"):
         book_id2=int(call.data[10:]); await call.answer()
@@ -211,17 +211,17 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             f"Tasdiqlash uchun kitob parolini yozing\n"
             f"(Standart parol: 0000)"
         )
-        return
+        return True
 
     if call.data.startswith("kitob_test:"):
         parts2=call.data.split(":"); book_id2=int(parts2[1]); page2=int(parts2[2])
         await call.answer()
         from kitob_bazasi import get_exercises
         exs=get_exercises(book_id2,page_num=page2,limit=20)
-        if not exs: await call.message.answer("❌ Misol topilmadi!"); return
+        if not exs: await call.message.answer("❌ Misol topilmadi!"); return True
         txt=f"📐 {page2}-bet misollari ({len(exs)} ta):\n\n"
         for i,e in enumerate(exs,1): txt+=f"{i}. {e[:100]}\n\n"
-        await call.message.answer(txt[:3000]); return
+        await call.message.answer(txt[:3000]); return True
 
     if call.data.startswith("sin_gr:"):
         gr=call.data[7:]
@@ -236,7 +236,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️",callback_data="menu_bilim_sin")])
         try: await call.message.edit_text(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"🏫 {gr}-sinf — Fan:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("sin_fan:"):
         # sin_fan:gr:fan  yoki  sin_fan:gr:fan:page
@@ -281,7 +281,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
 
         try: await call.message.edit_text(f"📚 {fan2} — Mavzu ({total} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📚 {fan2} — Mavzu ({total} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("sin_mavzu:"):
         tc2=call.data[10:]
@@ -300,11 +300,11 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             ])
         )
         except: pass
-        return
+        return True
 
     if call.data == "mustah_back":
         await call.message.delete()
-        return
+        return True
 
     if call.data.startswith("stnav_grade:"):
         grade = call.data.split(":")[1]
@@ -322,7 +322,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             f"🏫 {grade + '-sinf' if str(grade).isdigit() else grade}\nFan tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data.startswith("stnav_subj:"):
         parts2 = call.data.split(":")
@@ -347,7 +347,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             f"📘 {subj}\nMavzu tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data.startswith("stnav_topic:"):
         parts2 = call.data.split(":")
@@ -377,12 +377,12 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
             f"📝 Mavzu tanlang:\n(✅=test bor, ❌=hali yo'q)",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data == "stnav_back_grade":
         # Bilimni sinash ga qaytish
         await call.message.delete()
-        return
+        return True
     # ════════════════════════════
 
     return False
