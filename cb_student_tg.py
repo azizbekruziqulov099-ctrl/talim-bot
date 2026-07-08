@@ -39,20 +39,96 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
              f"📅 To'lov kuni: har oyning {t['oylik_sana']}-kuni")
         kb2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📚 Mavzular",    callback_data=f"stg_albomlar:{tgid}"),
-             InlineKeyboardButton(text="📊 Baholarim",   callback_data=f"stg_baholar:{tgid}")],
-            [InlineKeyboardButton(text="📝 Vazifalar",   callback_data=f"stg_hw:{tgid}"),
+             InlineKeyboardButton(text="📅 Jadval",      callback_data=f"stg_jadval:{tgid}:0")],
+            [InlineKeyboardButton(text="📊 Baholarim",   callback_data=f"stg_baholar:{tgid}"),
              InlineKeyboardButton(text="🏆 Reyting",     callback_data=f"stg_reyting:{tgid}")],
-            [InlineKeyboardButton(text="💬 Chat",        callback_data=f"stg_chat:{tgid}")],
+            [InlineKeyboardButton(text="📝 Vazifalar",   callback_data=f"stg_hw:{tgid}"),
+             InlineKeyboardButton(text="💬 Chat",        callback_data=f"stg_chat:{tgid}")],
             [InlineKeyboardButton(text="🚪 Chiqish",     callback_data=f"stg_leave_req:{tgid}")],
         ])
         await call.message.answer(txt, reply_markup=kb2)
         return True
 
+    if call.data.startswith("stg_jadval:"):
+        parts2=call.data[11:].split(":"); tgid=int(parts2[0]); week_off=int(parts2[1]) if len(parts2)>1 else 0
+        await call.answer()
+        from datetime import datetime, timedelta
+        today=datetime.now().date()
+        monday=today - timedelta(days=today.weekday()) + timedelta(weeks=week_off)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT dars_sana,dars_vaqt,topic_code,completed FROM togarak_reja
+            WHERE togarak_id=%s AND dars_sana IS NOT NULL
+            AND dars_sana BETWEEN %s AND %s ORDER BY dars_sana""",
+            (tgid,monday,monday+timedelta(days=5)))
+        darslar={}
+        for r in cur2.fetchall():
+            darslar.setdefault(str(r[0]),[]).append({"vaqt":r[1],"mavzu":r[2],"done":r[3]})
+        cur2.close(); conn2.close()
+        txt=f"📅 Dars jadvali\n{monday.strftime('%d.%m')} — {(monday+timedelta(days=5)).strftime('%d.%m.%Y')}\n{'─'*20}\n\n"
+        for i in range(6):
+            ks=monday+timedelta(days=i); ss=str(ks)
+            if ss in darslar:
+                txt+=f"{'🔵' if ks==today else '📌'} {KUNLAR[i]} {ks.strftime('%d.%m')}:\n"
+                for d in darslar[ss]:
+                    m="✅" if d["done"] else "📖"
+                    txt+=f"   {m} {d['vaqt'] or ''} {(d['mavzu'] or '')[:28]}\n"
+            else:
+                txt+=f"{'🔵' if ks==today else '⚪'} {KUNLAR[i]} {ks.strftime('%d.%m')}: —\n"
+        rows2=[[
+            InlineKeyboardButton(text="◀️ O'tgan",callback_data=f"stg_jadval:{tgid}:{week_off-1}"),
+            InlineKeyboardButton(text="📆 Oylik",callback_data=f"stg_oylik:{tgid}:0"),
+            InlineKeyboardButton(text="Keyingi ▶️",callback_data=f"stg_jadval:{tgid}:{week_off+1}"),
+        ],[InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")]]
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
+    if call.data.startswith("stg_oylik:"):
+        parts2=call.data[10:].split(":"); tgid=int(parts2[0]); month_off=int(parts2[1]) if len(parts2)>1 else 0
+        await call.answer()
+        from datetime import datetime
+        import calendar
+        today=datetime.now().date()
+        mon=today.month+month_off; yr=today.year
+        while mon>12: mon-=12; yr+=1
+        while mon<1: mon+=12; yr-=1
+        OYLAR=["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"]
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        first=datetime(yr,mon,1).date(); last_day=calendar.monthrange(yr,mon)[1]
+        last=datetime(yr,mon,last_day).date()
+        cur2.execute("""SELECT dars_sana,topic_code,completed FROM togarak_reja
+            WHERE togarak_id=%s AND dars_sana BETWEEN %s AND %s ORDER BY dars_sana""",(tgid,first,last))
+        darslar={}
+        for r in cur2.fetchall(): darslar[str(r[0])]={"mavzu":r[1],"done":r[2]}
+        cur2.close(); conn2.close()
+        txt=f"📆 {OYLAR[mon-1]} {yr}\n{'─'*20}\n\nDu Se Ch Pa Ju Sh Ya\n"
+        for week in calendar.monthcalendar(yr,mon):
+            line=""
+            for day in week:
+                if day==0: line+="   "
+                else:
+                    ss=str(datetime(yr,mon,day).date())
+                    if ss in darslar: line+=f"{'✅' if darslar[ss]['done'] else '📖'}"
+                    elif datetime(yr,mon,day).date()==today: line+="🔵"
+                    else: line+=f"{day:2} "
+            txt+=line+"\n"
+        if darslar:
+            txt+="\n📚 Darslar:\n"
+            for ss in sorted(darslar):
+                d=datetime.strptime(ss,"%Y-%m-%d").date()
+                m="✅" if darslar[ss]["done"] else "📖"
+                txt+=f"{m} {d.day}: {(darslar[ss]['mavzu'] or '')[:25]}\n"
+        rows2=[[
+            InlineKeyboardButton(text="◀️",callback_data=f"stg_oylik:{tgid}:{month_off-1}"),
+            InlineKeyboardButton(text="📅 Haftalik",callback_data=f"stg_jadval:{tgid}:0"),
+            InlineKeyboardButton(text="▶️",callback_data=f"stg_oylik:{tgid}:{month_off+1}"),
+        ],[InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")]]
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
     if call.data.startswith("stg_hw:"):
-        tgid=int(call.data[7:]); await call.answer()
-        from features import get_student_homeworks
-        hws=get_student_homeworks(tgid,user_id)
-        if not hws: await call.message.answer("📝 Hozircha uyga vazifa yo'q!"); return True
         rows2=[]
         for h in hws:
             status="✅" if h["javob"] else "⏳"
