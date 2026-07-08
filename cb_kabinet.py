@@ -172,9 +172,9 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data == "kb_new_acc":
         await call.answer()
-        # Yangi akkaunt — eski temp ma'lumotni tozalaymiz (toza boshlanish)
+        # Yangi akkaunt — eski temp ma'lumotni tozalaymiz
         temp_user[user_id] = {}
-        user_state[user_id] = "reg_new_acc"
+        user_state.pop(user_id, None)
         await call.message.answer(
             "➕ Yangi akkaunt yaratish\n\nYangi rol tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
