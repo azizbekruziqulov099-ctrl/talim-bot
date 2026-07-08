@@ -310,6 +310,8 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                 VALUES(%s,%s,TRUE)
                 ON CONFLICT(togarak_id,user_id) DO UPDATE SET aktiv=TRUE
             """,(tgid2,uid2))
+            # So'rovni o'chiramiz (qayta ko'rinmasligi uchun)
+            cur2.execute("DELETE FROM togarak_requests WHERE togarak_id=%s AND user_id=%s",(tgid2,uid2))
             conn2.commit()
         except Exception as e:
             print(f"approve insert: {e}")
@@ -325,6 +327,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("tg_req_reject:"):
         parts2=call.data[14:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
         await call.answer()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("DELETE FROM togarak_requests WHERE togarak_id=%s AND user_id=%s",(tgid2,uid2))
+        conn2.commit(); cur2.close(); conn2.close()
         try:
             await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
         except: pass
