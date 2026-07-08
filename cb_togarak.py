@@ -659,8 +659,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         if doimiy and doimiy[0]:
             # Avtomatik doimiy vaqt bilan belgilaymiz
             vaqt=doimiy[0]
-            cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
-                        (sana, KUNLAR[kun_id], vaqt, reja_id))
+            try:
+                cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
+                            (sana, KUNLAR[kun_id], vaqt, reja_id))
+            except Exception:
+                conn2.rollback()
+                cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_vaqt=%s WHERE id=%s",
+                            (sana, vaqt, reja_id))
             conn2.commit(); cur2.close(); conn2.close()
             await call.message.answer(
                 f"✅ {KUNLAR[kun_id]} {d.strftime('%d.%m')} — {vaqt}\n"
