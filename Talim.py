@@ -2122,14 +2122,28 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         val = message.text.strip()
         user_state.pop(user_id, None)
         conn2=_get_db_conn();cur2=conn2.cursor()
-        col_map = {"name":"full_name","bdate":"birth_date","school":"school"}
+        col_map = {"name":"full_name","bdate":"birth_date","school":"school","role":"role","class":"class"}
         col = col_map.get(field)
+        # Rol uchun normallashtirish
+        if field == "role":
+            rl = val.lower()
+            if "quvchi" in rl or "student" in rl: val = "O'quvchi"
+            elif "qituvchi" in rl or "teacher" in rl: val = "O'qituvchi"
+            elif "ota" in rl or "ona" in rl or "parent" in rl: val = "Ota-ona"
         if col:
             cur2.execute(f"UPDATE users SET {col}=%s WHERE user_id=%s",(val,user_id))
+            # user_accounts da ham yangilash
+            try:
+                cur2.execute(f"UPDATE user_accounts SET {col}=%s WHERE telegram_id=%s AND is_active=TRUE",(val,user_id))
+            except: pass
             conn2.commit()
         cur2.close(); conn2.close()
-        labels = {"name":"Ism","bdate":"Tug'ilgan sana","school":"Maktab"}
-        await message.answer(f"✅ {labels.get(field,field)} yangilandi: {val}")
+        labels = {"name":"Ism","bdate":"Tug'ilgan sana","school":"Maktab","role":"Rol","class":"Sinf"}
+        # Rol o'zgarganda menyuni yangilash
+        if field == "role":
+            await message.answer(f"✅ Rol yangilandi: {val}", reply_markup=get_main_keyboard(val))
+        else:
+            await message.answer(f"✅ {labels.get(field,field)} yangilandi: {val}")
         return
 
     if user_state.get(user_id) == "parent_link_id" and message.text:
