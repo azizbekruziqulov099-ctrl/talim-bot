@@ -2004,6 +2004,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         rol = str(user_state[user_id]).split(":")[1]
         name = message.text.strip()
         user_state.pop(user_id, None)
+        if user_id not in temp_user or not isinstance(temp_user.get(user_id),dict):
+            temp_user[user_id] = {}
+        temp_user[user_id]["role"] = rol
         if rol == "student":
             # Sinf tanlash
             temp_user[user_id]["full_name"] = name
