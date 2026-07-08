@@ -1732,6 +1732,63 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 pass
             return
 
+    # ── TO'GARAK STATE HANDLERS (yuqoriga ko'chirilgan) ──
+    if str(admin_state.get(user_id) or "").startswith("tg_reja_vaqt_save:") and message.text:
+        parts3=str(admin_state[user_id]).split(":"); tgid3,reja_id3,kun_id3=int(parts3[1]),int(parts3[2]),int(parts3[3])
+        admin_state.pop(user_id,None)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        vaqt=message.text.strip()
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("UPDATE togarak_reja SET dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
+                        (KUNLAR[kun_id3], vaqt, reja_id3))
+            # Jadval jadvaliga ham qo'shamiz
+            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=(SELECT togarak_id FROM togarak_reja WHERE id=%s) AND kun_id=%s",(reja_id3,kun_id3))
+            cur2.execute("""SELECT togarak_id FROM togarak_reja WHERE id=%s""",(reja_id3,))
+            tg_id_r=(cur2.fetchone() or [tgid3])[0]
+            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish) VALUES(%s,%s,%s,%s)",
+                        (tg_id_r,kun_id3,KUNLAR[kun_id3],vaqt))
+            conn2.commit()
+        except Exception as e: conn2.rollback(); print(f"reja_vaqt: {e}")
+        cur2.close(); conn2.close()
+        await message.answer(f"✅ {KUNLAR[kun_id3]}: {vaqt} — belgilandi!")
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("tg_jadval_vaqt:") and message.text:
+        parts3=str(admin_state[user_id]).split(":"); tgid3,kun_id3=int(parts3[1]),int(parts3[2])
+        admin_state.pop(user_id,None)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        vaqt=message.text.strip()
+        bosh,tug="","" 
+        if "-" in vaqt: bosh,tug=vaqt.split("-",1)
+        else: bosh=vaqt
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        try:
+            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid3,kun_id3))
+            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",
+                        (tgid3,kun_id3,KUNLAR[kun_id3],bosh.strip(),tug.strip()))
+            conn2.commit()
+        except Exception as e: conn2.rollback(); print(f"jadval: {e}")
+        cur2.close(); conn2.close()
+        await message.answer(
+            f"✅ {KUNLAR[kun_id3]}: {bosh.strip()} qo'shildi!\n\n"
+            f"📅 Jadval ko'rish uchun to'garak menyusiga qayting."
+        )
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("tg_new_parol:") and message.text:
+        tgid=int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id,None)
+        yangi=message.text.strip()
+        if len(yangi)<4: await message.answer("❌ Kamida 4 belgi!"); return
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE togaraklar SET parol=%s WHERE id=%s AND teacher_id=%s",(yangi,tgid,user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ Parol yangilandi!\n\n🔑 Yangi parol: <code>{yangi}</code>",parse_mode="HTML")
+        return
+
+
+
     # Dars paytida yozilgan xabarni avtomatik o'chirish
     if isinstance(user_state.get(user_id), dict):
         if user_state[user_id].get("board_message_id"):
@@ -2179,60 +2236,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer("✅ O'qituvchiga yuborildi!")
         except:
             await message.answer("❌ O'qituvchiga yuborib bo'lmadi.")
-        return
-
-    if str(admin_state.get(user_id) or "").startswith("tg_reja_vaqt_save:") and message.text:
-        parts3=str(admin_state[user_id]).split(":"); tgid3,reja_id3,kun_id3=int(parts3[1]),int(parts3[2]),int(parts3[3])
-        admin_state.pop(user_id,None)
-        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
-        vaqt=message.text.strip()
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        try:
-            cur2.execute("UPDATE togarak_reja SET dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
-                        (KUNLAR[kun_id3], vaqt, reja_id3))
-            # Jadval jadvaliga ham qo'shamiz
-            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=(SELECT togarak_id FROM togarak_reja WHERE id=%s) AND kun_id=%s",(reja_id3,kun_id3))
-            cur2.execute("""SELECT togarak_id FROM togarak_reja WHERE id=%s""",(reja_id3,))
-            tg_id_r=(cur2.fetchone() or [tgid3])[0]
-            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish) VALUES(%s,%s,%s,%s)",
-                        (tg_id_r,kun_id3,KUNLAR[kun_id3],vaqt))
-            conn2.commit()
-        except Exception as e: conn2.rollback(); print(f"reja_vaqt: {e}")
-        cur2.close(); conn2.close()
-        await message.answer(f"✅ {KUNLAR[kun_id3]}: {vaqt} — belgilandi!")
-        return
-
-    if str(admin_state.get(user_id) or "").startswith("tg_jadval_vaqt:") and message.text:
-        parts3=str(admin_state[user_id]).split(":"); tgid3,kun_id3=int(parts3[1]),int(parts3[2])
-        admin_state.pop(user_id,None)
-        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
-        vaqt=message.text.strip()
-        bosh,tug="","" 
-        if "-" in vaqt: bosh,tug=vaqt.split("-",1)
-        else: bosh=vaqt
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        try:
-            cur2.execute("DELETE FROM togarak_jadval WHERE togarak_id=%s AND kun_id=%s",(tgid3,kun_id3))
-            cur2.execute("INSERT INTO togarak_jadval(togarak_id,kun_id,kun_nomi,boshlanish,tugash) VALUES(%s,%s,%s,%s,%s)",
-                        (tgid3,kun_id3,KUNLAR[kun_id3],bosh.strip(),tug.strip()))
-            conn2.commit()
-        except Exception as e: conn2.rollback(); print(f"jadval: {e}")
-        cur2.close(); conn2.close()
-        await message.answer(
-            f"✅ {KUNLAR[kun_id3]}: {bosh.strip()} qo'shildi!\n\n"
-            f"📅 Jadval ko'rish uchun to'garak menyusiga qayting."
-        )
-        return
-
-    if str(admin_state.get(user_id) or "").startswith("tg_new_parol:") and message.text:
-        tgid=int(str(admin_state[user_id]).split(":")[1])
-        admin_state.pop(user_id,None)
-        yangi=message.text.strip()
-        if len(yangi)<4: await message.answer("❌ Kamida 4 belgi!"); return
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("UPDATE togaraklar SET parol=%s WHERE id=%s AND teacher_id=%s",(yangi,tgid,user_id))
-        conn2.commit(); cur2.close(); conn2.close()
-        await message.answer(f"✅ Parol yangilandi!\n\n🔑 Yangi parol: <code>{yangi}</code>",parse_mode="HTML")
         return
 
     # Kitob o'chirish — parol tasdiqlash
@@ -5121,7 +5124,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                           "err_clear","err_read","err_unread")):
             from cb_test_nav import handle_test_nav
             if await handle_test_nav(call,user_id,admin_state,user_state,temp_user,bot): return
-    except Exception as _de: print(f"delegate: {_de}")
+    except Exception as _de:
+        print(f"delegate xato: {_de}")
+        import traceback; traceback.print_exc()
+        try: await call.answer("⚠️ Xatolik yuz berdi, qayta urinib ko'ring", show_alert=True)
+        except: pass
+        return
     if call.data.startswith("la_") or call.data in (
         "la_sel_all","la_dl_sel","la_tmpl","la_imp",
         "la_back_grades","la_home"
