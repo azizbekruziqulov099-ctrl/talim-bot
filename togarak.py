@@ -147,7 +147,7 @@ def save_yoqlama(togarak_id, user_id, holat, izoh="") -> bool:
 def get_yoqlama_bugun(togarak_id: int) -> list:
     conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT a.user_id, u.full_name, u.class, y.holat
+        SELECT a.user_id, u.full_name, u.class, y.holat, y.izoh
         FROM togarak_azolar a
         JOIN users u ON u.user_id=a.user_id
         LEFT JOIN togarak_yoqlama y ON y.togarak_id=a.togarak_id
@@ -156,7 +156,7 @@ def get_yoqlama_bugun(togarak_id: int) -> list:
         ORDER BY a.id
     """, (togarak_id,))
     rows = cur.fetchall(); cur.close(); conn.close()
-    return [{"uid":r[0],"ism":r[1],"sinf":r[2],"holat":r[3]} for r in rows]
+    return [{"uid":r[0],"ism":r[1],"sinf":r[2],"holat":r[3],"izoh":r[4]} for r in rows]
 
 def get_yoqlama_statistika(togarak_id: int, oy: int = None) -> list:
     conn = db(); cur = conn.cursor()
