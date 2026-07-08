@@ -97,53 +97,120 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     if call.data.startswith("tg_yoqlama:"):
-        tgid=int(call.data[11:]); await call.answer()
+        parts2=call.data[11:].split(":"); tgid=int(parts2[0])
+        page=int(parts2[1]) if len(parts2)>1 else 0
+        await call.answer()
         from togarak import get_yoqlama_bugun
-        azolar = get_yoqlama_bugun(tgid)
+        azolar=get_yoqlama_bugun(tgid)
         if not azolar:
             await call.message.answer("👥 A'zo yo'q"); return True
+        PER=10; total=len(azolar)
+        page_az=azolar[page*PER:(page+1)*PER]
         rows2=[]
-        for a in azolar:
-            emoji = "✅" if a["holat"]=="keldi" else ("⏰" if a["holat"]=="kech" else "❌")
+        for a in page_az:
+            h=a["holat"]
+            # Holat: keldi=✅, kelmadi=❌, belgilanmagan
+            k_mark="✅" if h=="keldi" else "⚪"
+            y_mark="❌" if h=="kelmadi" else "⚪"
+            ism=a["ism"][:18]
             rows2.append([
-                InlineKeyboardButton(text=f"{emoji} {a['ism'][:25]}", callback_data="noop"),
-                InlineKeyboardButton(text="✅",  callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi"),
-                InlineKeyboardButton(text="⏰",  callback_data=f"tg_yq:{tgid}:{a['uid']}:kech"),
-                InlineKeyboardButton(text="❌",  callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi"),
+                InlineKeyboardButton(text=ism,callback_data="noop"),
+                InlineKeyboardButton(text=f"{k_mark} Keldi",callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi:{page}"),
+                InlineKeyboardButton(text=f"{y_mark} Yo'q",callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi:{page}"),
             ])
+        # Albom navigatsiya
+        nav=[]
+        if page>0: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"tg_yoqlama:{tgid}:{page-1}"))
+        if total>PER: nav.append(InlineKeyboardButton(text=f"{page+1}-albom ({page*PER+1}-{min((page+1)*PER,total)}/{total})",callback_data="noop"))
+        if (page+1)*PER<total: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"tg_yoqlama:{tgid}:{page+1}"))
+        if nav: rows2.append(nav)
+        # Hammani belgilash tugmalari
+        rows2.append([
+            InlineKeyboardButton(text="✅ Hammasi keldi",callback_data=f"tg_yq_all:{tgid}:keldi"),
+            InlineKeyboardButton(text="❌ Hammasi yo'q",callback_data=f"tg_yq_all:{tgid}:kelmadi"),
+        ])
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
         keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+        kelmadi=sum(1 for a in azolar if a["holat"]=="kelmadi")
         await call.message.answer(
-            f"📋 Bugungi yoqlama\n✅ Keldi: {keldi}/{len(azolar)}",
+            f"📋 <b>Bugungi yoqlama</b>\n"
+            f"✅ Keldi: {keldi} · ❌ Yo'q: {kelmadi} · Jami: {total}",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         )
         return True
 
     if call.data.startswith("tg_yq:"):
         parts2=call.data.split(":"); tgid,uid2,holat=int(parts2[1]),int(parts2[2]),parts2[3]
-        await call.answer()
+        page=int(parts2[4]) if len(parts2)>4 else 0
+        await call.answer("✓")
         from togarak import save_yoqlama, get_yoqlama_bugun
-        save_yoqlama(tgid, uid2, holat)
-        # Yangilash — call.data o'zgartirmasdan
-        azolar = get_yoqlama_bugun(tgid)
+        save_yoqlama(tgid,uid2,holat)
+        azolar=get_yoqlama_bugun(tgid)
+        PER=10; total=len(azolar)
+        page_az=azolar[page*PER:(page+1)*PER]
         rows2=[]
-        for a in azolar:
-            emoji = "✅" if a["holat"]=="keldi" else ("⏰" if a["holat"]=="kech" else "❌")
+        for a in page_az:
+            h=a["holat"]
+            k_mark="✅" if h=="keldi" else "⚪"
+            y_mark="❌" if h=="kelmadi" else "⚪"
             rows2.append([
-                InlineKeyboardButton(text=f"{emoji} {a['ism'][:25]}", callback_data="noop"),
-                InlineKeyboardButton(text="✅",callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi"),
-                InlineKeyboardButton(text="⏰",callback_data=f"tg_yq:{tgid}:{a['uid']}:kech"),
-                InlineKeyboardButton(text="❌",callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi"),
+                InlineKeyboardButton(text=a["ism"][:18],callback_data="noop"),
+                InlineKeyboardButton(text=f"{k_mark} Keldi",callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi:{page}"),
+                InlineKeyboardButton(text=f"{y_mark} Yo'q",callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi:{page}"),
             ])
-        rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")])
+        nav=[]
+        if page>0: nav.append(InlineKeyboardButton(text="◀️",callback_data=f"tg_yoqlama:{tgid}:{page-1}"))
+        if total>PER: nav.append(InlineKeyboardButton(text=f"{page+1}-albom",callback_data="noop"))
+        if (page+1)*PER<total: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"tg_yoqlama:{tgid}:{page+1}"))
+        if nav: rows2.append(nav)
+        rows2.append([
+            InlineKeyboardButton(text="✅ Hammasi keldi",callback_data=f"tg_yq_all:{tgid}:keldi"),
+            InlineKeyboardButton(text="❌ Hammasi yo'q",callback_data=f"tg_yq_all:{tgid}:kelmadi"),
+        ])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
         keldi=sum(1 for a in azolar if a["holat"]=="keldi")
-        caption=f"📋 Bugungi yoqlama\n✅ Keldi: {keldi}/{len(azolar)}"
-        try:
-            await call.message.edit_text(caption, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        kelmadi=sum(1 for a in azolar if a["holat"]=="kelmadi")
+        cap=f"📋 <b>Bugungi yoqlama</b>\n✅ Keldi: {keldi} · ❌ Yo'q: {kelmadi} · Jami: {total}"
+        try: await call.message.edit_text(cap,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except:
             try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             except: pass
         return True
+
+    if call.data.startswith("tg_yq_all:"):
+        parts2=call.data[10:].split(":"); tgid,holat=int(parts2[0]),parts2[1]
+        await call.answer("Barchasi belgilandi ✓")
+        from togarak import save_yoqlama, get_yoqlama_bugun
+        azolar=get_yoqlama_bugun(tgid)
+        for a in azolar: save_yoqlama(tgid,a["uid"],holat)
+        # Qayta ochamiz (1-albom)
+        azolar=get_yoqlama_bugun(tgid)
+        PER=10; total=len(azolar); page=0
+        page_az=azolar[:PER]
+        rows2=[]
+        for a in page_az:
+            h=a["holat"]
+            k_mark="✅" if h=="keldi" else "⚪"
+            y_mark="❌" if h=="kelmadi" else "⚪"
+            rows2.append([
+                InlineKeyboardButton(text=a["ism"][:18],callback_data="noop"),
+                InlineKeyboardButton(text=f"{k_mark} Keldi",callback_data=f"tg_yq:{tgid}:{a['uid']}:keldi:{page}"),
+                InlineKeyboardButton(text=f"{y_mark} Yo'q",callback_data=f"tg_yq:{tgid}:{a['uid']}:kelmadi:{page}"),
+            ])
+        if total>PER: rows2.append([InlineKeyboardButton(text="▶️",callback_data=f"tg_yoqlama:{tgid}:1")])
+        rows2.append([
+            InlineKeyboardButton(text="✅ Hammasi keldi",callback_data=f"tg_yq_all:{tgid}:keldi"),
+            InlineKeyboardButton(text="❌ Hammasi yo'q",callback_data=f"tg_yq_all:{tgid}:kelmadi"),
+        ])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+        keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+        kelmadi=sum(1 for a in azolar if a["holat"]=="kelmadi")
+        cap=f"📋 <b>Bugungi yoqlama</b>\n✅ Keldi: {keldi} · ❌ Yo'q: {kelmadi} · Jami: {total}"
+        try: await call.message.edit_text(cap,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: pass
+        return True
+
 
     if call.data.startswith("tg_stat:"):
         tgid=int(call.data[8:]); await call.answer()
@@ -713,11 +780,10 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
         admin_state[user_id]=f"tg_jadval_vaqt:{tgid}:{kun_id}"
         await call.message.answer(
-            f"🕐 {KUNLAR[kun_id]} kuni dars vaqtini yozing:\n\n"
-            f"Masalan:\n"
-            f"<code>15:00</code> — bitta vaqt\n"
-            f"<code>15:00-16:30</code> — boshlanish-tugash\n\n"
-            f"✍️ Vaqtni yozib yuboring:",
+            f"🕐 <b>{KUNLAR[kun_id]}</b> kuni dars vaqti:\n\n"
+            f"<code>15:00</code> → avto tugash 17:00 (+2 soat)\n"
+            f"<code>15:00-16:30</code> → aniq tugash vaqti\n\n"
+            f"✍️ Vaqtni yozing:",
             parse_mode="HTML"
         )
         return True
