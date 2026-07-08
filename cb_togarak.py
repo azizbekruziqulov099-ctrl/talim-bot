@@ -581,26 +581,25 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("tg_jadval_set:"):
         tgid=int(call.data[14:]); await call.answer()
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
-        # Mavjud jadval
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT kun_id,boshlanish FROM togarak_jadval WHERE togarak_id=%s",(tgid,))
         mavjud={r[0]:r[1] for r in cur2.fetchall()}
         cur2.close(); conn2.close()
         txt="⚙️ Dars kunlarini sozlash\n"+"─"*20+"\n\n"
-        txt+="Har hafta qaysi kunlari dars bo'ladi?\nKun bosib vaqt belgilang:\n\n"
+        txt+="Har hafta qaysi kunlari dars bo'ladi?\n\n"
+        for i,k in enumerate(KUNLAR):
+            txt+=(f"✅ {k}: 🕐 {mavjud[i]}\n" if i in mavjud else f"⚪ {k}: belgilanmagan\n")
+        txt+="\n⬇️ Kun bosib vaqt belgilang:"
         rows2=[]
         for i,k in enumerate(KUNLAR):
             if i in mavjud:
-                txt+=f"✅ {k}: {mavjud[i]}\n"
-                bt=f"✅ {k} ({mavjud[i]})"
+                rows2.append([
+                    InlineKeyboardButton(text=f"✅ {k} — {mavjud[i]}",callback_data=f"tg_jadval_kun:{tgid}:{i}"),
+                    InlineKeyboardButton(text="🗑",callback_data=f"tg_jadval_del:{tgid}:{i}"),
+                ])
             else:
-                txt+=f"⚪ {k}: —\n"
-                bt=f"⚪ {k}"
-            rows2.append([
-                InlineKeyboardButton(text=bt,callback_data=f"tg_jadval_kun:{tgid}:{i}"),
-                InlineKeyboardButton(text="🗑" if i in mavjud else " ",callback_data=f"tg_jadval_del:{tgid}:{i}" if i in mavjud else "noop"),
-            ])
-        rows2.append([InlineKeyboardButton(text="⬅️ Jadvalga qaytish",callback_data=f"tg_reja:{tgid}:0")])
+                rows2.append([InlineKeyboardButton(text=f"⚪ {k} — vaqt qo'shish",callback_data=f"tg_jadval_kun:{tgid}:{i}")])
+        rows2.append([InlineKeyboardButton(text="✅ Tayyor — jadvalga",callback_data=f"tg_reja:{tgid}:0")])
         try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return True
@@ -611,8 +610,11 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
         admin_state[user_id]=f"tg_jadval_vaqt:{tgid}:{kun_id}"
         await call.message.answer(
-            f"🕐 {KUNLAR[kun_id]} — dars vaqtini yozing:\n"
-            f"Masalan: <code>15:00</code>",
+            f"🕐 {KUNLAR[kun_id]} kuni dars vaqtini yozing:\n\n"
+            f"Masalan:\n"
+            f"<code>15:00</code> — bitta vaqt\n"
+            f"<code>15:00-16:30</code> — boshlanish-tugash\n\n"
+            f"✍️ Vaqtni yozib yuboring:",
             parse_mode="HTML"
         )
         return True
