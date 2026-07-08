@@ -1335,6 +1335,19 @@ async def cmd_menu(message: types.Message, state: FSMContext):
     )
 
 @dp.message(CommandStart())
+def _get_effective_uid(telegram_id):
+    """Aktiv akkauntning effektiv user_id sini qaytaradi.
+    Akkaunt 0 → telegram_id (asl). Akkaunt 1+ → telegram_id*1000+index."""
+    try:
+        conn=_get_db_conn();cur=conn.cursor()
+        cur.execute("SELECT account_index FROM user_accounts WHERE telegram_id=%s AND is_active=TRUE",(telegram_id,))
+        r=cur.fetchone();cur.close();conn.close()
+        if r and r[0] and r[0]>0:
+            return telegram_id*1000+r[0]
+    except Exception as e:
+        print(f"eff_uid: {e}")
+    return telegram_id
+
 async def start(message: types.Message, state: FSMContext):
     # /start — har qanday holatda barcha state tozalanadi
     uid = message.from_user.id
