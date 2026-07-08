@@ -1,5 +1,7 @@
 """handler_excel.py — Excel shablon handlerlari"""
 import psycopg2, asyncio, os, re
+from io import BytesIO
+from keyboards import get_main_keyboard
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, FSInputFile
 from aiogram.fsm.context import FSMContext
 from storage import user_state, admin_state, temp_user
