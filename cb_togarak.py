@@ -360,28 +360,102 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     if call.data.startswith("tg_reja:"):
-        parts2=call.data.split(":"); tgid=int(parts2[1]); page=int(parts2[2]) if len(parts2)>2 else 0
+        parts2=call.data.split(":"); tgid=int(parts2[1])
+        # hafta offset (0=shu hafta, +1 keyingi, -1 oldingi)
+        week_off=int(parts2[2]) if len(parts2)>2 else 0
         await call.answer()
-        from togarak import get_reja, get_togarak_progress
-        reja=get_reja(tgid); prog=get_togarak_progress(tgid)
-        total=len(reja); PER=10
-        ICONS=["📗","📘","📙","📕","📓"]
-        txt=f"📚 Dars rejasi\n{'─'*20}\n"
-        txt+=f"📊 O'tildi: {prog['done']}/{total} ({prog['pct']}%)\n\n"
+        from datetime import datetime, timedelta
+        today=datetime.now().date()
+        # Shu haftaning dushanbasi
+        monday=today - timedelta(days=today.weekday()) + timedelta(weeks=week_off)
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
+        KS=["Du","Se","Ch","Pa","Ju","Sh"]
+        # Shu haftadagi darslar
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT dars_sana, dars_vaqt, topic_code, completed
+            FROM togarak_reja WHERE togarak_id=%s AND dars_sana IS NOT NULL
+            AND dars_sana BETWEEN %s AND %s ORDER BY dars_sana""",
+            (tgid, monday, monday+timedelta(days=5)))
+        darslar={}
+        for r in cur2.fetchall():
+            darslar.setdefault(str(r[0]),[]).append({"vaqt":r[1],"mavzu":r[2],"done":r[3]})
+        cur2.close(); conn2.close()
+
+        hafta_end=monday+timedelta(days=5)
+        txt=f"📅 Haftalik jadval\n{monday.strftime('%d.%m')} — {hafta_end.strftime('%d.%m.%Y')}\n{'─'*20}\n\n"
+
         rows2=[]
-        if not reja:
-            txt+="(Hali mavzu qo'shilmagan)"
-        else:
-            for i in range(0,total,PER):
-                chunk=reja[i:i+PER]; done_c=sum(1 for r in chunk if r["completed"])
-                n=i//PER+1; icon=ICONS[min(n-1,len(ICONS)-1)]
-                bar="█"*done_c+"░"*(len(chunk)-done_c)
-                rows2.append([InlineKeyboardButton(text=f"{icon} {n}-albom [{bar}] {done_c}/{len(chunk)}",callback_data=f"tg_reja_albom:{tgid}:{i}")])
-            txt+="Albomni bosib mavzularni ko'ring"
-        rows2.append([InlineKeyboardButton(text="➕ Mavzu qo'shish",callback_data=f"tg_reja_add:{tgid}"),InlineKeyboardButton(text="📅 Jadval",callback_data=f"tg_reja_jadval:{tgid}")])
-        rows2.append([InlineKeyboardButton(text="✅ Bugun o'tildi",callback_data=f"tg_reja_today:{tgid}"),InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+        # 3+3 kun tugmalar, dars bo'lsa boshqa belgi
+        kun_btns=[]
+        for i in range(6):
+            kun_sana=monday+timedelta(days=i)
+            sana_str=str(kun_sana)
+            has_dars=sana_str in darslar
+            is_today=kun_sana==today
+            # Matn
+            if has_dars:
+                d=darslar[sana_str][0]
+                mark="✅" if d["done"] else "📖"
+                txt+=f"{'🔵' if is_today else '📌'} {KUNLAR[i]} {kun_sana.strftime('%d.%m')}:\n"
+                for d in darslar[sana_str]:
+                    m="✅" if d["done"] else "📖"
+                    txt+=f"   {m} {d['vaqt'] or ''} {(d['mavzu'] or '')[:25]}\n"
+                btn_txt=f"{KS[i]} {kun_sana.day} ●"
+            else:
+                txt+=f"{'🔵' if is_today else '⚪'} {KUNLAR[i]} {kun_sana.strftime('%d.%m')}: —\n"
+                btn_txt=f"{KS[i]} {kun_sana.day}"
+            kun_btns.append(InlineKeyboardButton(text=btn_txt,callback_data=f"tg_kun:{tgid}:{sana_str}"))
+
+        # 3+3 joylashtirish
+        rows2.append(kun_btns[:3])
+        rows2.append(kun_btns[3:6])
+        # Hafta navigatsiya
+        rows2.append([
+            InlineKeyboardButton(text="◀️ O'tgan",callback_data=f"tg_reja:{tgid}:{week_off-1}"),
+            InlineKeyboardButton(text="📆 Oylik",callback_data=f"tg_oylik:{tgid}:0"),
+            InlineKeyboardButton(text="Keyingi ▶️",callback_data=f"tg_reja:{tgid}:{week_off+1}"),
+        ])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
+    if call.data.startswith("tg_kun:"):
+        parts2=call.data[7:].split(":"); tgid=int(parts2[0]); sana=parts2[1]
+        await call.answer()
+        from datetime import datetime
+        from togarak import get_reja
+        # O'tilmagan mavzular (albom)
+        reja=[r for r in get_reja(tgid) if not r["completed"] and not r.get("dars_sana")]
+        if not reja:
+            await call.message.answer("✅ Barcha mavzular belgilangan yoki o'tilgan!"); return True
+        d=datetime.strptime(sana,"%Y-%m-%d").date()
+        KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"]
+        # 10 talik albomlar
+        PER=10; total=len(reja)
+        rows2=[]
+        for i in range(0,min(total,PER)):
+            r=reja[i]
+            rows2.append([InlineKeyboardButton(
+                text=f"📖 {r['code'][:40]}",
+                callback_data=f"tg_kun_mavzu:{tgid}:{sana}:{r['id']}"
+            )])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
+        await call.message.answer(
+            f"📅 {KUNLAR[d.weekday()]} {d.strftime('%d.%m.%Y')}\n"
+            f"Qaysi mavzu o'tiladi? ({total} ta qoldi)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
+        return True
+
+    if call.data.startswith("tg_kun_mavzu:"):
+        parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sana=parts2[1]; reja_id=int(parts2[2])
+        await call.answer()
+        admin_state[user_id]=f"tg_kun_vaqt:{tgid}:{sana}:{reja_id}"
+        await call.message.answer(
+            f"🕐 Dars vaqtini yozing:\nMasalan: <code>15:00</code>",
+            parse_mode="HTML"
+        )
         return True
 
     if call.data.startswith("tg_reja_albom:"):
@@ -415,38 +489,104 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
 
+    if call.data.startswith("tg_oylik:"):
+        parts2=call.data[9:].split(":"); tgid=int(parts2[0]); month_off=int(parts2[1]) if len(parts2)>1 else 0
+        await call.answer()
+        from datetime import datetime, timedelta
+        import calendar
+        today=datetime.now().date()
+        # Oy hisoblash
+        mon=today.month+month_off; yr=today.year
+        while mon>12: mon-=12; yr+=1
+        while mon<1: mon+=12; yr-=1
+        OYLAR=["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"]
+        # Shu oydagi darslar
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        first=datetime(yr,mon,1).date()
+        last_day=calendar.monthrange(yr,mon)[1]
+        last=datetime(yr,mon,last_day).date()
+        cur2.execute("""SELECT dars_sana, topic_code, completed FROM togarak_reja
+            WHERE togarak_id=%s AND dars_sana BETWEEN %s AND %s ORDER BY dars_sana""",
+            (tgid,first,last))
+        darslar={}
+        for r in cur2.fetchall():
+            darslar[str(r[0])]={"mavzu":r[1],"done":r[2]}
+        cur2.close(); conn2.close()
+
+        txt=f"📆 {OYLAR[mon-1]} {yr}\n{'─'*20}\n\n"
+        # Kalendar setka
+        cal=calendar.monthcalendar(yr,mon)
+        txt+="Du Se Ch Pa Ju Sh Ya\n"
+        for week in cal:
+            line=""
+            for i,day in enumerate(week):
+                if day==0: line+="   "
+                else:
+                    sana=str(datetime(yr,mon,day).date())
+                    if sana in darslar:
+                        line+=f"{'✅' if darslar[sana]['done'] else '📖'}"
+                    elif datetime(yr,mon,day).date()==today:
+                        line+=f"🔵"
+                    else:
+                        line+=f"{day:2} "
+            txt+=line+"\n"
+        # Darslar ro'yhati
+        if darslar:
+            txt+="\n📚 Darslar:\n"
+            for sana in sorted(darslar):
+                d=datetime.strptime(sana,"%Y-%m-%d").date()
+                m="✅" if darslar[sana]["done"] else "📖"
+                txt+=f"{m} {d.day}-kun: {(darslar[sana]['mavzu'] or '')[:25]}\n"
+
+        rows2=[[
+            InlineKeyboardButton(text="◀️",callback_data=f"tg_oylik:{tgid}:{month_off-1}"),
+            InlineKeyboardButton(text="📅 Haftalik",callback_data=f"tg_reja:{tgid}:0"),
+            InlineKeyboardButton(text="▶️",callback_data=f"tg_oylik:{tgid}:{month_off+1}"),
+        ],[InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")]]
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
     if call.data.startswith("tg_reja_jadval:"):
+        # Eski jadval → yangi haftalik (frozen call.data ni o'zgartirmasdan)
         tgid=int(call.data[15:]); await call.answer()
-        from togarak import get_reja
-        reja=get_reja(tgid)
-        # Har kun uchun mavzu va vaqt
+        from datetime import datetime, timedelta
+        today=datetime.now().date()
+        monday=today - timedelta(days=today.weekday())
         KUNLAR=["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"]
-        KS={"Dushanba":"Du","Seshanba":"Se","Chorshanba":"Ch","Payshanba":"Pa","Juma":"Ju","Shanba":"Sh"}
-        # Kun -> [mavzular]
-        kun_mavzu={k:[] for k in KUNLAR}
-        for r in reja:
-            dk=r.get("dars_kuni")
-            if dk in kun_mavzu:
-                kun_mavzu[dk].append((r.get("dars_vaqt") or "—", r["code"]))
-        txt="📅 Haftalik dars jadvali\n"+"━"*20+"\n\n"
-        for k in KUNLAR:
-            items=kun_mavzu[k]
-            if items:
-                txt+=f"📌 {k}:\n"
-                for vaqt,mavzu in items:
-                    txt+=f"   🕐 {vaqt} — {mavzu[:30]}\n"
+        KS=["Du","Se","Ch","Pa","Ju","Sh"]
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT dars_sana,dars_vaqt,topic_code,completed FROM togarak_reja
+            WHERE togarak_id=%s AND dars_sana IS NOT NULL
+            AND dars_sana BETWEEN %s AND %s ORDER BY dars_sana""",
+            (tgid,monday,monday+timedelta(days=5)))
+        darslar={}
+        for r in cur2.fetchall():
+            darslar.setdefault(str(r[0]),[]).append({"vaqt":r[1],"mavzu":r[2],"done":r[3]})
+        cur2.close(); conn2.close()
+        txt=f"📅 Haftalik jadval\n{monday.strftime('%d.%m')} — {(monday+timedelta(days=5)).strftime('%d.%m.%Y')}\n{'─'*20}\n\n"
+        kun_btns=[]
+        for i in range(6):
+            ks=monday+timedelta(days=i); ss=str(ks)
+            if ss in darslar:
+                txt+=f"{'🔵' if ks==today else '📌'} {KUNLAR[i]} {ks.strftime('%d.%m')}:\n"
+                for d in darslar[ss]:
+                    m="✅" if d["done"] else "📖"
+                    txt+=f"   {m} {d['vaqt'] or ''} {(d['mavzu'] or '')[:25]}\n"
+                bt=f"{KS[i]} {ks.day} ●"
             else:
-                txt+=f"⚪ {k}: —\n"
-            txt+="\n"
-        txt+="⬇️ Kun tanlab dars qo' shing:"
-        # 3 tadan 2 qator (6 kun)
-        rows2=[
-            [InlineKeyboardButton(text=f"📌 {KUNLAR[i]}",callback_data=f"tg_reja_kun_id:{tgid}:{i}") for i in range(0,3)],
-            [InlineKeyboardButton(text=f"📌 {KUNLAR[i]}",callback_data=f"tg_reja_kun_id:{tgid}:{i}") for i in range(3,6)],
-        ]
-        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
-        try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+                txt+=f"{'🔵' if ks==today else '⚪'} {KUNLAR[i]} {ks.strftime('%d.%m')}: —\n"
+                bt=f"{KS[i]} {ks.day}"
+            kun_btns.append(InlineKeyboardButton(text=bt,callback_data=f"tg_kun:{tgid}:{ss}"))
+        rows2=[kun_btns[:3],kun_btns[3:6]]
+        rows2.append([
+            InlineKeyboardButton(text="◀️ O'tgan",callback_data=f"tg_reja:{tgid}:-1"),
+            InlineKeyboardButton(text="📆 Oylik",callback_data=f"tg_oylik:{tgid}:0"),
+            InlineKeyboardButton(text="Keyingi ▶️",callback_data=f"tg_reja:{tgid}:1"),
+        ])
+        rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
+        try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return True
 
     if call.data.startswith("tg_reja_kun_set:"):
