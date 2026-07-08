@@ -3,7 +3,7 @@ import psycopg2, asyncio, os
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 from storage import user_state, admin_state, temp_user
 DATABASE_URL = os.getenv("DATABASE_URL","")
-def _get_db_conn():
+def _get_db_conn(
     import psycopg2 as _p; return _p.connect(DATABASE_URL)
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
 def render_text(t):
