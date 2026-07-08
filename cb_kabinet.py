@@ -143,11 +143,37 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     # ── KABINET CALLBACKLAR ──
+    if call.data == "kb_change_name":
+        await call.answer()
+        user_state[user_id]="change_name"
+        await call.message.answer("✏️ Yangi ismingizni yozing:")
+        return True
+
+    if call.data == "kb_change_role":
+        await call.answer()
+        rows2=[
+            [InlineKeyboardButton(text="🧒 O'quvchi",callback_data="kb_set_role:student")],
+            [InlineKeyboardButton(text="👨‍🏫 O'qituvchi",callback_data="kb_set_role:teacher")],
+            [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",callback_data="kb_set_role:parent")],
+        ]
+        await call.message.answer("🎭 Yangi rolni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
+    if call.data.startswith("kb_set_role:"):
+        rol=call.data[12:]; await call.answer()
+        rol_uz={"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol_uz,user_id))
+        cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol_uz,user_id))
+        conn2.commit();cur2.close();conn2.close()
+        from keyboards import get_main_keyboard
+        await call.message.answer(f"✅ Rol o'zgartirildi: {rol_uz}",reply_markup=get_main_keyboard(rol_uz))
+        return True
+
     if call.data == "kb_new_acc":
         await call.answer()
-        # Yangi akkaunt yaratish — registratsiya oqimi
-        from register import start_registration
-        # Oldin aktiv akkauntni nofaol qilmaymiz — yangi qo'shamiz
+        # Yangi akkaunt — eski temp ma'lumotni tozalaymiz (toza boshlanish)
+        temp_user[user_id] = {}
         user_state[user_id] = "reg_new_acc"
         await call.message.answer(
             "➕ Yangi akkaunt yaratish\n\nYangi rol tanlang:",
@@ -163,37 +189,48 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""
-            SELECT id, account_index, full_name, role
+            SELECT id, account_index, full_name, role, class, is_active
             FROM user_accounts WHERE telegram_id=%s
             ORDER BY account_index
         """, (user_id,))
         accs = cur2.fetchall(); cur2.close(); conn2.close()
-        rows2 = [[InlineKeyboardButton(
-            text=f"{'✅' if i==0 else '👤'} {a[2] or '—'} ({a[3] or '—'})",
-            callback_data=f"kb_activate:{a[0]}"
-        )] for i,a in enumerate(accs)]
-        await call.message.answer("🔄 Akkauntni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        if not accs:
+            await call.message.answer("❌ Akkaunt topilmadi"); return True
+        rows2=[]
+        for a in accs:
+            aktiv = a[5]  # is_active
+            sinf = f" {a[4]}" if a[4] else ""
+            rol_uz = a[3] or "—"
+            belgi = "✅" if aktiv else "👤"
+            rows2.append([InlineKeyboardButton(
+                text=f"{belgi} {a[2] or '—'} — {rol_uz}{sinf}",
+                callback_data=f"kb_activate:{a[0]}"
+            )])
+        rows2.append([InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")])
+        await call.message.answer(
+            f"🔄 <b>Akkauntlaringiz</b> ({len(accs)} ta)\nAlmashtirish uchun tanlang:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+        )
         return True
 
     if call.data.startswith("kb_activate:"):
         acc_id2=int(call.data[12:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        # Avval barchasini nofaol
         cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
-        # Tanlanganni faol
         cur2.execute("""
             UPDATE user_accounts SET is_active=TRUE WHERE id=%s
-            RETURNING full_name, role
+            RETURNING full_name, role, class
         """, (acc_id2,))
         row2=cur2.fetchone()
-        # users jadvalini ham yangilaymiz
         if row2:
-            cur2.execute("UPDATE users SET full_name=%s, role=%s WHERE user_id=%s",
-                        (row2[0],row2[1],user_id))
+            cur2.execute("UPDATE users SET full_name=%s, role=%s, class=%s WHERE user_id=%s",
+                        (row2[0],row2[1],row2[2],user_id))
         conn2.commit();cur2.close();conn2.close()
         from keyboards import get_main_keyboard
+        sinf=f" {row2[2]}" if row2 and row2[2] else ""
         await call.message.answer(
-            f"✅ Akkaunt almashtirildi!\n👤 {row2[0] if row2 else ''}\n🎭 {row2[1] if row2 else ''}",
+            f"✅ Akkaunt almashtirildi!\n👤 {row2[0] if row2 else ''}\n🎭 {row2[1] if row2 else ''}{sinf}",
             reply_markup=get_main_keyboard(row2[1] if row2 else "")
         )
         return True
