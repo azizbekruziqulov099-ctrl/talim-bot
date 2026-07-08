@@ -20,14 +20,14 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         user_state[user_id]="stg_join_id"
         await call.message.answer("🔑 To'garak ID raqamini yozing:\n(O'qituvchingizdan so'rang)")
-        return
+        return True
 
     if call.data.startswith("stg_info:"):
         tgid=int(call.data[9:]); await call.answer()
         from togarak import get_student_togaraklar, get_baholar, get_tolov_status
         tgs={t["id"]:t for t in get_student_togaraklar(user_id)}
         t=tgs.get(tgid)
-        if not t: await call.message.answer("❌ Topilmadi"); return
+        if not t: await call.message.answer("❌ Topilmadi"); return True
         baholar=get_baholar(tgid,user_id)
         tolovlar=get_tolov_status(tgid,user_id)
         avg_baho=round(sum(b[0] for b in baholar)/len(baholar),1) if baholar else "—"
@@ -46,13 +46,13 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             [InlineKeyboardButton(text="🚪 Chiqish",     callback_data=f"stg_leave_req:{tgid}")],
         ])
         await call.message.answer(txt, reply_markup=kb2)
-        return
+        return True
 
     if call.data.startswith("stg_hw:"):
         tgid=int(call.data[7:]); await call.answer()
         from features import get_student_homeworks
         hws=get_student_homeworks(tgid,user_id)
-        if not hws: await call.message.answer("📝 Hozircha uyga vazifa yo'q!"); return
+        if not hws: await call.message.answer("📝 Hozircha uyga vazifa yo'q!"); return True
         rows2=[]
         for h in hws:
             status="✅" if h["javob"] else "⏳"
@@ -61,7 +61,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
                 callback_data=f"stg_hw_do:{h['id']}:{tgid}"
             )])
         await call.message.answer("📝 Uyga vazifalar:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_hw_do:"):
         parts2=call.data.split(":"); hw_id,tgid=int(parts2[1]),int(parts2[2])
@@ -69,10 +69,10 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT mavzu,topshiriq FROM homework WHERE id=%s",(hw_id,))
         hw=cur2.fetchone(); cur2.close(); conn2.close()
-        if not hw: await call.message.answer("❌ Topilmadi"); return
+        if not hw: await call.message.answer("❌ Topilmadi"); return True
         admin_state[user_id]=f"hw_submit:{hw_id}:{tgid}"
         await call.message.answer(f"📝 {hw[0]}\n\n{hw[1]}\n\nJavobingizni yozing:")
-        return
+        return True
 
     if call.data.startswith("stg_reyting:"):
         tgid=int(call.data[12:]); await call.answer()
@@ -85,7 +85,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             me=" ← Siz" if st["uid"]==user_id else ""
             txt+=f"{m} {st['ism']}{me}\n  ⭐{st['baho']} | 📋{st['davomat']}%\n\n"
         await call.message.answer(txt[:2000])
-        return
+        return True
 
     if call.data.startswith("stg_leave_req:"):
         tgid=int(call.data[14:]); await call.answer()
@@ -103,7 +103,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
                 )
             except: pass
             await call.message.answer("✅ So'rov yuborildi! O'qituvchi javobini kuting.")
-        return
+        return True
 
     if call.data.startswith("tg_leave_ok:"):
         parts2=call.data[12:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
@@ -113,7 +113,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         try: await call.bot.send_message(uid2,"✅ To'garakdan chiqishingizga ruxsat berildi.")
         except: pass
         await call.message.edit_text("✅ Tasdiqlandi.",reply_markup=None)
-        return
+        return True
 
     if call.data.startswith("tg_leave_no:"):
         parts2=call.data[12:].split("|"); uid2=int(parts2[0])
@@ -121,7 +121,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         try: await call.bot.send_message(uid2,"❌ Chiqish so'rovingiz rad etildi.")
         except: pass
         await call.message.edit_text("❌ Rad etildi.",reply_markup=None)
-        return
+        return True
 
     if call.data.startswith("stg_albomlar:"):
         tgid=int(call.data[13:]); await call.answer()
@@ -139,7 +139,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
                 ORDER BY mavzu_code""",(tg_fan,))
             barcha=cur2.fetchall(); cur2.close(); conn2.close()
             if not barcha:
-                await call.message.answer(f"❌ '{tg_fan}' fanida mavzu topilmadi!"); return
+                await call.message.answer(f"❌ '{tg_fan}' fanida mavzu topilmadi!"); return True
             ALBOM=10; total=len(barcha)
             ICONS=["📗","📘","📙","📕","📓"]
             rows2=[]
@@ -154,10 +154,10 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
             try: await call.message.edit_text(f"📚 {tg_fan} — Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             except: await call.message.answer(f"📚 {tg_fan} — Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-            return
+            return True
         cur2.close(); conn2.close()
         if not reja:
-            await call.message.answer("📚 Reja mavjud emas! O'qituvchi reja qo'shishi kerak."); return
+            await call.message.answer("📚 Reja mavjud emas! O'qituvchi reja qo'shishi kerak."); return True
         ALBOM=10; total=len(reja)
         ICONS=["📗","📘","📙","📕","📓"]
         rows2=[]
@@ -175,7 +175,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="☑️ Mavzular tanlash (test)",callback_data=f"stg_select_mavzu:{tgid}:0")])
         try: await call.message.edit_text(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📚 Barcha mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_select_mavzu:"):
         # Ko'p mavzu tanlash → test
@@ -218,7 +218,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         txt=f"☑️ Mavzularni belgilang ({len(selected)} ta tanlandi):"
         try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_toggle:"):
         parts2=call.data[11:].split(":"); tgid,mc,page=int(parts2[0]),parts2[1],int(parts2[2])
@@ -253,13 +253,13 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
         try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: pass
-        return
+        return True
 
     if call.data.startswith("stg_multi_test:"):
         tgid=int(call.data[15:]); await call.answer()
         sel_key=f"sel_mavzu:{user_id}:{tgid}"
         selected=list(temp_user.get(sel_key,[]))
-        if not selected: await call.message.answer("❌ Mavzu tanlanmagan!"); return
+        if not selected: await call.message.answer("❌ Mavzu tanlanmagan!"); return True
         temp_user.pop(sel_key,None)
         # Barcha tanlangan mavzulardan test
         conn2=_get_db_conn();cur2=conn2.cursor()
@@ -272,11 +272,11 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
             FROM generated_tests WHERE topic_code=ANY(%s) ORDER BY RANDOM() LIMIT 20""",(topic_codes,))
         tests=cur2.fetchall(); cur2.close(); conn2.close()
-        if not tests: await call.message.answer("❌ Test topilmadi!"); return
+        if not tests: await call.message.answer("❌ Test topilmadi!"); return True
         await call.message.answer(f"🧪 {len(selected)} mavzudan {len(tests)} ta test boshlanmoqda...")
         from test_engine import start_test
         await start_test(user_id, tests, call.message)
-        return
+        return True
 
     if call.data.startswith("stg_fan_albom:"):
         parts2=call.data[14:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
@@ -298,7 +298,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         )] for m in mavzular]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
         await call.message.answer(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_free_albom:"):
         parts2=call.data[16:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
@@ -316,7 +316,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
         albom_n=start//10+1
         await call.message.answer(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_albom_open:"):
         parts2=call.data[15:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
@@ -335,7 +335,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
         try: await call.message.edit_text(f"📗 {albom_n}-albom mavzulari:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📗 {albom_n}-albom mavzulari:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_mavzu_test:"):
         parts2=call.data[15:].split(":"); tgid=int(parts2[0]); mavzu_name=":".join(parts2[1:])
@@ -352,7 +352,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code=ANY(%s)",(topic_codes,))
         cnt=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
         if cnt==0:
-            await call.message.answer(f"❌ '{mavzu_name[:40]}' mavzusida test yo'q!\n\nBu mavzu uchun testlar hali import qilinmagan."); return
+            await call.message.answer(f"❌ '{mavzu_name[:40]}' mavzusida test yo'q!\n\nBu mavzu uchun testlar hali import qilinmagan."); return True
         from storage import user_state as _us
         if not isinstance(_us.get(user_id),dict): _us[user_id]={}
         _us[user_id].update({
@@ -367,29 +367,29 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
             f"🧪 {mavzu_name[:50]}\n📊 Jami: {cnt} ta savol\n\nSozlamalar:",
             reply_markup=_mk_ts_kb(_us[user_id],cnt)
         )
-        return
+        return True
 
     if call.data.startswith("stg_baholar:"):
         tgid=int(call.data[12:]); await call.answer()
         from togarak import get_baholar
         rows2=get_baholar(tgid,user_id)
-        if not rows2: await call.message.answer("📊 Hali baho qo'yilmagan!"); return
+        if not rows2: await call.message.answer("📊 Hali baho qo'yilmagan!"); return True
         txt="📊 Baholaringiz:\n\n"
         for b in rows2:
             txt+=f"⭐ {b[0]}/5 — {b[1] or '—'}\n"
         await call.message.answer(txt[:2000])
-        return
+        return True
 
     if call.data.startswith("stg_tolovlar:"):
         tgid=int(call.data[13:]); await call.answer()
         from togarak import get_tolov_status
         rows2=get_tolov_status(tgid,user_id)
-        if not rows2: await call.message.answer("💰 Hali to'lov ma'lumoti yo'q!"); return
+        if not rows2: await call.message.answer("💰 Hali to'lov ma'lumoti yo'q!"); return True
         txt="💰 To'lovlar tarixi:\n\n"
         for t2 in rows2:
             txt+=f"📅 {t2[0]}: {t2[1]:,} so'm\n"
         await call.message.answer(txt[:2000])
-        return
+        return True
 
     if call.data.startswith("stg_chat:"):
         tgid=int(call.data[9:]); await call.answer()
@@ -423,13 +423,13 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_info:{tgid}")])
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_chat_write:"):
         tgid=int(call.data[15:]); await call.answer()
         admin_state[user_id]=f"tg_send_msg:{tgid}:all"
         await call.message.answer("✍️ Xabar yozing:",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor",callback_data=f"stg_chat:{tgid}")]]))
-        return
+        return True
 
     if call.data.startswith("stg_dm:"):
         parts2=call.data[7:].split(":"); tgid,uid2,pg=int(parts2[0]),int(parts2[1]),int(parts2[2])
@@ -457,7 +457,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("stg_dm_write:"):
         parts2=call.data[13:].split(":"); tgid,uid2=int(parts2[0]),int(parts2[1])
@@ -467,7 +467,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(uid2,))
         uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         await call.message.answer(f"✍️ {uname} ga:",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Bekor",callback_data=f"stg_dm:{tgid}:{uid2}:0")]]))
-        return
+        return True
 
 
     if call.data.startswith("stg_leave:"):
@@ -475,7 +475,7 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         from togarak import leave_togarak
         if leave_togarak(tgid,user_id):
             await call.message.answer("✅ To'garakdan chiqdingiz!")
-        return
+        return True
 
     # ── OTA-ONA CALLBACKLAR ──
 
