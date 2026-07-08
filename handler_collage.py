@@ -1,5 +1,7 @@
 """handler_collage.py — Collage va rasm handlerlari"""
 import psycopg2, asyncio, os, re
+from io import BytesIO
+from keyboards import get_main_keyboard
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, FSInputFile
 from aiogram.fsm.context import FSMContext
 from storage import user_state, admin_state, temp_user
@@ -17,7 +19,7 @@ async def handle_collage_msg(message, user_id, admin_state, user_state, temp_use
 
     # ── Collage rasm split handler ──
     _col_cap = (message.caption or "").strip()
-    if True:
+    if message.photo or message.document or (message.caption and message.caption.startswith('split:')):
         # rasm_queue da kutayotgan kodlar bormi?
         try:
             conn_rq2=_get_db_conn();cur_rq2=conn_rq2.cursor()
