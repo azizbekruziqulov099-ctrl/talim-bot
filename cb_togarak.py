@@ -165,6 +165,37 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         else:
             p2=d[11:].split(":"); tgid=int(p2[0]); page=int(p2[1]) if len(p2)>1 else 0
             await call.answer()
+            # Birinchi kirish (sahifasiz) — bugun yo'qlama qilinganmi?
+            if len(p2)==1:
+                conn2=_get_db_conn();cur2=conn2.cursor()
+                cur2.execute("SELECT COUNT(*) FROM togarak_yoqlama WHERE togarak_id=%s AND sana=CURRENT_DATE",(tgid,))
+                bor=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
+                if bor>0:
+                    # Natijani ko'rsatamiz
+                    from datetime import datetime
+                    azolar=get_yoqlama_bugun(tgid)
+                    bugun=datetime.now().strftime("%d.%m.%Y")
+                    keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+                    kech=sum(1 for a in azolar if a["holat"]=="kech")
+                    yoq=sum(1 for a in azolar if a["holat"]=="kelmadi")
+                    txt=(f"📋 <b>Bugungi yo'qlama</b>\\n📅 {bugun}\\n"
+                         f"━━━━━━━━━━━━━━━\\n"
+                         f"✅ Keldi: {keldi}   🕐 Kech: {kech}   ❌ Yo'q: {yoq}\\n"
+                         f"👥 Jami: {len(azolar)}\\n"
+                         f"━━━━━━━━━━━━━━━\\n\\n")
+                    for idx,a in enumerate(azolar):
+                        h=a["holat"]
+                        if h=="kelmadi": hs="❌ Kelmadi"
+                        elif h=="kech": hs=f"🕐 {a.get('izoh') or 'kech'} kech"
+                        else: hs="✅ Keldi"
+                        txt+=f"<b>{idx+1}. {a['ism'][:26]}</b>\\n      {hs}\\n\\n"
+                    rows2=[
+                        [InlineKeyboardButton(text="✏️ O'zgartirish",callback_data=f"tg_yoqlama:{tgid}:0")],
+                        [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
+                    ]
+                    try: await call.message.edit_text(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+                    except: await call.message.answer(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+                    return True
 
         # ═══ RO'YXAT ═══
         azolar=get_yoqlama_bugun(tgid)
@@ -195,7 +226,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             nav.append(InlineKeyboardButton(text=f"{page+1}/{max_page+1}",callback_data="noop"))
             if page<max_page: nav.append(InlineKeyboardButton(text="▶️",callback_data=f"tg_yoqlama:{tgid}:{page+1}"))
             rows2.append(nav)
-        rows2.append([InlineKeyboardButton(text="✔️ Tayyor",callback_data=f"tg_info:{tgid}")])
+        rows2.append([InlineKeyboardButton(text="✔️ Tayyor — natijani ko'rish",callback_data=f"tg_yoq_natija:{tgid}")])
 
         kelmadi=[a for a in azolar if a["holat"]=="kelmadi"]
         kechlar=[a for a in azolar if a["holat"]=="kech"]
@@ -219,6 +250,36 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         except:
             try: await call.message.answer(txt,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             except: pass
+        return True
+
+    if call.data.startswith("tg_yoq_natija:"):
+        tgid=int(call.data[14:]); await call.answer()
+        from togarak import get_yoqlama_bugun
+        from datetime import datetime
+        azolar=get_yoqlama_bugun(tgid)
+        bugun=datetime.now().strftime("%d.%m.%Y")
+        keldi=sum(1 for a in azolar if a["holat"]=="keldi")
+        kech=sum(1 for a in azolar if a["holat"]=="kech")
+        yoq=sum(1 for a in azolar if a["holat"]=="kelmadi")
+        total=len(azolar)
+        txt=(f"📋 <b>Yo'qlama natijasi</b>\n"
+             f"📅 {bugun}\n"
+             f"━━━━━━━━━━━━━━━\n"
+             f"✅ Keldi: {keldi}   🕐 Kech: {kech}   ❌ Yo'q: {yoq}\n"
+             f"👥 Jami: {total} o'quvchi\n"
+             f"━━━━━━━━━━━━━━━\n\n")
+        for idx,a in enumerate(azolar):
+            h=a["holat"]
+            if h=="kelmadi": hs="❌ Kelmadi"
+            elif h=="kech": hs=f"🕐 {a.get('izoh') or 'kech'} kech"
+            else: hs="✅ Keldi"
+            txt+=f"<b>{idx+1}. {a['ism'][:26]}</b>\n      {hs}\n\n"
+        rows2=[
+            [InlineKeyboardButton(text="✏️ O'zgartirish",callback_data=f"tg_yoqlama:{tgid}:0")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
+        ]
+        try: await call.message.edit_text(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        except: await call.message.answer(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return True
 
     if call.data.startswith("tg_stat:"):
