@@ -132,13 +132,14 @@ def save_yoqlama(togarak_id, user_id, holat, izoh="") -> bool:
     conn = db(); cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO togarak_yoqlama(togarak_id,user_id,holat,izoh)
-            VALUES(%s,%s,%s,%s)
+            INSERT INTO togarak_yoqlama(togarak_id,user_id,holat,izoh,sana)
+            VALUES(%s,%s,%s,%s,CURRENT_DATE)
             ON CONFLICT(togarak_id,user_id,sana)
             DO UPDATE SET holat=EXCLUDED.holat,izoh=EXCLUDED.izoh
         """, (togarak_id,user_id,holat,izoh))
         conn.commit(); ok=True
-    except:
+    except Exception as e:
+        print(f"save_yoqlama xato: {e}")
         conn.rollback(); ok=False
     cur.close(); conn.close()
     return ok
