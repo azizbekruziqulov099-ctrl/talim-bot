@@ -2184,6 +2184,43 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     # To'garak o'chirish tasdiqlash
+    if str(user_state.get(user_id) or "").startswith("tg_del_parol:") and message.text:
+        tgid = int(str(user_state[user_id]).split(":")[1])
+        user_state.pop(user_id,None)
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT parol,nomi FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        row2=cur2.fetchone(); cur2.close(); conn2.close()
+        if not row2:
+            await message.answer("❌ Topilmadi!"); return
+        if message.text.strip() != row2[0]:
+            await message.answer("❌ Parol noto'g'ri! To'garak o'chirilmadi."); return
+        from togarak import delete_togarak
+        delete_togarak(tgid,user_id)
+        await message.answer(f"✅ \"{row2[1]}\" to'garagi o'chirildi.")
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("tg_set_nomi:") and message.text:
+        tgid=int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id,None)
+        nomi=message.text.strip()
+        if len(nomi)<3: await message.answer("❌ Nom kamida 3 belgi!"); return
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE togaraklar SET nomi=%s WHERE id=%s AND teacher_id=%s",(nomi,tgid,user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ To'garak nomi: {nomi}")
+        return
+
+    if str(admin_state.get(user_id) or "").startswith("tg_set_summa:") and message.text:
+        tgid=int(str(admin_state[user_id]).split(":")[1])
+        admin_state.pop(user_id,None)
+        try: summa=int(message.text.strip().replace(" ","").replace(",",""))
+        except: await message.answer("❌ Faqat raqam yozing!"); return
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE togaraklar SET oylik_summa=%s WHERE id=%s AND teacher_id=%s",(summa,tgid,user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        await message.answer(f"✅ Oylik summa: {summa:,} so'm")
+        return
+
     if str(user_state.get(user_id) or "").startswith("tg_del_confirm:") and message.text:
         tgid = int(str(user_state[user_id]).split(":")[1])
         user_state.pop(user_id,None)
