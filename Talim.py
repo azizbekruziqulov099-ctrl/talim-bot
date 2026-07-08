@@ -1682,8 +1682,8 @@ async def _rq_save(source, user_id, name, rol, sinf):
     print(f"[rq_save] user={user_id} name={name} rol={rol_uz}")
     try:
         cur2.execute("""
-            INSERT INTO users(user_id,full_name,role,class,is_verified)
-            VALUES(%s,%s,%s,%s,TRUE)
+            INSERT INTO users(user_id,full_name,role,class)
+            VALUES(%s,%s,%s,%s)
             ON CONFLICT(user_id) DO UPDATE
             SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
         """, (user_id, name, rol_uz, sinf_txt))
@@ -1736,6 +1736,18 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             except Exception:
                 pass
             return
+
+    # ── YANGI AKKAUNT: ism yozildi → rol tanlash ──
+    if user_state.get(user_id) == "nacc_name" and message.text:
+        name = message.text.strip()
+        user_state.pop(user_id, None)
+        rows2 = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data=f"nacc_rol:student|{name}")],
+            [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data=f"nacc_rol:teacher|{name}")],
+            [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data=f"nacc_rol:parent|{name}")],
+        ])
+        await message.answer(f"✅ {name}\n\nRolni tanlang:", reply_markup=rows2)
+        return
 
     # ── TO'GARAK STATE HANDLERS (yuqoriga ko'chirilgan) ──
     # Tez kirish ism (yuqoriga ko'chirildi)
@@ -5199,6 +5211,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             from cb_student_tg import handle_stg
             if await handle_stg(call,user_id,admin_state,user_state,temp_user,bot): return
         if (call.data.startswith("kb_") or call.data.startswith("parent_") or
+            call.data.startswith("nacc_") or
             call.data.startswith("lesson_") or call.data.startswith("tset_") or
             call.data.startswith("reg_") or call.data.startswith("reg:") or
             call.data.startswith("rq_") or call.data.startswith("speak_") or
