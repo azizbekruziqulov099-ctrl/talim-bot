@@ -147,7 +147,8 @@ def save_yoqlama(togarak_id, user_id, holat, izoh="") -> bool:
 def get_yoqlama_bugun(togarak_id: int) -> list:
     conn = db(); cur = conn.cursor()
     cur.execute("""
-        SELECT a.user_id, u.full_name, u.class, y.holat, y.izoh
+        SELECT a.user_id, u.full_name, u.class,
+               COALESCE(y.holat,'keldi') as holat, y.izoh
         FROM togarak_azolar a
         JOIN users u ON u.user_id=a.user_id
         LEFT JOIN togarak_yoqlama y ON y.togarak_id=a.togarak_id
