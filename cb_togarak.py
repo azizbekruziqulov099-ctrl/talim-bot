@@ -23,17 +23,17 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             cur2.execute("SELECT COUNT(*) FROM togaraklar WHERE teacher_id=%s AND aktiv=TRUE",(user_id,))
             cnt2=(cur2.fetchone() or [0])[0]; cur2.close(); conn2.close()
             if cnt2 >= 1:
-                await call.message.answer("❌ Siz allaqachon 1 ta to'garak ochgansiz!\n\nFaqat admin cheksiz to'garak ocha oladi."); return
+                await call.message.answer("❌ Siz allaqachon 1 ta to'garak ochgansiz!\n\nFaqat admin cheksiz to'garak ocha oladi."); return True
         user_state[user_id] = "tg_create_nomi"
         await call.message.answer("➕ Yangi to'garak\n\nTo'garak nomini yozing:")
-        return
+        return True
 
     if call.data.startswith("tg_info:"):
         tgid=int(call.data[8:]); await call.answer()
         from togarak import get_togarak_azolar, get_teacher_togaraklar
         tgs = {t["id"]:t for t in get_teacher_togaraklar(user_id)}
         t = tgs.get(tgid)
-        if not t: await call.message.answer("❌ Topilmadi"); return
+        if not t: await call.message.answer("❌ Topilmadi"); return True
         azolar = get_togarak_azolar(tgid)
         # Parol yashirin — alohida ko'rish tugmasi
         txt = (f"📚 {t['nomi']}\n📖 Fan: {t['fan'] or '-'}\n"
@@ -60,14 +60,14 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         ])
         try: await call.message.edit_text(txt, reply_markup=kb2)
         except: await call.message.answer(txt, reply_markup=kb2)
-        return
+        return True
 
     if call.data.startswith("tg_azolar:"):
         tgid=int(call.data[10:]); await call.answer()
         from togarak import get_togarak_azolar
         azolar = get_togarak_azolar(tgid)
         if not azolar:
-            await call.message.answer("👥 Hali a'zo yo'q!"); return
+            await call.message.answer("👥 Hali a'zo yo'q!"); return True
         txt = f"👥 A'zolar ({len(azolar)} ta):\n\n"
         rows2=[]
         for a in azolar:
@@ -78,7 +78,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             )])
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"tg_info:{tgid}")])
         await call.message.answer(txt[:2000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_rm:"):
         parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
@@ -96,14 +96,14 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
             try: await call.message.edit_text(txt[:2000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             except: pass
-        return
+        return True
 
     if call.data.startswith("tg_yoqlama:"):
         tgid=int(call.data[11:]); await call.answer()
         from togarak import get_yoqlama_bugun
         azolar = get_yoqlama_bugun(tgid)
         if not azolar:
-            await call.message.answer("👥 A'zo yo'q"); return
+            await call.message.answer("👥 A'zo yo'q"); return True
         rows2=[]
         for a in azolar:
             emoji = "✅" if a["holat"]=="keldi" else ("⏰" if a["holat"]=="kech" else "❌")
@@ -119,7 +119,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             f"📋 Bugungi yoqlama\n✅ Keldi: {keldi}/{len(azolar)}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         )
-        return
+        return True
 
     if call.data.startswith("tg_yq:"):
         parts2=call.data.split(":"); tgid,uid2,holat=int(parts2[1]),int(parts2[2]),parts2[3]
@@ -145,13 +145,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         except:
             try: await call.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
             except: pass
-        return
+        return True
 
     if call.data.startswith("tg_stat:"):
         tgid=int(call.data[8:]); await call.answer()
         from togarak import get_yoqlama_statistika
         stat=get_yoqlama_statistika(tgid)
-        if not stat: await call.message.answer("📊 Ma'lumot yo'q"); return
+        if not stat: await call.message.answer("📊 Ma'lumot yo'q"); return True
         txt="📊 Yoqlama statistikasi:\n\n"
         for s2 in stat:
             total=s2["keldi"]+s2["kelmadi"]+s2["kech"]
@@ -161,14 +161,14 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="⬅️",callback_data=f"tg_info:{tgid}")
         ]]))
-        return
+        return True
 
     if call.data.startswith("tg_sozla:"):
         tgid=int(call.data[9:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT nomi FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
         tg2=cur2.fetchone(); cur2.close(); conn2.close()
-        if not tg2: await call.message.answer("❌ Ruxsat yo'q!"); return
+        if not tg2: await call.message.answer("❌ Ruxsat yo'q!"); return True
         rows2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔑 Parolni ko'r",       callback_data=f"tg_show_parol:{tgid}"),
              InlineKeyboardButton(text="🔄 Parol almashtir",    callback_data=f"tg_change_parol:{tgid}")],
@@ -176,36 +176,36 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             [InlineKeyboardButton(text="⬅️ Orqaga",             callback_data=f"tg_info:{tgid}")],
         ])
         await call.message.answer(f"⚙️ Sozlamalar — {tg2[0]}",reply_markup=rows2)
-        return
+        return True
 
     if call.data.startswith("tg_show_parol:"):
         tgid=int(call.data[14:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT parol FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
-        if not row2: await call.message.answer("❌ Ruxsat yo'q!"); return
+        if not row2: await call.message.answer("❌ Ruxsat yo'q!"); return True
         await call.message.answer(
             f"🔑 To'garak paroli:\n\n<code>{row2[0]}</code>\n\n"
             f"Bu xabar 30 soniyadan keyin o'chiriladi.",
             parse_mode="HTML"
         )
-        return
+        return True
 
     if call.data.startswith("tg_change_parol:"):
         tgid=int(call.data[16:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
-        if not cur2.fetchone(): cur2.close(); conn2.close(); await call.message.answer("❌ Ruxsat yo'q!"); return
+        if not cur2.fetchone(): cur2.close(); conn2.close(); await call.message.answer("❌ Ruxsat yo'q!"); return True
         cur2.close(); conn2.close()
         admin_state[user_id]=f"tg_new_parol:{tgid}"
         await call.message.answer("🔑 Yangi parol yozing (kamida 4 belgi):")
-        return
+        return True
 
     if call.data.startswith("tg_del:"):
         tgid=int(call.data[7:]); await call.answer()
         user_state[user_id]=f"tg_del_confirm:{tgid}"
         await call.message.answer("⚠️ Tasdiqlaysizmi?\n\nParolni yozing:")
-        return
+        return True
 
     if call.data == "tg_back":
         await call.answer()
@@ -215,7 +215,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         kb2.inline_keyboard.append([InlineKeyboardButton(text="➕ Yangi to'garak",callback_data="tg_yangi")])
         try: await call.message.edit_text(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
         except: await call.message.answer(f"📚 Mening to'garaklarim ({len(tgs)} ta):",reply_markup=kb2)
-        return
+        return True
 
     # ── TO'GARAK SO'ROVLAR ──
     if call.data.startswith("tg_req_approve:"):
@@ -227,7 +227,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("SELECT id FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid2,user_id))
         if not cur2.fetchone():
             cur2.close();conn2.close()
-            await call.message.edit_text("❌ Ruxsat yo'q!"); return
+            await call.message.edit_text("❌ Ruxsat yo'q!"); return True
         # Parolsiz qo'shish
         cur2.execute("SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(tgid2,))
         cnt2=cur2.fetchone()[0]
@@ -235,7 +235,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         t2=cur2.fetchone()
         if cnt2 >= t2[0]:
             cur2.close();conn2.close()
-            await call.message.edit_text(f"❌ To'garak to'ldi!"); return
+            await call.message.edit_text(f"❌ To'garak to'ldi!"); return True
         try:
             cur2.execute("""
                 INSERT INTO togarak_azolar(togarak_id,user_id,aktiv)
@@ -252,7 +252,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             await call.bot.send_message(uid2, f"✅ '{t2[1]}' to'garakka qabul qilindingiz!")
         except: pass
         await call.message.edit_text("✅ O'quvchi qabul qilindi!", reply_markup=None)
-        return
+        return True
 
     if call.data.startswith("tg_req_reject:"):
         parts2=call.data[14:].split("|"); uid2,tgid2=int(parts2[0]),int(parts2[1])
@@ -261,7 +261,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
         except: pass
         await call.message.edit_text("❌ Rad etildi.", reply_markup=None)
-        return
+        return True
 
     if call.data.startswith("tg_guruh_chat:"):
         parts2=call.data.split(":"); tgid=int(parts2[1])
@@ -290,7 +290,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                       InlineKeyboardButton(text="🔄 Yangilash",callback_data=f"tg_guruh_chat:{tgid}:{page}")])
         try: await call.message.edit_text(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_azolar_msg:"):
         tgid=int(call.data[14:]); await call.answer()
@@ -301,7 +301,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("SELECT user_id FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",(tgid,))
         member_ids=[r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
         if user_id not in member_ids and (not t2 or t2[0]!=user_id):
-            await call.message.answer("❌ Siz bu to'garak a'zosi emassiz!"); return
+            await call.message.answer("❌ Siz bu to'garak a'zosi emassiz!"); return True
         azolar=get_togarak_azolar(tgid)
         rows2=[]
         for a in azolar:
@@ -312,9 +312,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(t2[0],))
             tname=(cur2.fetchone() or ["O'qituvchi"])[0]; cur2.close(); conn2.close()
             rows2.insert(0,[InlineKeyboardButton(text=f"👨‍🏫 {tname}",callback_data=f"tg_pm:{tgid}:{t2[0]}:0")])
-        if not rows2: await call.message.answer("👥 Boshqa a'zolar yo'q!"); return
+        if not rows2: await call.message.answer("👥 Boshqa a'zolar yo'q!"); return True
         await call.message.answer("👤 Kimga yozmoqchisiz?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_pm:"):
         parts2=call.data.split(":"); tgid,uid2,page=int(parts2[1]),int(parts2[2]),int(parts2[3])
@@ -344,7 +344,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         admin_state[user_id]=f"tg_send_pm:{tgid}:{uid2}"
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_pm_write:"):
         parts2=call.data.split(":"); tgid,uid2=int(parts2[1]),int(parts2[2])
@@ -357,7 +357,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="❌ Bekor",callback_data=f"tg_pm:{tgid}:{uid2}:0")
             ]]))
-        return
+        return True
 
     if call.data.startswith("tg_reja:"):
         parts2=call.data.split(":"); tgid=int(parts2[1]); page=int(parts2[2]) if len(parts2)>2 else 0
@@ -382,7 +382,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="✅ Bugun o'tildi",callback_data=f"tg_reja_today:{tgid}"),InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")])
         try: await call.message.edit_text(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3000],reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_albom:"):
         parts2=call.data[14:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
@@ -399,7 +399,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         try: await call.message.edit_text(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📗 {albom_n}-albom:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_mavzu:"):
         parts2=call.data[14:].split(":"); tgid,reja_id=int(parts2[0]),int(parts2[1])
@@ -407,12 +407,12 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT topic_code,tartib,tur,dars_kuni,dars_vaqt,completed FROM togarak_reja WHERE id=%s",(reja_id,))
         r=cur2.fetchone(); cur2.close(); conn2.close()
-        if not r: await call.message.answer("❌ Topilmadi"); return
+        if not r: await call.message.answer("❌ Topilmadi"); return True
         holat="✅ O'tildi" if r[5] else "📖 O'tilmagan"
         txt=f"📌 {r[1]}-mavzu: {r[0]}\n📅 Kun: {r[3] or '—'} {r[4] or ''}\n🎯 Holat: {holat}"
         rows2=[[InlineKeyboardButton(text="📅 Kun/vaqt",callback_data=f"tg_reja_kun_set:{tgid}:{reja_id}"),InlineKeyboardButton(text="✅ O'tildi",callback_data=f"tg_mark_done:{tgid}:{r[0]}")],[InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")]]
         await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
 
     if call.data.startswith("tg_reja_jadval:"):
@@ -434,7 +434,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2=[[InlineKeyboardButton(text=f"📌 {k}",callback_data=f"tg_reja_kun_id:{tgid}:{i}")] for i,k in enumerate(KUNLAR)]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_kun_set:"):
         parts2=call.data[16:].split(":"); tgid=int(parts2[0])
@@ -449,7 +449,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         )] for i,k in enumerate(KUNLAR)]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         await call.message.answer("📅 Qaysi kuni dars bo'ladi?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_kun_id:"):
         # Jadvaldan keldi — avval kun, keyin mavzu tanlash
@@ -462,10 +462,10 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             text=f"📖 {r['tartib']}. {r['code'][:35]}",
             callback_data=f"tg_reja_mavzu_kun:{tgid}:{r['id']}:{kun_id}"
         )] for r in reja if not r["completed"]]
-        if not rows2: await call.message.answer("✅ Barcha mavzular belgilangan!"); return
+        if not rows2: await call.message.answer("✅ Barcha mavzular belgilangan!"); return True
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_jadval:{tgid}")])
         await call.message.answer(f"📅 {KUNLAR[kun_id]} — qaysi mavzu?",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_mavzu_kun:"):
         parts2=call.data[18:].split(":"); tgid,reja_id,kun_id=int(parts2[0]),int(parts2[1]),int(parts2[2])
@@ -477,13 +477,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             f"Masalan: <code>15:00</code>",
             parse_mode="HTML"
         )
-        return
+        return True
 
     if call.data.startswith("tg_reja_today:"):
         tgid=int(call.data[14:]); await call.answer()
         from togarak import get_reja
         reja=[r for r in get_reja(tgid) if not r["completed"]]
-        if not reja: await call.message.answer("✅ Barcha mavzular o'tilgan!"); return
+        if not reja: await call.message.answer("✅ Barcha mavzular o'tilgan!"); return True
         # Jadvaldan bugungi vaqtni ham ko'rsat
         from datetime import datetime
         bugun_id=datetime.now().weekday()
@@ -507,7 +507,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         txt=f"📅 {KUNLAR[bugun_id]} {vaqt_txt}\nBugungi darsni belgilang ({total} ta qoldi):"
         await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_mark_done:"):
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); code=parts2[1]
@@ -516,7 +516,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         mark_dars_done(tgid,code,user_id)
         await call.message.answer(f"✅ '{code}' dars o'tdi deb belgilandi!")
         call.data=f"tg_reja:{tgid}"; await handle_tg_reja(call,tgid,user_id)
-        return
+        return True
 
     if call.data.startswith("tg_reja_add:"):
         tgid=int(call.data[12:]); await call.answer()
@@ -529,7 +529,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja:{tgid}")])
         await call.message.answer("🏫 Sinf tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
 
     if call.data.startswith("tg_reja_sinf_choose:"):
@@ -543,7 +543,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2=[[InlineKeyboardButton(text=f"🏫 {s[0]}",callback_data=f"tg_reja_sinf:{tgid}:{s[0]}")] for s in sinflar]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
         await call.message.answer("Sinf tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_sinf:"):
         parts2=call.data[13:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]
@@ -554,7 +554,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2=[[InlineKeyboardButton(text=f"📚 {f[0]}",callback_data=f"tg_reja_fan_add:{tgid}:{sinf}:{f[0]}")] for f in fanlar[:10]]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
         await call.message.answer(f"📚 Fan tanlang — barcha mavzular qo'shiladi:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_fan_add:"):
         parts2=call.data[16:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]
@@ -574,7 +574,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             cur2.execute("INSERT INTO togarak_reja(togarak_id,topic_code,tartib,tur) VALUES(%s,%s,%s,'dars')",(tgid,name,i))
         conn2.commit(); cur2.close(); conn2.close()
         await call.message.answer(f"✅ {fan} — {len(mavzular)} ta mavzu rejaga qo'shildi!")
-        return
+        return True
 
 
 
@@ -596,7 +596,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                 ORDER BY mavzu_code""", (sinf,fan))
         barcha=cur2.fetchall(); cur2.close(); conn2.close()
         if not barcha:
-            await call.message.answer("❌ Mavzu topilmadi!"); return
+            await call.message.answer("❌ Mavzu topilmadi!"); return True
         PER=10; total=len(barcha)
         page_items=barcha[page*PER:(page+1)*PER]
         rows2=[[InlineKeyboardButton(
@@ -611,7 +611,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
         try: await call.message.edit_text(f"📌 Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(f"📌 Mavzular ({total} ta):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_bob:"):
         parts2=call.data[12:].split(":"); tgid=int(parts2[0]); sinf=parts2[1]; fan=parts2[2]; bob=parts2[3]
@@ -625,14 +625,14 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             (sinf,fan,f"{bob}%"))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
         if not mavzular:
-            await call.message.answer("❌ Mavzu topilmadi!"); return
+            await call.message.answer("❌ Mavzu topilmadi!"); return True
         rows2=[[InlineKeyboardButton(
             text=f"📌 {m[1][:40] if m[1] else m[0]}",
             callback_data=f"tg_reja_add_topic:{tgid}:{m[0]}"
         )] for m in mavzular]
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_reja_add:{tgid}")])
         await call.message.answer("📌 Mavzuni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_reja_add_topic:"):
         parts2=call.data[18:].split(":"); tgid=int(parts2[0]); code=parts2[1]
@@ -645,13 +645,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         from togarak import add_to_reja
         add_to_reja(tgid, mavzu_name, "dars")
         await call.message.answer(f"✅ '{mavzu_name[:50]}' rejaga qo'shildi!")
-        return
+        return True
 
     if call.data.startswith("tg_reja_manual:"):
         tgid=int(call.data[15:]); await call.answer()
         admin_state[user_id]=f"tg_reja_add_manual:{tgid}"
         await call.message.answer("Maxsus kun nomini yozing\n(Masalan: Imtihon, Laboratoriya, Sayohat):")
-        return
+        return True
 
     if call.data.startswith("tg_hw:"):
         tgid=int(call.data[6:]); await call.answer()
@@ -666,13 +666,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         txt=f"📝 Uyga vazifalar ({len(hws)} ta aktiv)"
         try: await call.message.edit_text(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("tg_hw_new:"):
         tgid=int(call.data[10:]); await call.answer()
         admin_state[user_id]=f"hw_new:{tgid}:mavzu"
         await call.message.answer("📝 Yangi vazifa\n\nVazifa mavzusini yozing:")
-        return
+        return True
 
     if call.data.startswith("tg_hw_view:"):
         hw_id=int(call.data[11:]); await call.answer()
@@ -683,7 +683,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             icon="✅" if sb["baho"] else "⏳"
             txt+=f"{icon} {sb['ism']}: {sb['javob'][:50]}\n"
         await call.message.answer(txt[:3000])
-        return
+        return True
 
     if call.data.startswith("tg_reyting:"):
         tgid=int(call.data[11:]); await call.answer()
@@ -696,7 +696,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             txt+=f"{m} {st['ism']} ({st['sinf'] or '-'})\n"
             txt+=f"  ⭐{st['baho']} | 📋{st['davomat']}% | 📝{st['hw']}\n\n"
         await call.message.answer(txt[:3000])
-        return
+        return True
 
     if call.data.startswith("tg_hisobot:"):
         tgid=int(call.data[11:]); await call.answer()
@@ -711,14 +711,14 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             )
         except Exception as e:
             await call.message.answer(f"❌ Hisobot xato: {e}")
-        return
+        return True
 
     if call.data.startswith("tg_pending:"):
         tgid=int(call.data[11:]); await call.answer()
         from togarak import get_pending_requests
         reqs=[r for r in get_pending_requests(user_id) if r["tg_id"]==tgid]
         if not reqs:
-            await call.message.answer("✅ Kutayotgan so'rovlar yo'q!"); return
+            await call.message.answer("✅ Kutayotgan so'rovlar yo'q!"); return True
         for r in reqs:
             await call.message.answer(
                 f"📨 So'rov #{r['id']}\n👤 {r['ism']} — {r['sinf'] or '-'}\n📚 {r['tg_nomi']}",
@@ -727,7 +727,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                     InlineKeyboardButton(text="❌ Rad",   callback_data=f"tg_req_reject:{r['uid']}|{r['tg_id']}"),
                 ]])
             )
-        return
+        return True
 
     if call.data.startswith("tg_msg_group:"):
         tgid=int(call.data[13:]); await call.answer()
@@ -735,7 +735,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer(
             "📢 Guruhga xabar yozing:\n(Barcha a'zolarga yuboriladi)"
         )
-        return
+        return True
 
 
     return False
