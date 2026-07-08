@@ -1737,6 +1737,27 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
 
     # ── TO'GARAK STATE HANDLERS (yuqoriga ko'chirilgan) ──
+    # Tez kirish ism (yuqoriga ko'chirildi)
+    if str(user_state.get(user_id) or "").startswith("rq_name:") and message.text:
+        rol = str(user_state[user_id]).split(":")[1]
+        name = message.text.strip()
+        user_state.pop(user_id, None)
+        if user_id not in temp_user or not isinstance(temp_user.get(user_id),dict):
+            temp_user[user_id] = {}
+        temp_user[user_id]["role"] = rol
+        if rol == "student":
+            # Sinf tanlash
+            temp_user[user_id]["full_name"] = name
+            rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4) if i<=11] for j in range(1, 12, 4)]
+            await message.answer(
+                f"✅ {name}\n\nSinfni tanlang:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
+            )
+        else:
+            # O'qituvchi/ota-ona — to'g'ridan saqlash
+            await _rq_save(message, user_id, name, rol, None)
+        return
+
     if str(admin_state.get(user_id) or "").startswith("tg_kun_vaqt:") and message.text:
         parts3=str(admin_state[user_id]).split(":")
         tgid3=int(parts3[1]); sana3=parts3[2]; reja_id3=int(parts3[3])
@@ -2004,25 +2025,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     # Tez kirish — ism yozish
-    if str(user_state.get(user_id) or "").startswith("rq_name:") and message.text:
-        rol = str(user_state[user_id]).split(":")[1]
-        name = message.text.strip()
-        user_state.pop(user_id, None)
-        if user_id not in temp_user or not isinstance(temp_user.get(user_id),dict):
-            temp_user[user_id] = {}
-        temp_user[user_id]["role"] = rol
-        if rol == "student":
-            # Sinf tanlash
-            temp_user[user_id]["full_name"] = name
-            rows2 = [[InlineKeyboardButton(text=f"{i}-sinf", callback_data=f"rq_sinf:{i}") for i in range(j, j+4) if i<=11] for j in range(1, 12, 4)]
-            await message.answer(
-                f"✅ {name}\n\nSinfni tanlang:",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-            )
-        else:
-            # O'qituvchi/ota-ona — to'g'ridan saqlash
-            await _rq_save(message, user_id, name, rol, None)
-        return
 
 
     # ══ TO'GARAK YARATISH STATE ══
@@ -2773,7 +2775,30 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "👤 Kabinet":
-        await student_profile(message)
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("SELECT full_name,role,class,school,birth_date FROM users WHERE user_id=%s",(user_id,))
+        u=cur2.fetchone()
+        # Akkauntlar soni
+        cur2.execute("SELECT COUNT(*) FROM user_accounts WHERE telegram_id=%s",(user_id,))
+        acc_count=(cur2.fetchone() or [0])[0]
+        cur2.close();conn2.close()
+        if not u:
+            await message.answer("❌ Ma'lumot topilmadi. /start bosing."); return
+        ism,rol,sinf,maktab,tugilgan=u
+        txt=(f"👤 <b>Kabinet</b>\n"
+             f"─────────────\n"
+             f"📛 Ism: {ism or '—'}\n"
+             f"🎭 Rol: {rol or '—'}\n")
+        if sinf: txt+=f"🎓 Sinf: {sinf}\n"
+        if maktab: txt+=f"🏫 Maktab: {maktab}\n"
+        if tugilgan: txt+=f"🎂 Tug'ilgan: {tugilgan}\n"
+        rows2=[
+            [InlineKeyboardButton(text="✏️ Ismni o'zgartirish",callback_data="kb_change_name"),
+             InlineKeyboardButton(text="🎭 Rolni o'zgartirish",callback_data="kb_change_role")],
+            [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
+            [InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")],
+        ]
+        await message.answer(txt,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
     if user_id not in temp_user:
