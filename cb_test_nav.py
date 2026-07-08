@@ -38,11 +38,11 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"🧪 {subj2}\n{len(topics2)} ta mavzu (faqat test borlar):",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data == "sinash_back":
         await call.message.delete()
-        return
+        return True
 
     if call.data.startswith("mustah_subj:"):
         parts2 = call.data.split(":", 2)
@@ -72,14 +72,14 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"📚 {subj2}\n✅=o'tilgan  📖=yangi\n{len(topics2)} ta mavzu:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data.startswith("mustah_lesson:"):
         tc = call.data.split(":")[1]
         await call.answer()
         # Darsni boshlash
         await open_teacher_lesson(call.message, topic_code=tc, _user_id=call.from_user.id)
-        return
+        return True
 
     if call.data.startswith("mustah_other:"):
         page = int(call.data.split(":")[1])
@@ -120,7 +120,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"🌐 Boshqa sinflar darslar ({len(other)} ta):",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
-        return
+        return True
 
     if call.data.startswith("mustah_all:"):
         grade = call.data.split(":")[1]
@@ -149,7 +149,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             )])
         rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="mustah_back")])
         await call.message.edit_text("📖 Sinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
-        return
+        return True
 
     if call.data == "err_unread":
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
@@ -158,13 +158,13 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         cur2.execute("UPDATE error_log SET is_read=TRUE WHERE is_read=FALSE")
         conn2.commit(); cur2.close(); conn2.close()
         if not rows2:
-            await call.answer("O'qilmagan xato yo'q!", show_alert=True); return
+            await call.answer("O'qilmagan xato yo'q!", show_alert=True); return True
         await call.answer()
         for row2 in rows2:
             uid2, uname, etxt, cat = row2[1], row2[2], row2[3], row2[4]
             d = cat.strftime('%d.%m %H:%M') if cat else ""
             await call.message.answer(f"🔴 Xato\n👤 {uname or uid2}\n🕐 {d}\n❌ {str(etxt)[:300]}")
-        return
+        return True
 
     if call.data == "err_read":
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
@@ -172,20 +172,20 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         rows2 = cur2.fetchall(); cur2.close(); conn2.close()
         await call.answer()
         if not rows2:
-            await call.message.answer("O'qilgan xatolar yo'q."); return
+            await call.message.answer("O'qilgan xatolar yo'q."); return True
         lines2 = ["O'qilgan xatolar:\n"]
         for uname, etxt, cat in rows2:
             d = cat.strftime('%d.%m') if cat else ""
             lines2.append(f"• {uname}: {str(etxt)[:60]}... [{d}]")
         await call.message.answer("\n".join(lines2))
-        return
+        return True
 
     if call.data == "err_clear":
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("DELETE FROM error_log WHERE is_read=TRUE")
         deleted = cur2.rowcount; conn2.commit(); cur2.close(); conn2.close()
         await call.answer(f"{deleted} ta o'qilgan xato o'chirildi", show_alert=True)
-        return
+        return True
 
     if call.data == "rep_test":
         await call.answer()
@@ -199,7 +199,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
                 caption="📊 Test natijalari"
             )
         except: pass
-        return
+        return True
 
     if call.data == "rep_prog":
         await call.answer()
@@ -213,7 +213,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
                 caption="📈 Taraqqiyot"
             )
         except: pass
-        return
+        return True
 
     if call.data == "rep_plan":
         await call.answer()
@@ -222,7 +222,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             "📅 Sinf va fanni yozing:\n<code>1 | Ingliz tili</code>",
             parse_mode="HTML"
         )
-        return
+        return True
 
     if call.data == "menu_kitob_yuklash":
         admin_state[user_id] = "kitob_yuklash"
@@ -231,7 +231,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             "📖 Kitob yuklash\n\nFormat: Kitob nomi | Fan | Sinf | Muallif\n"
             "Masalan: <code>Matematika 1 | Matematika | 1 | Mirzayev</code>",
             parse_mode="HTML"
-        ); return
+        ); return True
 
     if call.data == "menu_kitob_oqit":
         await call.answer()
@@ -239,7 +239,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
         books2 = cur2.fetchall(); cur2.close(); conn2.close()
         if not books2:
-            await call.message.answer("❌ Hali kitob yuklanmagan."); return
+            await call.message.answer("❌ Hali kitob yuklanmagan."); return True
         rows2 = [[InlineKeyboardButton(
             text=f"📖 {b[1][:25]} ({b[2]}, {b[3]}-sinf)",
             callback_data=f"train_book:{b[0]}:{b[2]}:{b[3]}"
@@ -247,14 +247,14 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         await call.message.answer(
             "🎓 Qaysi kitobni o'qitamiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        ); return
+        ); return True
 
     if call.data == "menu_kitob_word":
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 10")
         books2 = cur2.fetchall(); cur2.close(); conn2.close()
         if not books2:
-            await call.message.answer("❌ Hali kitob yuklanmagan."); return
+            await call.message.answer("❌ Hali kitob yuklanmagan."); return True
         rows2 = [[InlineKeyboardButton(
             text=f"📖 {b[1][:25]}",
             callback_data=f"book_make:{b[0]}"
@@ -263,7 +263,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         await call.message.answer(
             "📦 Qaysi kitobdan Word yasaymiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        ); return
+        ); return True
 
     if call.data.startswith("rasm_grade:"):
         gr = call.data.split(":")[1]
@@ -280,7 +280,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         await call.message.edit_text(
             f"🏫 {gr}-sinf — Fan tanlang:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        ); return
+        ); return True
 
     if call.data.startswith("rasm_fan:"):
         parts2=call.data.split(":",2); gr,fan2=parts2[1],parts2[2]
@@ -305,7 +305,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         await call.message.edit_text(
             f"📚 {fan2} — Mavzu tanlang:\n🖼=rasm bor ❌=rasm yo'q",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
-        ); return
+        ); return True
 
     if call.data.startswith("mtt_gr:"):
         gr = call.data[7:]
@@ -317,14 +317,14 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         rows2.append([InlineKeyboardButton(text="⬅️", callback_data="mtt_back")])
         await call.answer()
         await call.message.edit_text(f"🏫 {gr}-sinf — Fan tanlang yoki o'zingiz yozing:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("mtt_fan_text:"):
         gr = call.data[13:]
         await call.answer()
         admin_state[user_id] = f"mtt_fan_input:{gr}"
         await call.message.answer(f"🏫 {gr}-sinf\n\nFan nomini yozing:\nMasalan: Ingliz tili")
-        return
+        return True
 
     if call.data.startswith("mtt_fan:"):
         parts2 = call.data[8:].split(":",1); gr,fan2 = parts2[0],parts2[1]
@@ -341,7 +341,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"...\n\n"
             f"Har qator: chorak_raqami/ mavzu_nomi"
         )
-        return
+        return True
 
     if call.data.startswith("mtt_do:"):
         tc = call.data[7:]
@@ -361,13 +361,13 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await status3.edit_text(f"❌ {e}")
         asyncio.create_task(do_mtt())
-        return
+        return True
 
     if call.data == "mtt_back":
-        await call.answer(); await call.message.delete(); return
+        await call.answer(); await call.message.delete(); return True
 
     if call.data == "rasm_back":
-        await call.answer(); await call.message.delete(); return
+        await call.answer(); await call.message.delete(); return True
 
     if call.data == "ai_rasm_auto":
         await call.answer()
@@ -383,7 +383,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
                 [InlineKeyboardButton(text="⭐ Barcha fanlar", callback_data="ai_auto:all")],
             ])
         )
-        return
+        return True
 
     if call.data.startswith("ai_auto:"):
         fan2 = call.data.split(":",1)[1]
@@ -403,7 +403,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await status_aa.edit_text(f"❌ {e}")
         asyncio.create_task(do_auto())
-        return
+        return True
 
     if call.data == "ai_rasm_custom":
         await call.answer()
@@ -419,7 +419,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
                 [InlineKeyboardButton(text="💬 Komiks (qiziqarli)",      callback_data="rasm_style:komiks")],
             ])
         )
-        return
+        return True
 
     if call.data.startswith("xl_style:"):
         _raw = call.data.split(":")[1]
@@ -427,7 +427,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         style2 = _raw.replace("_auto","").replace("_force","")
         xl_bytes2 = admin_state.pop(f"{user_id}_rasm_xl", None)
         if not xl_bytes2:
-            await call.answer("❌ Fayl topilmadi, qayta yuboring", show_alert=True); return
+            await call.answer("❌ Fayl topilmadi, qayta yuboring", show_alert=True); return True
         await call.answer()
         style_names = {
             "multik":"🎠 Multik","hayotiy":"📸 Hayotiy","chizma":"✏️ Chizma",
@@ -452,7 +452,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await call.message.answer(f"❌ {e}")
         asyncio.create_task(do_xl_rasm())
-        return
+        return True
 
     if call.data.startswith("rasm_style:"):
         style = call.data.split(":")[1]
@@ -468,7 +468,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"Masalan: «bola onasiga gul berayapti»\n"
             f"yoki «teacher writing on blackboard»"
         )
-        return
+        return True
 
     if call.data.startswith("ai_rasm:"):
         parts2 = call.data.split(":")
@@ -492,7 +492,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             f"🎨 {fan2} — {tc}\n\nQaysi savol uchun rasm?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         )
-        return
+        return True
 
     if call.data.startswith("ai_rasm_q:"):
         parts2 = call.data.split(":")
@@ -522,7 +522,7 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await status_r.edit_text(f"❌ {e}")
         asyncio.create_task(do_rasm())
-        return
+        return True
 
     if call.data.startswith("ai_rasm_all:"):
         parts2 = call.data.split(":")
@@ -540,13 +540,13 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await status_r.edit_text(f"❌ {e}")
         asyncio.create_task(do_all_rasm())
-        return
+        return True
 
     if call.data == "menu_ai_train":
         await call.answer()
         if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")):
             await call.message.answer("❌ GEMINI_API_KEY yoki OPENAI_API_KEY kerak!\nRailway → Variables ga qo'shing.")
-            return
+            return True
         status_at = await call.message.answer(
             "🤖 Universal ekspert o'qitish boshlandi...\n"
             "5 profil: pedagog, metodist, huquqshunos, psixolog, professor"
@@ -562,16 +562,16 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
             except Exception as e:
                 await call.message.answer(f"❌ {e}")
         asyncio.create_task(do_train_all())
-        return
+        return True
 
     if call.data == "menu_bilim_qidir":
         await call.answer()
         admin_state[user_id] = "kitob_qidirish"
-        await call.message.answer("🔍 Qidiruv so'zini yozing:"); return
+        await call.message.answer("🔍 Qidiruv so'zini yozing:"); return True
 
     if call.data == "menu_bilim_must":
         await call.answer()
-        await call.message.answer("📚 Bilimni mustahkamlash — o'quvchi menyusida."); return
+        await call.message.answer("📚 Bilimni mustahkamlash — o'quvchi menyusida."); return True
 
     if call.data == "menu_bilim_sin":
         await call.answer()
@@ -582,13 +582,13 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         ) _g ORDER BY CASE WHEN grade~'^[0-9]+$' THEN grade::int ELSE 99 END""")
         grades=[r[0] for r in cur2.fetchall()]; cur2.close(); conn2.close()
         if not grades:
-            await call.message.answer("❌ Hali test mavjud emas!"); return
+            await call.message.answer("❌ Hali test mavjud emas!"); return True
         rows2=[[InlineKeyboardButton(
             text=f"🏫 {g}-sinf" if str(g).isdigit() else f"📚 {g}",
             callback_data=f"sin_gr:{g}"
         )] for g in grades]
         await call.message.answer("🧪 Bilimni sinash\n\nSinf tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
 
     return False
