@@ -13,6 +13,35 @@ def render_text(t):
     t=_r.sub(r"\[en\](.*?)\[/en\]",r"_\1_",t,flags=_r.DOTALL)
     return t.strip()
 
+def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
+    """Yangi akkaunt yaratish — ishonchli."""
+    conn=_get_db_conn();cur=conn.cursor()
+    try:
+        # Yangi index
+        cur.execute("SELECT COALESCE(MAX(account_index),-1)+1 FROM user_accounts WHERE telegram_id=%s",(telegram_id,))
+        new_idx=cur.fetchone()[0]
+        print(f"[new_acc] telegram={telegram_id} name={name} rol={rol_uz} idx={new_idx}")
+        # Barchasini nofaol
+        cur.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(telegram_id,))
+        # Yangi qo'shish
+        cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
+            VALUES(%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,name,rol_uz,sinf_txt))
+        # users ni yangilaymiz (aktiv akkaunt)
+        cur.execute("""INSERT INTO users(user_id,full_name,role,class)
+            VALUES(%s,%s,%s,%s)
+            ON CONFLICT(user_id) DO UPDATE
+            SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class""",
+            (telegram_id,name,rol_uz,sinf_txt))
+        conn.commit()
+        print(f"[new_acc] ✅ saqlandi idx={new_idx}")
+        ok=True
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"[new_acc] ❌ {e}")
+        conn.rollback(); ok=False
+    cur.close();conn.close()
+    return ok
+
 async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
     if call.data == "parent_link":
@@ -172,17 +201,48 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data == "kb_new_acc":
         await call.answer()
-        # Yangi akkaunt — eski temp ma'lumotni tozalaymiz
-        temp_user[user_id] = {}
-        user_state.pop(user_id, None)
+        # Yangi akkaunt — ism so'raymiz
+        user_state[user_id] = "nacc_name"
         await call.message.answer(
-            "➕ Yangi akkaunt yaratish\n\nYangi rol tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data="rq_rol:student")],
-                [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data="rq_rol:teacher")],
-                [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="rq_rol:parent")],
-            ])
+            "➕ <b>Yangi akkaunt</b>\n\nYangi akkaunt uchun F.I.Sh yozing:\nMasalan: Aliyev Ali",
+            parse_mode="HTML"
         )
+        return True
+
+    if call.data.startswith("nacc_rol:"):
+        # Yangi akkaunt — rol tanlandi, DARHOL saqlaymiz
+        parts2=call.data[9:].split("|")
+        rol=parts2[0]; name=parts2[1] if len(parts2)>1 else "Foydalanuvchi"
+        await call.answer()
+        rol_uz={"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
+        if rol=="student":
+            # Sinf so'raymiz
+            user_state[user_id]=f"nacc_sinf|{name}"
+            rows2=[[InlineKeyboardButton(text=f"{i}-sinf",callback_data=f"nacc_save:{name}|{i}") for i in range(j,j+4) if i<=11] for j in range(1,12,4)]
+            await call.message.edit_text(f"🧒 {name}\n\nSinfni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        else:
+            # Darhol saqlaymiz
+            ok=_create_new_account(user_id,name,rol_uz,"")
+            user_state.pop(user_id,None)
+            from keyboards import get_main_keyboard
+            if ok:
+                await call.message.answer(f"✅ Yangi akkaunt yaratildi!\n👤 {name}\n🎭 {rol_uz}",reply_markup=get_main_keyboard(rol_uz))
+            else:
+                await call.message.answer("❌ Xatolik. Qayta urinib ko'ring.")
+        return True
+
+    if call.data.startswith("nacc_save:"):
+        # O'quvchi — sinf tanlandi, saqlaymiz
+        parts2=call.data[10:].split("|")
+        name=parts2[0]; sinf=parts2[1]
+        await call.answer()
+        ok=_create_new_account(user_id,name,"O'quvchi",f"{sinf}-sinf")
+        user_state.pop(user_id,None)
+        from keyboards import get_main_keyboard
+        if ok:
+            await call.message.answer(f"✅ Yangi akkaunt yaratildi!\n👤 {name}\n🎭 O'quvchi {sinf}-sinf",reply_markup=get_main_keyboard("O'quvchi"))
+        else:
+            await call.message.answer("❌ Xatolik. Qayta urinib ko'ring.")
         return True
 
     if call.data == "kb_switch_acc":
@@ -386,8 +446,8 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("""
-                INSERT INTO users(user_id,full_name,role,class,is_verified)
-                VALUES(%s,%s,%s,%s,TRUE)
+                INSERT INTO users(user_id,full_name,role,class)
+                VALUES(%s,%s,%s,%s)
                 ON CONFLICT(user_id) DO UPDATE
                 SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
             """, (user_id2, name, rol_uz, sinf_txt))
