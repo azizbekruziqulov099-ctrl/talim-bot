@@ -314,6 +314,8 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("rq_rol:"):
         rol = call.data[7:]; await call.answer()
         user_id2 = call.from_user.id
+        if user_id2 not in temp_user or not isinstance(temp_user.get(user_id2),dict):
+            temp_user[user_id2] = {}
         temp_user[user_id2]["role"] = rol
         user_state[user_id2] = f"rq_name:{rol}"
         rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
@@ -334,6 +336,8 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         # Sinf tanlash
         sinf = call.data[8:]; await call.answer()
         user_id2 = call.from_user.id
+        if user_id2 not in temp_user or not isinstance(temp_user.get(user_id2),dict):
+            temp_user[user_id2] = {}
         temp_user[user_id2]["class"] = sinf
         # Saqlash
         await _save_quick_user(call, user_id2)
