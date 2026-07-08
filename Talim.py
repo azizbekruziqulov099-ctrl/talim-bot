@@ -1679,21 +1679,19 @@ async def _rq_save(source, user_id, name, rol, sinf):
     conn2=_get_db_conn(); cur2=conn2.cursor()
     rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
     sinf_txt = f"{sinf}-sinf" if sinf else ""
+    print(f"[rq_save] user={user_id} name={name} rol={rol_uz}")
     try:
-        # users jadvalini yangilash
         cur2.execute("""
             INSERT INTO users(user_id,full_name,role,class,is_verified)
             VALUES(%s,%s,%s,%s,TRUE)
             ON CONFLICT(user_id) DO UPDATE
             SET full_name=EXCLUDED.full_name, role=EXCLUDED.role, class=EXCLUDED.class
         """, (user_id, name, rol_uz, sinf_txt))
-        # user_accounts da yangi indeks
         cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id,))
         max_idx=(cur2.fetchone() or [None])[0]
         new_idx = 0 if max_idx is None else max_idx + 1
-        # Barchasini nofaol
+        print(f"[rq_save] max_idx={max_idx} new_idx={new_idx}")
         cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
-        # Yangi akkaunt qo'shish
         cur2.execute("""
             INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
             VALUES(%s,%s,%s,%s,%s,TRUE)
@@ -1701,8 +1699,11 @@ async def _rq_save(source, user_id, name, rol, sinf):
             SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
         """, (user_id, new_idx, name, rol_uz, sinf_txt))
         conn2.commit()
+        print(f"[rq_save] ✅ saqlandi index={new_idx}")
     except Exception as e:
-        print(f"rq_save: {e}")
+        import traceback; traceback.print_exc()
+        print(f"[rq_save] ❌ XATO: {e}")
+        conn2.rollback()
     cur2.close(); conn2.close()
     user_state.pop(user_id, None)
     temp_user.pop(user_id, None)
@@ -1741,6 +1742,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if str(user_state.get(user_id) or "").startswith("rq_name:") and message.text:
         rol = str(user_state[user_id]).split(":")[1]
         name = message.text.strip()
+        print(f"[rq_name] user={user_id} rol={rol} name={name}")
         user_state.pop(user_id, None)
         if user_id not in temp_user or not isinstance(temp_user.get(user_id),dict):
             temp_user[user_id] = {}
