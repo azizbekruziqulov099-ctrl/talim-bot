@@ -1746,7 +1746,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_kuni=%s, dars_vaqt=%s WHERE id=%s",
                         (sana3, KUNLAR[d.weekday()], vaqt, reja_id3))
             conn2.commit()
-        except Exception as e: conn2.rollback(); print(f"kun_vaqt: {e}")
+        except Exception as e:
+            conn2.rollback(); print(f"kun_vaqt: {e}")
+            try:
+                cur2.execute("UPDATE togarak_reja SET dars_sana=%s, dars_vaqt=%s WHERE id=%s",
+                            (sana3, vaqt, reja_id3))
+                conn2.commit()
+            except Exception as e2: conn2.rollback(); print(f"kun_vaqt2: {e2}")
         cur2.close(); conn2.close()
         await message.answer(f"✅ {KUNLAR[d.weekday()]} {d.strftime('%d.%m')} — {vaqt}\nDars belgilandi!")
         return
