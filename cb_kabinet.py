@@ -22,14 +22,14 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             "👶 Farzandingizning Telegram ID sini yozing.\n\n"
             "Farzandingiz botda /id yozsin — ID ni ko'radi."
         )
-        return
+        return True
 
     if call.data.startswith("parent_child:"):
         child_id=int(call.data[13:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
         child=cur2.fetchone(); cur2.close(); conn2.close()
-        if not child: await call.message.answer("❌ Topilmadi"); return
+        if not child: await call.message.answer("❌ Topilmadi"); return True
         rows2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Rivojlanish",callback_data=f"parent_progress:{child_id}"),
              InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"parent_yoqlama:{child_id}")],
@@ -40,7 +40,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             f"👶 {child[0]} ({child[1] or '-'})",
             reply_markup=rows2
         )
-        return
+        return True
 
     if call.data.startswith("parent_progress:"):
         child_id=int(call.data[16:]); await call.answer()
@@ -59,7 +59,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             txt+=f"  📋 Davomat: {sp['yoqlama_pct']}%\n"
             txt+=f"  ⭐ Baho: {sp['avg_baho']}\n\n"
         await call.message.answer(txt[:3000])
-        return
+        return True
 
     if call.data.startswith("parent_yoqlama:"):
         child_id=int(call.data[15:]); await call.answer()
@@ -78,7 +78,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 txt+=f"  {icon} {str(y[0])[:10]}\n"
             txt+="\n"
         await call.message.answer(txt[:3000])
-        return
+        return True
 
     if call.data.startswith("parent_baho:"):
         child_id=int(call.data[12:]); await call.answer()
@@ -92,7 +92,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 txt+=f"  ⭐{b[0]}/5 — {b[1] or ''}\n"
             txt+="\n"
         await call.message.answer(txt[:3000])
-        return
+        return True
 
     if call.data.startswith("parent_imtihon:"):
         child_id=int(call.data[15:]); await call.answer()
@@ -104,13 +104,13 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             WHERE sinf=%s AND NOT is_deleted ORDER BY RANDOM() LIMIT 10""",(sinf,))
         topics=cur2.fetchall(); cur2.close(); conn2.close()
         if not topics:
-            await call.message.answer("❌ Mavzular topilmadi. Sinf belgilanmagan bo'lishi mumkin."); return
+            await call.message.answer("❌ Mavzular topilmadi. Sinf belgilanmagan bo'lishi mumkin."); return True
         rows2=[[InlineKeyboardButton(
             text=f"📌 {t[1][:40]}",callback_data=f"parent_test:{child_id}:{t[0]}"
         )] for t in topics]
         await call.message.answer("📝 Qaysi mavzudan test bermoqchisiz?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("parent_test:"):
         parts2=call.data[12:].split(":"); child_id=int(parts2[0]); tcode=parts2[1]
@@ -121,7 +121,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 10""",(tcode,))
         tests=cur2.fetchall(); cur2.close(); conn2.close()
         if not tests:
-            await call.message.answer("❌ Bu mavzuda testlar yo'q!"); return
+            await call.message.answer("❌ Bu mavzuda testlar yo'q!"); return True
         # Farzandga test yuborish
         try:
             await call.bot.send_message(child_id,
@@ -131,7 +131,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             await call.message.answer("✅ Test farzandingizga yuborildi!")
         except Exception as e:
             await call.message.answer(f"❌ Xato: {e}")
-        return
+        return True
 
     if call.data.startswith("parent_msg_teacher:"):
         teacher_id=int(call.data[19:]); await call.answer()
@@ -140,7 +140,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(teacher_id,))
         tname=(cur2.fetchone() or ["O'qituvchi"])[0]; cur2.close(); conn2.close()
         await call.message.answer(f"✍️ {tname} ga xabar yozing:")
-        return
+        return True
 
     # ── KABINET CALLBACKLAR ──
     if call.data == "kb_new_acc":
@@ -157,7 +157,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="rq_rol:parent")],
             ])
         )
-        return
+        return True
 
     if call.data == "kb_switch_acc":
         await call.answer()
@@ -173,7 +173,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             callback_data=f"kb_activate:{a[0]}"
         )] for i,a in enumerate(accs)]
         await call.message.answer("🔄 Akkauntni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("kb_activate:"):
         acc_id2=int(call.data[12:]); await call.answer()
@@ -196,13 +196,13 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             f"✅ Akkaunt almashtirildi!\n👤 {row2[0] if row2 else ''}\n🎭 {row2[1] if row2 else ''}",
             reply_markup=get_main_keyboard(row2[1] if row2 else "")
         )
-        return
+        return True
 
     if call.data == "ai_stop":
         await call.answer()
         user_state.pop(user_id, None)
         await call.message.answer("✅ AI yordamchi o'chirildi.")
-        return
+        return True
 
     if call.data == "kb_togaraklar":
         await call.answer()
@@ -220,7 +220,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             rows2=[[InlineKeyboardButton(text=f"📚 {t['nomi']}",callback_data=f"stg_info:{t['id']}")] for t in tgs]
             rows2.append([InlineKeyboardButton(text="🔍 To'garak izlash", callback_data="stg_join")])
             await call.message.answer(f"📚 To'garaklar ({len(tgs)} ta):", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return
+        return True
 
     if call.data.startswith("kb_change:"):
         field = call.data[10:]; await call.answer()
@@ -244,7 +244,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         else:
             user_state[user_id] = f"kb_change_{field}"
             await call.message.answer(prompts[field])
-        return
+        return True
 
     if call.data.startswith("kb_set_role:"):
         rol = call.data[12:]; await call.answer()
@@ -256,7 +256,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         conn2.commit();cur2.close();conn2.close()
         from keyboards import get_main_keyboard
         await call.message.answer(f"✅ Rol o'zgartirildi: {rol}", reply_markup=get_main_keyboard(rol))
-        return
+        return True
 
     if call.data.startswith("kb_set_class:"):
         cls = call.data[13:]; await call.answer()
@@ -264,13 +264,13 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("UPDATE users SET class=%s WHERE user_id=%s",(f"{cls}-sinf",user_id))
         conn2.commit();cur2.close();conn2.close()
         await call.message.answer(f"✅ Sinf o'zgartirildi: {cls}-sinf")
-        return
+        return True
 
     if call.data == "kb_rereg":
         await call.answer()
         from register import start_registration
         await start_registration(call.message)
-        return
+        return True
 
     if call.data == "kb_delete":
         await call.answer()
@@ -281,7 +281,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 InlineKeyboardButton(text="❌ Yo'q", callback_data="kb_delete_cancel"),
             ]])
         )
-        return
+        return True
 
     if call.data == "kb_delete_confirm":
         await call.answer()
@@ -291,10 +291,10 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         user_state.pop(user_id,None); temp_user.pop(user_id,None)
         from aiogram.types import ReplyKeyboardRemove
         await call.message.answer("✅ Profil o'chirildi. Qayta kirish uchun /start bosing", reply_markup=ReplyKeyboardRemove())
-        return
+        return True
 
     if call.data == "kb_delete_cancel":
-        await call.answer("❌ Bekor qilindi"); return
+        await call.answer("❌ Bekor qilindi"); return True
 
     if call.data.startswith("reg_quick:"):
         await call.answer()
@@ -309,7 +309,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="rq_rol:parent")],
             ])
         )
-        return
+        return True
 
     if call.data.startswith("rq_rol:"):
         rol = call.data[7:]; await call.answer()
@@ -318,7 +318,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         user_state[user_id2] = f"rq_name:{rol}"
         rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
         await call.message.edit_text(f"⚡ {rol_uz}\n\nF.I.Sh yozing:\nMasalan: Aliyev Ali Aliyevich")
-        return
+        return True
 
     if call.data.startswith("reg_full:"):
         await call.answer()
@@ -328,7 +328,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         temp_user[user_id2] = {}
         user_state[user_id2] = "reg_wait_inline"
         await call.message.edit_text("📋 Ro'yxatdan o'tish\n\nRolni tanlang:", reply_markup=_ik(ROLES,"role",cols=1))
-        return
+        return True
 
     if call.data.startswith("rq_sinf:"):
         # Sinf tanlash
@@ -337,17 +337,17 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         temp_user[user_id2]["class"] = sinf
         # Saqlash
         await _save_quick_user(call, user_id2)
-        return
+        return True
 
     if call.data.startswith("reg:"):
         from register import reg_callback
         await reg_callback(call)
-        return
+        return True
 
     if call.data.startswith("reg_yr:"):
         from register import reg_year_callback
         await reg_year_callback(call)
-        return
+        return True
 
     if call.data == "speak_question":
 
@@ -356,7 +356,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             call.message
         )
 
-        return
+        return True
 
     if call.data == "speak_a":
 
@@ -365,7 +365,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             call.message
         )
 
-        return
+        return True
 
     if call.data == "speak_b":
 
@@ -373,7 +373,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             call.from_user.id,
             call.message
         )
-        return
+        return True
 
     if call.data == "speak_c":
 
@@ -381,7 +381,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             call.from_user.id,
             call.message
         )
-        return
+        return True
 
     if call.data == "speak_d":
 
@@ -389,14 +389,14 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             call.from_user.id,
             call.message
         )
-        return
+        return True
 
     if call.data == "cancel_import":
         await state.clear()
         admin_state.pop(user_id, None)
         await call.message.edit_text("❌ Import bekor qilindi")
         await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard("Admin"))
-        return
+        return True
 
     if call.data.startswith("resume_lesson:"):
         from lesson_engine import build_lesson_data, show_main_step, LESSON_COLS
@@ -417,9 +417,9 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             _u = _cur.fetchone()
             _cur.close(); _conn.close()
         except Exception as _e:
-            await call.message.answer(f"❌ Xato: {_e}"); return
+            await call.message.answer(f"❌ Xato: {_e}"); return True
         if not _lesson:
-            await call.message.answer("❌ Dars topilmadi"); return
+            await call.message.answer("❌ Dars topilmadi"); return True
         _main, _simple = build_lesson_data(_lesson)
         lesson_state[uid] = {
             "topic_code": tc, "main_parts": _main, "simple_parts": _simple,
@@ -433,7 +433,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         user_state[uid] = "in_lesson"
         await call.message.answer(f"▶️ {_step+1}-qadamdan davom etilmoqda...")
         await show_main_step(uid, call.message.chat.id)
-        return
+        return True
 
     if call.data.startswith("restart_lesson:"):
         await call.answer()
@@ -444,67 +444,67 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             _conn.commit(); _cur.close(); _conn.close()
         except: pass
         await open_teacher_lesson(call.message, topic_code=tc, _user_id=call.from_user.id)
-        return
+        return True
 
     if call.data == "lesson_prev":
         from lesson_engine import lesson_prev
         await call.answer()
         await lesson_prev(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_next":
         from lesson_engine import lesson_next
         await call.answer()
         await lesson_next(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "speak_all":
         from test_engine import speak_all_question
         await call.answer()
         await speak_all_question(call.from_user.id)
-        return
+        return True
 
     if call.data == "test_skip":
         from test_engine import test_skip
         await call.answer()
         await test_skip(call.from_user.id)
-        return
+        return True
 
     if call.data == "lesson_speak":
         from lesson_engine import lesson_speak
         await call.answer()
         await lesson_speak(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_help":
         from lesson_engine import lesson_help_open
         await call.answer()
         await lesson_help_open(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_help_next":
         from lesson_engine import lesson_help_next
         await call.answer()
         await lesson_help_next(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_help_prev":
         from lesson_engine import lesson_help_prev
         await call.answer()
         await lesson_help_prev(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_help_close":
         from lesson_engine import lesson_help_close
         await call.answer()
         await lesson_help_close(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_exit":
         from lesson_engine import lesson_exit
         await call.answer()
         await lesson_exit(call.from_user.id, call.message.chat.id)
-        return
+        return True
 
     if call.data == "lesson_finish_confirm":
         from lesson_engine import lesson_finish_and_test
@@ -512,7 +512,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         tc = (_ls.get(call.from_user.id) or {}).get("topic_code", "")
         await lesson_finish_and_test(call.from_user.id, call.message.chat.id, tc)
-        return
+        return True
 
     if call.data in ("tset_start_quick", "tset_start_force"):
         from datetime import datetime
@@ -525,7 +525,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
         if is_night and not forced:
             await call.answer("🌙 Tun vaqti! Uxlash sog'liq uchun muhim.", show_alert=True)
-            return
+            return True
 
         if is_weekend and not forced:
             await call.answer()
@@ -536,7 +536,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                     InlineKeyboardButton(text="🎮 Yo'q, dam olaman", callback_data="go_rest"),
                 ]])
             )
-            return
+            return True
 
         await call.answer()
         conn2 = _get_db_conn()
@@ -559,9 +559,9 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.close(); conn2.close()
         if not tests:
             await call.answer("❌ Testlar topilmadi!", show_alert=True)
-            return
+            return True
         await start_test(user_id, tests, call.message)
-        return
+        return True
 
     if call.data == "test_next_from_result":
         await call.answer()
@@ -569,13 +569,13 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         session = test_sessions.get(call.from_user.id)
         if not session:
             await call.answer("❌ Test tugagan", show_alert=True)
-            return
+            return True
         await next_question(call.from_user.id, call.message)
-        return
+        return True
 
     if call.data == "noop_timer":
         await call.answer("⏱ Vaqt ketmoqda...")
-        return
+        return True
 
     if call.data == "test_settings":
         await call.answer()
@@ -652,7 +652,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             "⚙️ Test sozlamalari:\n\nSinf, son, qiyinlik va turni tanlang:",
             reply_markup=_mk_settings_kb(us[user_id]["test_settings"], _all_gr)
         )
-        return
+        return True
 
     if call.data.startswith("tset_"):
         from storage import user_state as us
@@ -750,7 +750,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
                 await call.message.edit_reply_markup(reply_markup=new_kb)
             except Exception:
                 pass
-            return
+            return True
         elif call.data == "tset_start":
             # Test boshlash — tanlangan sinflardan
             conn2 = _get_db_conn()
@@ -794,14 +794,14 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
             await call.answer()
             await start_test(user_id, tests, call.message)
-        return
+        return True
 
     elif True:  # test_sessions tekshiruvi test_engine da
         await call.answer(
             "♻️ Bot yangilangan. Qayta boshlang.",
             show_alert=True
         )
-        return
+        return True
 
 async def notify_on_restart():
     """Bot yangilanganda foydalanuvchilarga xabar — dars/test holatini saqlab."""
@@ -823,7 +823,7 @@ async def notify_on_restart():
         cur.close(); conn.close()
     except Exception as e:
         print(f"DB xato (restart notify): {e}")
-        return
+        return True
 
     sent = 0
     for uid, role in users:
