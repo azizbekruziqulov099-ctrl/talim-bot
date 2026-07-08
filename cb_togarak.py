@@ -46,17 +46,15 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         pend_cnt=(cur3.fetchone() or [0])[0]; cur3.close(); conn3.close()
         pend_txt=f"📨 So'rovlar ({pend_cnt})" if pend_cnt else "📨 So'rovlar"
         kb2=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Dars jadvali",callback_data=f"tg_reja:{tgid}:0")],
             [InlineKeyboardButton(text="👥 A'zolar",callback_data=f"tg_azolar:{tgid}"),
              InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"tg_yoqlama:{tgid}")],
-            [InlineKeyboardButton(text="📚 Dars rejasi",callback_data=f"tg_reja:{tgid}"),
-             InlineKeyboardButton(text=pend_txt,callback_data=f"tg_pending:{tgid}")],
             [InlineKeyboardButton(text="📊 Statistika",callback_data=f"tg_stat:{tgid}"),
-             InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0")],
-            [InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}"),
-             InlineKeyboardButton(text="🔑 Parolni ko'r",callback_data=f"tg_show_parol:{tgid}")],
-            [InlineKeyboardButton(text="🔄 Parol almashtir",callback_data=f"tg_change_parol:{tgid}"),
-             InlineKeyboardButton(text="🗑 O'chirish",callback_data=f"tg_del:{tgid}")],
-            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data="tg_back")],
+             InlineKeyboardButton(text=pend_txt,callback_data=f"tg_pending:{tgid}")],
+            [InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0"),
+             InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}")],
+            [InlineKeyboardButton(text="⚙️ Sozlamalar",callback_data=f"tg_sozla:{tgid}"),
+             InlineKeyboardButton(text="⬅️ Orqaga",callback_data="tg_back")],
         ])
         try: await call.message.edit_text(txt, reply_markup=kb2)
         except: await call.message.answer(txt, reply_markup=kb2)
@@ -166,16 +164,58 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("tg_sozla:"):
         tgid=int(call.data[9:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("SELECT nomi FROM togaraklar WHERE id=%s AND teacher_id=%s",(tgid,user_id))
+        cur2.execute("""SELECT nomi,fan,oylik_summa,oylik_sana,
+            (SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE)
+            FROM togaraklar WHERE id=%s AND teacher_id=%s""",(tgid,tgid,user_id))
         tg2=cur2.fetchone(); cur2.close(); conn2.close()
         if not tg2: await call.message.answer("❌ Ruxsat yo'q!"); return True
+        txt=(f"⚙️ <b>To'garak sozlamalari</b>\n"
+             f"─────────────\n"
+             f"📚 {tg2[0]}\n"
+             f"📖 Fan: {tg2[1] or '—'}\n"
+             f"👥 A'zolar: {tg2[4]} ta\n"
+             f"💰 Oylik: {tg2[2] or 0:,} so'm\n"
+             f"📅 To'lov kuni: {tg2[3] or 1}\n")
         rows2=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔑 Parolni ko'r",       callback_data=f"tg_show_parol:{tgid}"),
-             InlineKeyboardButton(text="🔄 Parol almashtir",    callback_data=f"tg_change_parol:{tgid}")],
-            [InlineKeyboardButton(text="🗑 To'garakni o'chir",  callback_data=f"tg_del:{tgid}")],
-            [InlineKeyboardButton(text="⬅️ Orqaga",             callback_data=f"tg_info:{tgid}")],
+            [InlineKeyboardButton(text="✏️ Nomini o'zgartirish",callback_data=f"tg_edit_nomi:{tgid}"),
+             InlineKeyboardButton(text="💰 Oylik summa",callback_data=f"tg_edit_summa:{tgid}")],
+            [InlineKeyboardButton(text="📅 To'lov kunini o'zgartirish",callback_data=f"tg_edit_sana:{tgid}")],
+            [InlineKeyboardButton(text="🔑 Parolni ko'r",callback_data=f"tg_show_parol:{tgid}"),
+             InlineKeyboardButton(text="🔄 Parol almashtir",callback_data=f"tg_change_parol:{tgid}")],
+            [InlineKeyboardButton(text="📊 To'lovlar hisoboti",callback_data=f"tg_tolovlar:{tgid}")],
+            [InlineKeyboardButton(text="🗑 To'garakni o'chirish",callback_data=f"tg_del:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
         ])
-        await call.message.answer(f"⚙️ Sozlamalar — {tg2[0]}",reply_markup=rows2)
+        try: await call.message.edit_text(txt,parse_mode="HTML",reply_markup=rows2)
+        except: await call.message.answer(txt,parse_mode="HTML",reply_markup=rows2)
+        return True
+
+    if call.data.startswith("tg_edit_nomi:"):
+        tgid=int(call.data[13:]); await call.answer()
+        admin_state[user_id]=f"tg_set_nomi:{tgid}"
+        await call.message.answer("✏️ Yangi to'garak nomini yozing:")
+        return True
+
+    if call.data.startswith("tg_edit_summa:"):
+        tgid=int(call.data[14:]); await call.answer()
+        admin_state[user_id]=f"tg_set_summa:{tgid}"
+        await call.message.answer("💰 Oylik summani yozing (faqat raqam):\nMasalan: <code>150000</code>",parse_mode="HTML")
+        return True
+
+    if call.data.startswith("tg_edit_sana:"):
+        tgid=int(call.data[13:]); await call.answer()
+        rows2=[[InlineKeyboardButton(text=f"{d}",callback_data=f"tg_set_sana:{tgid}:{d}") for d in range(j,j+7) if d<=31] for j in range(1,29,7)]
+        rows2.append([InlineKeyboardButton(text="⬅️",callback_data=f"tg_sozla:{tgid}")])
+        await call.message.answer("📅 To'lov kunini tanlang (oyning nechanchi kuni):",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
+    if call.data.startswith("tg_set_sana:"):
+        parts2=call.data[12:].split(":"); tgid,sana=int(parts2[0]),int(parts2[1])
+        await call.answer(f"✅ {sana}-kun")
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("UPDATE togaraklar SET oylik_sana=%s WHERE id=%s AND teacher_id=%s",(sana,tgid,user_id))
+        conn2.commit(); cur2.close(); conn2.close()
+        await call.message.answer(f"✅ To'lov kuni: har oyning {sana}-kuni")
         return True
 
     if call.data.startswith("tg_show_parol:"):
@@ -203,8 +243,36 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("tg_del:"):
         tgid=int(call.data[7:]); await call.answer()
-        user_state[user_id]=f"tg_del_confirm:{tgid}"
-        await call.message.answer("⚠️ Tasdiqlaysizmi?\n\nParolni yozing:")
+        conn2=_get_db_conn();cur2=conn2.cursor()
+        cur2.execute("""SELECT nomi,
+            (SELECT COUNT(*) FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE)
+            FROM togaraklar WHERE id=%s AND teacher_id=%s""",(tgid,tgid,user_id))
+        r=cur2.fetchone(); cur2.close(); conn2.close()
+        if not r: await call.message.answer("❌ Ruxsat yo'q!"); return True
+        await call.message.answer(
+            f"⚠️ <b>DIQQAT!</b>\n\n"
+            f"📚 <b>{r[0]}</b> to'garagini o'chirmoqchimisiz?\n\n"
+            f"❗️ Bu amal QAYTMAS:\n"
+            f"• {r[1]} ta a'zo chiqarib yuboriladi\n"
+            f"• Barcha baholar o'chadi\n"
+            f"• Dars rejasi o'chadi\n"
+            f"• Chat tarixi o'chadi\n\n"
+            f"Rostdan o'chirasizmi?",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Yo'q, bekor qilish",callback_data=f"tg_sozla:{tgid}")],
+                [InlineKeyboardButton(text="🗑 Ha, o'chirish",callback_data=f"tg_del_confirm:{tgid}")],
+            ])
+        )
+        return True
+
+    if call.data.startswith("tg_del_confirm:"):
+        tgid=int(call.data[15:]); await call.answer()
+        user_state[user_id]=f"tg_del_parol:{tgid}"
+        await call.message.answer(
+            "🔑 Tasdiqlash uchun to'garak parolini yozing:\n\n"
+            "(Noto'g'ri parol — o'chirilmaydi)"
+        )
         return True
 
     if call.data == "tg_back":
