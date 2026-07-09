@@ -141,12 +141,91 @@ def _tg_id(uid):
     return tg
 
 def _eff_clear(telegram_id):
-    """Akkaunt almashganda keshni tozalaymiz."""
+    """Akkaunt almashganda BARCHA keshni tozalaymiz."""
     _EFF_CACHE.pop(telegram_id, None)
     _TG_CACHE.clear()
+    try:
+        _ADMIN_CACHE.clear()
+    except Exception:
+        pass
+    # Holat va vaqtinchalik ma'lumotlar ham tozalanadi
+    try:
+        from storage import user_state as _us, admin_state as _as, temp_user as _tu
+        for _d in (_us, _as, _tu):
+            for _k in [k for k in list(_d.keys())
+                       if isinstance(k, int) and (k == telegram_id or _tg_id(k) == telegram_id)]:
+                _d.pop(_k, None)
+    except Exception as e:
+        print(f"[eff_clear] {e}")
+
+# Admin akkauntlar keshi: {uid: bool}
+_ADMIN_CACHE = {}
+
+def _admin_jadval():
+    try:
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("""CREATE TABLE IF NOT EXISTS admin_akkaunt(
+            uid BIGINT PRIMARY KEY,
+            qoshgan BIGINT,
+            sana TIMESTAMP DEFAULT NOW()
+        )""")
+        # Asosiy admin akkauntlar (idx=0) avtomatik qo'shiladi
+        for a in ADMINS:
+            cr.execute("INSERT INTO admin_akkaunt(uid,qoshgan) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                       (a, a))
+        c.commit(); cr.close(); c.close()
+    except Exception as e:
+        print(f"[admin] jadval: {e}")
 
 def _is_admin(uid):
-    return _tg_id(uid) in ADMINS
+    """Admin AKKAUNT darajasida. Boshqa akkauntlar oddiy foydalanuvchi."""
+    if uid in _ADMIN_CACHE:
+        return _ADMIN_CACHE[uid]
+    natija = uid in ADMINS
+    if not natija:
+        try:
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("SELECT 1 FROM admin_akkaunt WHERE uid=%s", (uid,))
+            natija = bool(cr.fetchone())
+            cr.close(); c.close()
+        except Exception:
+            pass
+    _ADMIN_CACHE[uid] = natija
+    return natija
+
+def _admin_qosh(uid, qoshgan):
+    try:
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("INSERT INTO admin_akkaunt(uid,qoshgan) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                   (uid, qoshgan))
+        c.commit(); cr.close(); c.close()
+        _ADMIN_CACHE.pop(uid, None)
+        return True
+    except Exception as e:
+        print(f"[admin] qosh: {e}")
+        return False
+
+def _admin_ochir(uid):
+    if uid in ADMINS:
+        return False          # asosiy adminni o'chirib bo'lmaydi
+    try:
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("DELETE FROM admin_akkaunt WHERE uid=%s", (uid,))
+        n = cr.rowcount
+        c.commit(); cr.close(); c.close()
+        _ADMIN_CACHE.pop(uid, None)
+        return n > 0
+    except Exception:
+        return False
+
+def _modul(nom):
+    """Modulni xavfsiz yuklaydi. Yo'q bo'lsa None qaytaradi (bot yiqilmaydi)."""
+    try:
+        import importlib
+        return importlib.import_module(nom)
+    except Exception as e:
+        print(f"[modul] '{nom}' yuklanmadi: {e}")
+        return None
 
 def _get_user_qisqa(uid):
     """(ism, rol, sinf)"""
@@ -1046,7 +1125,7 @@ async def show_topics_page(
     
 @dp.message(F.photo)
 async def save_image(message: types.Message):
-    if message.from_user.id not in ADMINS:
+    if not _is_admin(user_id):
         return
 
     # ── Collage rasm split handler ──
@@ -1408,7 +1487,7 @@ from aiogram.filters import Command
 @dp.message(Command("stop"))
 async def cmd_menu(message: types.Message, state: FSMContext):
     """Har qanday holatda bosh menyuga qaytish."""
-    uid = message.from_user.id
+    uid = _eff_uid(message.from_user.id)
     try: await state.clear()
     except: pass
     user_state.pop(uid, None)
@@ -1427,7 +1506,7 @@ async def cmd_menu(message: types.Message, state: FSMContext):
         row = cur.fetchone(); cur.close(); conn.close()
         role = row[0] if row else "🧒 O'quvchi"
     except: role = "🧒 O'quvchi"
-    if uid in ADMINS: role = "Admin"
+    if _is_admin(uid): role = "Admin"
     await message.answer(
         "🏠 Bosh menyu",
         reply_markup=get_main_keyboard(role)
@@ -1472,7 +1551,7 @@ async def start(message: types.Message, state: FSMContext):
 
         role, full_name, grade = user
 
-        if _tg in ADMINS:
+        if _is_admin(uid):
             role = "Admin"
 
         if role == "Admin":
@@ -2198,7 +2277,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 "«📚 To'garaklar» bo'limidan qo'shiling.")
             return
         if len(tgs) == 1:
-            import togarak_test as _tt
+            _tt = _modul('togarak_test')
+            if not _tt:
+                await message.answer('⚠️ togarak_test.py yuklanmagan'); return
             tgid = tgs[0]["id"]
             ro_yxat = _tt.mavzular(tgid)
             if not ro_yxat:
@@ -2261,7 +2342,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 _ota_tugma = None
 
         if _ota_tugma:
-            import ota_ona as _oo
+            _oo = _modul('ota_ona')
+            if not _oo:
+                await message.answer('⚠️ ota_ona.py yuklanmagan'); return
             lst = _oo.farzandlar(user_id)
             if not lst:
                 await message.answer(
@@ -2283,7 +2366,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     # ═══ AKKAUNT: ko'chirish kodi kiritildi ═══
     if user_state.get(user_id) == "ak_kod_kirit" and message.text:
         user_state.pop(user_id, None)
-        import akkaunt as _ak
+        _ak = _modul('akkaunt')
+        if not _ak:
+            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
         kod = message.text.strip().upper()
         if len(kod) != 8:
             await message.answer("❌ Kod 8 belgi bo'lishi kerak.")
@@ -2308,7 +2393,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         admin_state.pop(user_id, None)
         nomi = message.text.strip()[:60]
 
-        import baholash as _bh
+        _bh = _modul('baholash')
+        if not _bh:
+            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
         iid = _bh.imtihon_yarat(tgid, user_id, nomi, turi)
         if not iid:
             await message.answer("❌ Imtihon yaratilmadi."); return
@@ -2366,7 +2453,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             admin_state[user_id] = f"im_foiz:{iid}:{uid2}"
             return
 
-        import baholash as _bh
+        _bh = _modul('baholash')
+        if not _bh:
+            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
         _bh.baho_qoy(iid, uid2, foiz, manba="teacher")
         imt = _bh.imtihon_ol(iid)
         d = _bh.daraja(foiz)
@@ -2390,6 +2479,65 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         for kim in [uid2] + otalar:
             try: await bot.send_message(_tg_id(kim), xabar, parse_mode="HTML")
             except Exception: pass
+        return
+
+    # ═══ ADMIN AKKAUNTLAR ═══
+    if message.text and message.text.strip() in ("/admin", "/adminlar"):
+        if not _is_admin(user_id):
+            return
+        _admin_jadval()
+        _ak = _modul("akkaunt")
+        tg = _tg_id(user_id)
+
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("""SELECT a.uid, COALESCE(u.full_name,'—'), COALESCE(u.role,'—')
+            FROM admin_akkaunt a LEFT JOIN users u ON u.user_id=a.uid ORDER BY a.sana""")
+        adminlar = cr.fetchall()
+        cr.close(); c.close()
+
+        t = ["🛡 <b>Admin akkauntlar</b>\n"]
+        for uid2, ism, rol2 in adminlar:
+            asosiy = " 🔒" if uid2 in ADMINS else ""
+            joriy = " ← siz" if uid2 == user_id else ""
+            t.append(f"• {ism} <code>{uid2}</code>{asosiy}{joriy}")
+        t.append(f"\n<i>🔒 asosiy admin — o'chirib bo'lmaydi</i>")
+
+        rows = []
+        # Shu telefondagi boshqa akkauntlar
+        if _ak:
+            for uid2, idx, ism, rol2, sinf2, aktiv in _ak.akkauntlar(tg):
+                if not uid2:
+                    continue
+                uid2 = int(uid2)
+                if _is_admin(uid2):
+                    if uid2 not in ADMINS:
+                        rows.append([InlineKeyboardButton(
+                            text=f"➖ {ism[:22]} — adminlikdan olish",
+                            callback_data=f"adm_ochir:{uid2}")])
+                else:
+                    rows.append([InlineKeyboardButton(
+                        text=f"➕ {ism[:22]} — admin qilish",
+                        callback_data=f"adm_qosh:{uid2}")])
+
+        rows.append([InlineKeyboardButton(text="🔢 Boshqa uid ni admin qilish",
+                                          callback_data="adm_uid")])
+        await message.answer("\n".join(t), parse_mode="HTML",
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    if str(admin_state.get(user_id) or "") == "adm_uid_kirit" and message.text:
+        admin_state.pop(user_id, None)
+        if not _is_admin(user_id):
+            return
+        try:
+            uid2 = int(message.text.strip())
+        except Exception:
+            await message.answer("❌ Faqat raqam (uid)"); return
+        ism, _, _ = _get_user_qisqa(uid2)
+        if not ism:
+            await message.answer(f"❌ <code>{uid2}</code> topilmadi.", parse_mode="HTML"); return
+        _admin_qosh(uid2, user_id)
+        await message.answer(f"✅ {ism} admin qilindi.")
         return
 
     # ═══ RASM HOLATI (admin) ═══
@@ -3217,14 +3365,15 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         val = message.text.strip()
         user_state.pop(user_id, None)
         conn2=_get_db_conn();cur2=conn2.cursor()
-        col_map = {"name":"full_name","bdate":"birth_date","school":"school","role":"role","class":"class"}
-        col = col_map.get(field)
-        # Rol uchun normallashtirish
+        # ROL o'zgartirish taqiqlangan — akkaunt ochish kerak
         if field == "role":
-            rl = val.lower()
-            if "quvchi" in rl or "student" in rl: val = "O'quvchi"
-            elif "qituvchi" in rl or "teacher" in rl: val = "O'qituvchi"
-            elif "ota" in rl or "ona" in rl or "parent" in rl: val = "Ota-ona"
+            cur2.close(); conn2.close()
+            await message.answer(
+                "🚫 Rolni o'zgartirib bo'lmaydi.\n\n"
+                "Yangi akkaunt oching: «👤 Kabinet → ➕ Yangi akkaunt»")
+            return
+        col_map = {"name":"full_name","bdate":"birth_date","school":"school","class":"class"}
+        col = col_map.get(field)
         if col:
             cur2.execute(f"UPDATE users SET {col}=%s WHERE user_id=%s",(val,user_id))
             # user_accounts da ham yangilash
@@ -3243,7 +3392,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if user_state.get(user_id) == "parent_link_id" and message.text:
         user_state.pop(user_id, None)
-        import ota_ona as _oo
+        _oo = _modul('ota_ona')
+        if not _oo:
+            await call.answer('⚠️ ota_ona.py yuklanmagan', show_alert=True); return
         kod = message.text.strip()
         if not (kod.isdigit() and len(kod) == 6):
             await message.answer(
@@ -3446,7 +3597,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     # ═══ BRAIN ═══
-    if (user_id not in ADMINS
+    if (not _is_admin(user_id)
             and message.text
             and not message.text.startswith("/")
             and user_state.get(user_id) == "ai_mode"):  # FAQAT ai_mode da ishlaydi
@@ -3717,7 +3868,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     if message.text == "🔊 O'qib berish":
 
         await read_current_page(
-            message.from_user.id,
+            user_id,
             message,
             user_state
         )
@@ -3778,8 +3929,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         if maktab: txt+=f"🏫 Maktab: {maktab}\n"
         if tugilgan: txt+=f"🎂 Tug'ilgan: {tugilgan}\n"
         rows2=[
-            [InlineKeyboardButton(text="✏️ Ismni o'zgartirish",callback_data="kb_change_name"),
-             InlineKeyboardButton(text="🎭 Rolni o'zgartirish",callback_data="kb_change_role")],
+            [InlineKeyboardButton(text="✏️ Ismni o'zgartirish",callback_data="kb_change_name")],
         ]
         _rol = str(rol or "").lower()
         if "ota" in _rol or "ona" in _rol or "parent" in _rol:
@@ -4298,7 +4448,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         return
 
-    if user_state.get(message.from_user.id) == "in_test":
+    if user_state.get(user_id) == "in_test":
         # Test paytida matn yozsa — yumshoq eslatma
         try:
             await message.answer(
@@ -4309,7 +4459,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         except: pass
         return
 
-    if user_state.get(message.from_user.id) == "in_lesson":
+    if user_state.get(user_id) == "in_lesson":
         # Dars paytida matn yozsa — yumshoq eslatma
         try:
             await message.answer(
@@ -4342,7 +4492,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if message.text == "👥 Foydalanuvchilar statistikasi":
 
-        if message.from_user.id not in ADMINS:
+        if not _is_admin(user_id):
             return
 
         conn = _get_db_conn()
@@ -4376,14 +4526,14 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🧪 Test sinovi":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from test_sinovi import show_sinov_start
         await show_sinov_start(message, user_id)
         return
 
     elif message.text == "👥 Foydalanuvchilar":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         conn2 = _get_db_conn()
         cur2 = conn2.cursor()
@@ -4399,7 +4549,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🖼 Rasmlar boshqaruvi":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         # 2 xil rejim
         await message.answer(
             "🖼 Rasmlar boshqaruvi",
@@ -4411,21 +4561,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🖼 Rasmlar boshqaruvi":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from image_admin import show_image_panel
         await show_image_panel(message)
         return
 
     elif message.text == "📚 Shablon yaratish":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from shablon_yaratish import show_shablon_menu
         await show_shablon_menu(message, user_id)
         return
 
     elif message.text in ("🤖 AI Generator", "🧪 Test shablon"):
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from ai_generatori import show_gen_start
         await show_gen_start(message, user_id)
@@ -4458,7 +4608,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "🧪 Bilimni sinash":
         # Admin uchun test
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             pass  # o'quvchi uchun allaqachon handled
         else:
             # Admin uchun ham xuddi o'quvchi kabi
@@ -4481,7 +4631,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             return
 
     elif message.text == "📦 Kitob Word":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         # Kitoblar ro'yxati
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id, title, fan, sinf FROM books ORDER BY id DESC LIMIT 10")
@@ -4504,7 +4654,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text and message.text.startswith("📊 Hisobotlar"):
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # O'qilmagan xatolar
         cur2.execute("SELECT COUNT(*) FROM error_log WHERE is_read=FALSE")
@@ -4543,7 +4693,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📊 Hisobotlar":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         from jadval_generator import test_results_text, weak_analysis_text
         text2  = test_results_text(days=30)
         text3  = weak_analysis_text()
@@ -4563,7 +4713,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📅 Dars rejasi":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         admin_state[user_id] = "dars_rejasi"
         await message.answer(
             "📅 Dars rejasi\n\nSinf va fanni yozing:\n<code>1 | Ingliz tili</code>",
@@ -4572,7 +4722,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📈 Taraqqiyot":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         from jadval_generator import student_progress_text, student_progress_excel
         from aiogram.types import BufferedInputFile
         text2 = student_progress_text()
@@ -4588,7 +4738,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📝 Shablon to'ldirish":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         admin_state[user_id] = "excel_merge"
         await message.answer(
             "📝 Shablon to'ldirish\n\n"
@@ -4599,7 +4749,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📚 Kitoblar ▾":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         conn2=_get_db_conn();cur2=conn2.cursor()
         try:
             cur2.execute("SELECT id,title,sinf,total_pages FROM books ORDER BY id DESC LIMIT 10")
@@ -4615,7 +4765,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📚 Kitoblar ▾":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         await message.answer(
             "📚 Kitoblar bo'limi:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -4627,7 +4777,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🧠 Bilimlar ▾":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         await message.answer(
             "🧠 Bilimlar bo'limi:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -4639,7 +4789,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🚀 Mavzu tayyorla":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         admin_state[user_id] = "mtt_sinf_fan"
         await message.answer(
             "🚀 Mavzu tayyorlash\n\n"
@@ -4653,7 +4803,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🎨 AI Rasm yaratish":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT grade FROM (
@@ -4676,7 +4826,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
     elif message.text == "📖 Kitob yuklash":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         admin_state[user_id] = "kitob_yuklash"
         await message.answer(
             "📖 Kitob yuklash\n\n"
@@ -4690,7 +4840,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🎓 Kitob o'qit":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         # Oxirgi yuklangan kitobni o'qitamiz
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("SELECT id,title,fan,sinf FROM books ORDER BY id DESC LIMIT 5")
@@ -4708,13 +4858,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🔍 Bilim qidirish":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         admin_state[user_id] = "kitob_qidirish"
         await message.answer("🔍 Qidiruv so'zini yozing:")
         return
 
     elif message.text == "🔧 Test tuzatmalar":
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT id, test_id, topic_code, question, comment, created_at
@@ -4738,7 +4888,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text and ("🆘 Xatolar" in message.text):
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         conn2 = _get_db_conn()
         cur2  = conn2.cursor()
@@ -4779,7 +4929,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📖 Darslar holati":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         conn2 = _get_db_conn()
         cur2  = conn2.cursor()
@@ -4830,7 +4980,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📚 Mavzular statistikasi":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         conn2 = _get_db_conn()
         cur2  = conn2.cursor()
@@ -4988,7 +5138,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     # ===== 📋 SHABLONLAR — yagona shablon/import markazi =====
     elif message.text == "📋 Shablonlar":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         await message.answer(
             "📋 Shablonlar va Import\n\n"
@@ -5006,7 +5156,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📋 Topik shablon":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from shablon_yaratish import shablon_state
         shablon_state[user_id] = {"step": "sinf_fan"}
@@ -5017,7 +5167,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📥 Topik import":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         from dts_import_handlers import DTSImportState
         admin_state[user_id] = None
@@ -5032,14 +5182,14 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📥 Test import":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         admin_state[user_id] = "test_import"
         await message.answer("📥 Test import\n\nTo'ldirilgan Excel faylni yuboring:")
         return
 
     elif message.text == "✅ Ha, import qil" and admin_state.get(user_id) == "test_import_confirm":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         path = test_import_files.get(user_id)
         admin_state[user_id] = None
@@ -5100,20 +5250,20 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "📚 Dars shablon":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         await lesson_admin.la_show_grades(message)
         return
 
     elif message.text == "📥 Dars import":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         await state.set_state(lesson_admin.LessonAdminState.waiting_excel)
         await message.answer("📥 Dars import\n\nTo'ldirilgan Excel faylini yuboring:")
         return
 
     elif message.text == "🔙 Admin menyu":
-        if user_id not in ADMINS:
+        if not _is_admin(user_id):
             return
         await message.answer("⚙️ Admin menyusi", reply_markup=get_main_keyboard("Admin"))
         return
@@ -5568,7 +5718,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         # 🔙 ORTGA
         if message.text == BACK:
 
-            user_id = message.from_user.id
+            # user_id yuqorida _eff_uid dan olingan
 
             # history bo‘lsa
             if user_id in state_history and len(state_history[user_id]) > 1:
@@ -5625,7 +5775,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         # ===== SURVEY RESULTS =====
         elif message.text == "📋 So‘rovnoma natijalari":
 
-            if message.from_user.id not in ADMINS:
+            if not _is_admin(user_id):
                 return
 
             conn = _get_db_conn()
@@ -5670,9 +5820,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "admin_region":
+        elif user_state.get(user_id) == "admin_region":
 
-            temp_user[message.from_user.id]["admin_region"] = message.text
+            temp_user[user_id]["admin_region"] = message.text
 
             districts = REGIONS.get(message.text, [])
 
@@ -5681,7 +5831,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             for row in districts:
                 flat.extend(row)
 
-            user_state[message.from_user.id] = "admin_district"
+            user_state[user_id] = "admin_district"
 
             await message.answer(
                 "Tuman tanlang:",
@@ -5690,9 +5840,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "admin_district":
+        elif user_state.get(user_id) == "admin_district":
 
-            temp_user[message.from_user.id]["admin_district"] = message.text
+            temp_user[user_id]["admin_district"] = message.text
 
             conn = _get_db_conn()
             cur = conn.cursor()
@@ -5709,7 +5859,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             schools = [r[0] for r in rows if r[0]]
 
-            user_state[message.from_user.id] = "admin_school"
+            user_state[user_id] = "admin_school"
 
             await message.answer(
                 "Maktab tanlang:",
@@ -5718,7 +5868,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "admin_school":
+        elif user_state.get(user_id) == "admin_school":
 
             school = message.text
 
@@ -5755,17 +5905,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             await message.answer(text)
 
-            user_state[message.from_user.id] = None
+            user_state[user_id] = None
 
             return
 
-        elif user_state.get(message.from_user.id) == "teacher_level":
+        elif user_state.get(user_id) == "teacher_level":
 
-            temp_user[message.from_user.id]["teacher_level"] = message.text
+            temp_user[user_id]["teacher_level"] = message.text
 
             subjects = SUBJECTS_BY_LEVEL.get(message.text, [])
 
-            user_state[message.from_user.id] = "teacher_subject"
+            user_state[user_id] = "teacher_subject"
 
             await message.answer(
                 "Fan tanlang:",
@@ -5774,11 +5924,11 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "teacher_subject":
+        elif user_state.get(user_id) == "teacher_subject":
 
-            temp_user[message.from_user.id]["subject"] = message.text
+            temp_user[user_id]["subject"] = message.text
 
-            user_state[message.from_user.id] = "test_type"
+            user_state[user_id] = "test_type"
 
             await message.answer(
                 "Test turini tanlang:",
@@ -5792,12 +5942,12 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             conn = _get_db_conn()
             cur = conn.cursor()
-            cur.execute("SELECT role FROM users WHERE user_id=%s", (message.from_user.id,))
+            cur.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
             user = cur.fetchone()
             conn.close()
 
             role = user[0] if user else None
-            user_state[message.from_user.id] = None
+            user_state[user_id] = None
 
             # Oxirgi 10 xabarni o'chirish
             try:
@@ -5811,7 +5961,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             from student_dashboard import build_dashboard
             try:
-                text, kb = await build_dashboard(message.from_user.id)
+                text, kb = await build_dashboard(user_id)
                 await message.answer(text, reply_markup=kb)
             except Exception:
                 pass
@@ -5824,7 +5974,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 "Sozlamalar:",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="🔄 Rolni almashtirish")],
                         [KeyboardButton(text="🌍 Hududni almashtirish")],
                         [KeyboardButton(text="🏫 Maktabni almashtirish")],
                         [KeyboardButton(text="🎓 Sinfni almashtirish")],
@@ -5835,40 +5984,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             )
         elif message.text == "🔄 Rolni almashtirish":
 
-            user_state[message.from_user.id] = "change_role"
-
+            user_state.pop(user_id, None)
             await message.answer(
-                "Yangi rolni tanlang:",
-                reply_markup=make_keyboard(["🧒 O‘quvchi", "👨‍🏫 O‘qituvchi"])
-            )
+                "🚫 <b>Rolni o'zgartirib bo'lmaydi</b>\n\n"
+                "Bitta akkaunt — bitta rol.\n"
+                "Boshqa rol kerak bo'lsa yangi akkaunt oching:\n"
+                "«👤 Kabinet → ➕ Yangi akkaunt»",
+                parse_mode="HTML")
 
-        elif user_state.get(message.from_user.id) == "change_role":
-
-            conn = _get_db_conn()
-            cur = conn.cursor()
-
-            cur.execute("""
-            UPDATE users
-            SET role=%s
-            WHERE user_id=%s
-            """, (
-                message.text,
-                message.from_user.id
-            ))
-
-            conn.commit()
-            conn.close()
-
-            user_state[message.from_user.id] = None
-
-            await message.answer(
-                f"✅ Rol o‘zgartirildi: {message.text}",
-                reply_markup=get_main_keyboard(message.text)
-            )
+        elif user_state.get(user_id) == "change_role":
+            # Rol almashtirish o'chirilgan
+            user_state.pop(user_id, None)
 
         elif message.text == "🌍 Hududni almashtirish":
 
-            user_state[message.from_user.id] = "change_region"
+            user_state[user_id] = "change_region"
 
             await message.answer(
                 "Viloyatni tanlang:",
@@ -5877,9 +6007,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "change_region":
+        elif user_state.get(user_id) == "change_region":
 
-            temp_user[message.from_user.id] = {
+            temp_user[user_id] = {
                 "new_region": message.text
             }
 
@@ -5890,7 +6020,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             for row in districts:
                 flat.extend(row)
 
-            user_state[message.from_user.id] = "change_district"
+            user_state[user_id] = "change_district"
 
             await message.answer(
                 "Tumanni tanlang:",
@@ -5899,7 +6029,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "change_district":
+        elif user_state.get(user_id) == "change_district":
 
             conn = _get_db_conn()
             cur = conn.cursor()
@@ -5909,23 +6039,23 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             SET region=%s, district=%s
             WHERE user_id=%s
             """, (
-                temp_user[message.from_user.id]["new_region"],
+                temp_user[user_id]["new_region"],
                 message.text,
-                message.from_user.id
+                user_id
             ))
 
             conn.commit()
 
             cur.execute(
                 "SELECT role FROM users WHERE user_id=%s",
-                (message.from_user.id,)
+                (user_id,)
             )
 
             role = cur.fetchone()[0]
 
             conn.close()
 
-            user_state[message.from_user.id] = None
+            user_state[user_id] = None
 
             await message.answer(
                 "✅ Hudud o‘zgartirildi",
@@ -6036,7 +6166,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             SELECT school
             FROM users
             WHERE user_id=%s
-            """, (message.from_user.id,))
+            """, (user_id,))
 
             row = cur.fetchone()
 
@@ -6056,7 +6186,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             else:
                 classes = [c for c in CLASSES if "🏢 Xususiy" in c]
 
-            user_state[message.from_user.id] = "change_class"
+            user_state[user_id] = "change_class"
 
             await message.answer(
                 "Yangi sinfni tanlang:",
@@ -6065,7 +6195,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
 
-        elif user_state.get(message.from_user.id) == "change_class":
+        elif user_state.get(user_id) == "change_class":
 
             conn = _get_db_conn()
             cur = conn.cursor()
@@ -6076,7 +6206,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             WHERE user_id=%s
             """, (
                 message.text,
-                message.from_user.id
+                user_id
             ))
 
             conn.commit()
@@ -6084,7 +6214,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             cur.execute("""
             SELECT role FROM users
             WHERE user_id=%s
-            """, (message.from_user.id,))
+            """, (user_id,))
 
             row = cur.fetchone()
 
@@ -6092,7 +6222,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             role = row[0] if row else "🧒 O‘quvchi"
 
-            user_state[message.from_user.id] = None
+            user_state[user_id] = None
 
             await message.answer(
                 f"✅ Sinf o‘zgartirildi: {message.text}",
@@ -6101,9 +6231,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
             return
         
-        elif user_state.get(message.from_user.id) == "survey_work":
+        elif user_state.get(user_id) == "survey_work":
 
-            data = user_test[message.from_user.id]
+            data = user_test[user_id]
 
             data["answers"][data["index"]] = message.text.upper()
 
@@ -6117,17 +6247,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 UPDATE users
                 SET survey_done=1
                 WHERE user_id=%s
-                """, (message.from_user.id,))
+                """, (user_id,))
 
                 conn.commit()
                 conn.close()
 
-                user_state[message.from_user.id] = None
+                user_state[user_id] = None
 
                 await message.answer(
                     "✅ So‘rovnoma tugadi",
                     reply_markup=get_main_keyboard(
-                        temp_user[message.from_user.id]["role"]
+                        temp_user[user_id]["role"]
                     )
                 )
 
@@ -6717,7 +6847,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("del_test:"):
-        if user_id not in ADMINS: return
+        if not _is_admin(user_id): return
         tid = int(call.data.split(":")[1])
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("DELETE FROM generated_tests WHERE id=%s", (tid,))
@@ -6818,7 +6948,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("next_lesson_"):
         topic_code = call.data.replace("next_lesson_", "")
-        await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
+        await open_teacher_lesson(call.message, topic_code, _user_id=user_id)
         await call.answer()
         return
 
@@ -6826,7 +6956,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         try:
             from student_dashboard import build_dashboard_full
-            text, kb = await build_dashboard_full(call.from_user.id)
+            text, kb = await build_dashboard_full(user_id)
             await call.message.edit_text(text, reply_markup=kb)
         except Exception:
             pass
@@ -7034,7 +7164,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         conn2 = _get_db_conn()
         cur2  = conn2.cursor()
-        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
         row = cur2.fetchone()
         cur2.close(); conn2.close()
         role = row[0] if row else "🧒 O'quvchi"
@@ -7051,7 +7181,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         try:
             from student_dashboard import build_dashboard
-            text, kb = await build_dashboard(call.from_user.id)
+            text, kb = await build_dashboard(user_id)
             await bot.send_message(call.message.chat.id, text, reply_markup=kb)
         except Exception:
             pass
@@ -7066,7 +7196,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         conn2 = _get_db_conn()
         cur2  = conn2.cursor()
-        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        cur2.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
         row = cur2.fetchone()
         cur2.close(); conn2.close()
         role = row[0] if row else "🧒 O'quvchi"
@@ -7105,15 +7235,15 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.edit_reply_markup(reply_markup=None)
         except Exception:
             pass
-        await open_teacher_lesson(call.message, _user_id=call.from_user.id)
+        await open_teacher_lesson(call.message, _user_id=user_id)
         return
 
     if call.data == "lesson_repeat":
         from progress import get_repeat_topics
-        topics = get_repeat_topics(call.from_user.id)
+        topics = get_repeat_topics(user_id)
         if topics:
             topic_code = topics[0][0]
-            await open_teacher_lesson(call.message, topic_code, _user_id=call.from_user.id)
+            await open_teacher_lesson(call.message, topic_code, _user_id=user_id)
         else:
             await call.answer("Takrorlanadigan mavzu yo'q!", show_alert=True)
         await call.answer()
@@ -7124,9 +7254,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         grade      = parts[1]
         subj       = parts[2]
         from progress import get_next_topic
-        next_topic = get_next_topic(call.from_user.id, grade, None)
+        next_topic = get_next_topic(user_id, grade, None)
         if next_topic and next_topic[3] == subj:
-            await open_teacher_lesson(call.message, next_topic[0], _user_id=call.from_user.id)
+            await open_teacher_lesson(call.message, next_topic[0], _user_id=user_id)
         else:
             conn2 = _get_db_conn()
             cur2  = conn2.cursor()
@@ -7137,11 +7267,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 WHERE t.grade=%s AND t.subject_name=%s
                   AND lt.topic_code IS NULL AND t.is_deleted=FALSE
                 ORDER BY t.topic_code LIMIT 1
-            """, (call.from_user.id, grade, subj))
+            """, (user_id, grade, subj))
             row = cur2.fetchone()
             cur2.close(); conn2.close()
             if row:
-                await open_teacher_lesson(call.message, row[0], _user_id=call.from_user.id)
+                await open_teacher_lesson(call.message, row[0], _user_id=user_id)
             else:
                 await call.answer(f"✅ {subj} tugallangan!", show_alert=True)
         await call.answer()
@@ -7151,7 +7281,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer("⏰ Keyinroq eslatiladi")
         conn = _get_db_conn()
         cur  = conn.cursor()
-        cur.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
+        cur.execute("SELECT role FROM users WHERE user_id=%s", (user_id,))
         row  = cur.fetchone()
         cur.close(); conn.close()
         role = row[0] if row else "🧒 O'quvchi"
@@ -7167,7 +7297,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
 
         await check_button_answer(
-            call.from_user.id,
+            user_id,
             answer,
             call.message
         )
@@ -7178,7 +7308,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("dash_"):
         await call.answer()
         import student_dashboard as _sd
-        uid_d = call.from_user.id
+        uid_d = user_id
         try:
             if call.data == "dash_refresh":
                 txt, kb = await _sd.build_dashboard(uid_d)
@@ -7205,6 +7335,47 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ═══════════════════════════════════════════
+    # 🛡 ADMIN AKKAUNT (adm_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("adm_"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        qism = call.data.split(":")
+        amal = qism[0]
+
+        if amal == "adm_uid":
+            admin_state[user_id] = "adm_uid_kirit"
+            await call.message.answer(
+                "🔢 Admin qilinadigan akkaunt <b>uid</b> sini yozing.\n\n"
+                "<i>uid ni /admin ro'yxatida yoki xato xabarida ko'rasiz.</i>",
+                parse_mode="HTML")
+            return
+
+        if amal == "adm_qosh":
+            uid2 = int(qism[1])
+            _admin_qosh(uid2, user_id)
+            ism, _, _ = _get_user_qisqa(uid2)
+            await call.answer(f"✅ {ism or uid2} admin", show_alert=True)
+            try: await call.message.edit_reply_markup(reply_markup=None)
+            except Exception: pass
+            await call.message.answer(f"🛡 {ism or uid2} admin qilindi.\n/admin — ro'yxat")
+            return
+
+        if amal == "adm_ochir":
+            uid2 = int(qism[1])
+            if uid2 in ADMINS:
+                await call.answer("🔒 Asosiy adminni o'chirib bo'lmaydi", show_alert=True); return
+            ok = _admin_ochir(uid2)
+            ism, _, _ = _get_user_qisqa(uid2)
+            await call.answer("✅ Olindi" if ok else "⚠️ Topilmadi", show_alert=True)
+            try: await call.message.edit_reply_markup(reply_markup=None)
+            except Exception: pass
+            if ok:
+                await call.message.answer(f"🛡 {ism or uid2} adminlikdan olindi.\n/admin — ro'yxat")
+            return
+        return
+
+    # ═══════════════════════════════════════════
     # 👨‍👩‍👧 OTA-ONA PANELI (op_)
     # ═══════════════════════════════════════════
     if call.data.startswith("op_"):
@@ -7218,7 +7389,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # 📲 AKKAUNT KO'CHIRISH (ak_)
     # ═══════════════════════════════════════════
     if call.data.startswith("ak_"):
-        import akkaunt as _ak
+        _ak = _modul('akkaunt')
+        if not _ak:
+            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
         _ak.jadval()
         qism = call.data.split(":")
         amal = qism[0]
@@ -7305,13 +7478,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # 👨‍👩‍👧 OTA-ONA ↔ FARZAND (fk_)
     # ═══════════════════════════════════════════
     if call.data.startswith("fk_"):
-        import ota_ona as _oo
+        _oo = _modul('ota_ona')
+        if not _oo:
+            await call.answer('⚠️ ota_ona.py yuklanmagan', show_alert=True); return
         qism = call.data.split(":")
         amal = qism[0]
 
         # ── Ota-ona kod so'raydi ──
         if amal == "fk_add":
-            import akkaunt as _ak
+            _ak = _modul('akkaunt')
+        if not _ak:
+            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
             tg = _tg_id(user_id)
             # Shu telefondagi boshqa akkauntlar (kod kerak emas — egasi o'zi)
             boshqa = [a for a in _ak.akkauntlar(tg) if a[0] and int(a[0]) != user_id]
@@ -7340,7 +7517,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             child = int(qism[1])
             if child == user_id:
                 await call.answer("❌ O'zingizni ulay olmaysiz", show_alert=True); return
-            import akkaunt as _ak
+            _ak = _modul('akkaunt')
+        if not _ak:
+            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
             tg = _tg_id(user_id)
             # Haqiqatan shu telefondami?
             egasi = {int(a[0]) for a in _ak.akkauntlar(tg) if a[0]}
@@ -7493,7 +7672,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith(("tt_tg:", "tt_x:", "tt_all:", "tt_p:", "tt_go:")):
-        import togarak_test as _tt
+        _tt = _modul("togarak_test")
+        if not _tt:
+            await call.answer("⚠️ togarak_test.py yuklanmagan", show_alert=True); return
         qism = call.data.split(":")
         amal = qism[0]
         tgid = int(qism[1])
@@ -7579,7 +7760,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # 📊 IMTIHON — TEST YURITUVCHISI (imq / imstop)
     # ═══════════════════════════════════════════
     if call.data.startswith("imstop:"):
-        import baholash as _bh
+        _bh = _modul('baholash')
+        if not _bh:
+            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
         _bh.seans_tugat(user_id)
         await call.answer("🛑 To'xtatildi")
         try: await call.message.edit_text("🛑 Imtihon to'xtatildi.\nNatija saqlanmadi.")
@@ -7587,7 +7770,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data.startswith("imq:"):
-        import baholash as _bh
+        _bh = _modul('baholash')
+        if not _bh:
+            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
         _, iid, idx, javob = call.data.split(":")
         iid = int(iid); idx = int(idx)
 
@@ -7653,7 +7838,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # 👨‍🏫 IMTIHON BOSHQARUVI (im_)
     # ═══════════════════════════════════════════
     if call.data.startswith("im_"):
-        import baholash as _bh
+        _bh = _modul('baholash')
+        if not _bh:
+            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
         _bh.jadval()
         qism = call.data.split(":")
         amal = qism[0]
@@ -7709,7 +7896,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         # ── Test imtihoni uchun mavzu manbasi ──
         if amal == "im_manba":
             tgid = int(qism[1]); iid = int(qism[2]); manba = qism[3]
-            import togarak_test as _tt
+            _tt = _modul('togarak_test')
+            if not _tt:
+                await message.answer('⚠️ togarak_test.py yuklanmagan'); return
             ro_yxat = _tt.mavzular(tgid)
             ochiq = [m for m in ro_yxat if m[3]]
             if not ochiq:
@@ -7735,7 +7924,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         if amal == "im_mv":
             tgid = int(qism[1]); iid = int(qism[2]); i = int(qism[3])
-            import togarak_test as _tt
+            _tt = _modul('togarak_test')
+            if not _tt:
+                await message.answer('⚠️ togarak_test.py yuklanmagan'); return
             ro_yxat = _tt.mavzular(tgid)
             if i >= len(ro_yxat):
                 await call.answer("❌ Topilmadi", show_alert=True); return
@@ -7936,7 +8127,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer("▶️ Davom etmoqda...")
         try: await call.message.edit_reply_markup(reply_markup=None)
         except Exception: pass
-        asyncio.create_task(_auto_generate_images(call.from_user.id, resume=True))
+        asyncio.create_task(_auto_generate_images(user_id, resume=True))
         return
 
     if call.data == "test_stop":
@@ -7954,11 +8145,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer("✅ To'xtatildi")
         try: await call.message.delete()
         except: pass
-        await stop_test(call.from_user.id, call.message)
+        await stop_test(user_id, call.message)
         # Menyuni qaytaramiz
         try:
             conn9=_get_db_conn();cur9=conn9.cursor()
-            cur9.execute("SELECT role FROM users WHERE user_id=%s",(call.from_user.id,))
+            cur9.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
             r9=cur9.fetchone();cur9.close();conn9.close()
             await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard(r9[0] if r9 else ""))
         except Exception: pass
@@ -7973,8 +8164,14 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
 async def _ota_ekran(source, parent_id, child_id, bolim):
     """Ota-ona uchun farzand ekranlari."""
-    import ota_panel as _op
-    import ota_ona as _oo
+    _op = _modul("ota_panel")
+    _oo = _modul("ota_ona")
+    if not _op or not _oo:
+        await _javob(source,
+            "⚠️ Ota-ona moduli yuklanmagan.\n\n"
+            "<code>ota_panel.py</code> va <code>ota_ona.py</code> "
+            "fayllarini serverga yuklang.")
+        return
 
     if not _oo.bogliqmi(parent_id, child_id):
         await _javob(source, "❌ Bu farzand sizga ulanmagan.")
@@ -8154,8 +8351,8 @@ async def _health_server():
 # ═══ BRAIN message handler (AI yordamchi) ═══
 @dp.message()
 async def brain_handler(message: Message, state: FSMContext):
-    uid = message.from_user.id if message.from_user else 0
-    if uid in ADMINS: return
+    uid = _eff_uid(message.from_user.id) if message.from_user else 0
+    if _is_admin(uid): return
     if not message.text: return
     if user_state.get(uid) in ("text_answer", "in_test"): return
     if user_state.get(uid) != "ai_mode": return
@@ -8229,6 +8426,11 @@ async def main():
             print("[akkaunt] jadvallar tayyor")
         except Exception as _e:
             print(f"[akkaunt] {_e}")
+        try:
+            _admin_jadval()
+            print("[admin] admin_akkaunt tayyor")
+        except Exception as _e:
+            print(f"[admin] {_e}")
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
