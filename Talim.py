@@ -1334,7 +1334,6 @@ async def cmd_menu(message: types.Message, state: FSMContext):
         reply_markup=get_main_keyboard(role)
     )
 
-@dp.message(CommandStart())
 def _get_effective_uid(telegram_id):
     """Aktiv akkauntning effektiv user_id sini qaytaradi.
     Akkaunt 0 → telegram_id (asl). Akkaunt 1+ → telegram_id*1000+index."""
@@ -1348,6 +1347,7 @@ def _get_effective_uid(telegram_id):
         print(f"eff_uid: {e}")
     return telegram_id
 
+@dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
     # /start — har qanday holatda barcha state tozalanadi
     uid = message.from_user.id
@@ -1924,10 +1924,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         async def do_user_rasm():
             try:
-                from rasim_generator import _tavsif_to_prompt, generate_hf, generate_dalle
-                prompt = await _tavsif_to_prompt(tavsif, "ta'lim", "1", "multik")
-                img = await generate_hf(prompt)
-                if not img: img = await generate_dalle(prompt)
+                from rasim_generator import generate_smart
+                img, prompt = await generate_smart(tavsif, "ta'lim", "", "multik", is_admin=False)
                 if img:
                     from aiogram.types import BufferedInputFile
                     fname = f"user_{user_id}_{int(__import__('time').time())}"
@@ -1935,7 +1933,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                         BufferedInputFile(img, f"{fname}.png"),
                         caption=f"🎨 {tavsif[:80]}"
                     )
-                    # DB ga saqlash (limit uchun)
                     fid = sent.photo[-1].file_id
                     try:
                         conn3=_get_db_conn();cur3=conn3.cursor()
@@ -1943,7 +1940,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                                     (fname,fid))
                         conn3.commit();cur3.close();conn3.close()
                     except: pass
-                    # Qolgan limit
                     qolgan = 1 - (today_count)
                     msg = f"✅ Rasm tayyor!"
                     if qolgan > 0:
@@ -1952,7 +1948,11 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                         msg += "\n⏰ Bugungi limit tugadi"
                     await status_u.edit_text(msg)
                 else:
-                    await status_u.edit_text("❌ Rasm yaratilmadi. Qayta urinib ko'ring.")
+                    await status_u.edit_text(
+                        "❌ Rasm yaratilmadi.\n\n"
+                        "Sabab: DALL-E API ishlamayapti.\n"
+                        "Boshqacharoq tavsif bilan qayta urinib ko'ring."
+                    )
             except Exception as e:
                 await status_u.edit_text(f"❌ Xato: {e}")
 
@@ -2901,16 +2901,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         async def do_smart_rasm():
             try:
-                from rasim_generator import _tavsif_to_prompt, generate_hf, generate_dalle
-                
-                await status_r.edit_text(f"🔄 Tarjima qilinmoqda...\n«{tavsif[:60]}»")
-                prompt = await _tavsif_to_prompt(tavsif, "ta'lim", "1", style)
-                await status_r.edit_text(f"🎨 Chizilmoqda...\n📝 {prompt[:80]}...")
-
-                img = await generate_hf(prompt)
-                if not img:
-                    img = await generate_dalle(prompt)
-
+                from rasim_generator import generate_smart
+                await status_r.edit_text(f"🎨 Chizilmoqda (HD)...\n«{tavsif[:60]}»")
+                img, prompt = await generate_smart(tavsif, "ta'lim", "1", style, is_admin=True)
                 if img:
                     from aiogram.types import BufferedInputFile
                     sent = await message.answer_photo(
@@ -5196,7 +5189,6 @@ def _mk_ts_kb(st2, cnt_total):
     ])
 
 @dp.callback_query()
-
 async def test_buttons(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
     # BIRINCHI call.answer() — Telegram "yuklanyapti" ni darhol to'xtatadi
