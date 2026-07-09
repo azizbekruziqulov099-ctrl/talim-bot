@@ -15,20 +15,25 @@ def render_text(t):
 
 def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
     """Yangi akkaunt — ALOHIDA ma'lumot bazasi bilan.
-    idx=0 -> user_id = telegram_id
-    idx=N -> user_id = telegram_id*1000+N  (baho/to'garak alohida)"""
+    uid telefonga bog'liq emas -> boshqa telefonga ko'chirish mumkin.
+    Maksimal 3 ta akkaunt."""
+    import akkaunt as _ak
+    _ak.jadval()
+    if not _ak.joy_bormi(telegram_id):
+        print(f"[new_acc] limit: tg={telegram_id}")
+        return None
+
     conn=_get_db_conn();cur=conn.cursor()
     try:
-        cur.execute("SELECT COALESCE(MAX(account_index),-1)+1 FROM user_accounts WHERE telegram_id=%s",(telegram_id,))
-        new_idx=cur.fetchone()[0]
-        eff_uid = telegram_id if new_idx==0 else telegram_id*1000+new_idx
-        print(f"[new_acc] tg={telegram_id} idx={new_idx} eff={eff_uid} rol={rol_uz}")
+        new_idx = _ak.keyingi_index(telegram_id)
+        eff_uid = telegram_id if new_idx == 0 else _ak.yangi_uid()
+        print(f"[new_acc] tg={telegram_id} idx={new_idx} uid={eff_uid} rol={rol_uz}")
 
         cur.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(telegram_id,))
-        cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
-            VALUES(%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,name,rol_uz,sinf_txt))
+        cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,uid,full_name,role,class,is_active)
+            VALUES(%s,%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,eff_uid,name,rol_uz,sinf_txt))
 
-        # Har akkauntning users da O'Z qatori (eff_uid bo'yicha)
+        # Har akkauntning users da O'Z qatori (uid bo'yicha)
         cur.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
                     (name,rol_uz,sinf_txt,eff_uid))
         if cur.rowcount==0:
@@ -159,7 +164,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("""SELECT question,option_a,option_b,option_c,option_d,
-            correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
+            correct_answer,explanation,question_type,is_latex,COALESCE(NULLIF(image_file_id,''), image_url) AS image_url,audio_text,language,time_limit
             FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 10""",(tcode,))
         tests=cur2.fetchall(); cur2.close(); conn2.close()
         if not tests:
@@ -214,6 +219,17 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data == "kb_new_acc":
         await call.answer()
+        import akkaunt as _ak
+        _ak.jadval()
+        if not _ak.joy_bormi(tg_id):
+            await call.message.answer(
+                f"🚫 <b>Limit</b>\n\n"
+                f"Bitta telefonda maksimal {_ak.MAX_AKKAUNT} ta akkaunt.\n"
+                f"Hozir: {_ak.soni(tg_id)} ta.\n\n"
+                f"Yangi akkaunt uchun bittasini uzing:\n"
+                f"«📱 Akkauntlar → 🔓 Shu telefondan uzish»",
+                parse_mode="HTML")
+            return True
         # Yangi akkaunt — ism so'raymiz
         user_state[user_id] = "nacc_name"
         await call.message.answer(
@@ -292,14 +308,21 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("kb_activate:"):
         acc_id2=int(call.data[12:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("SELECT account_index, full_name, role, class FROM user_accounts WHERE id=%s AND telegram_id=%s",
-                    (acc_id2, tg_id))
-        row2=cur2.fetchone()
+        try:
+            cur2.execute("""SELECT account_index, full_name, role, class, uid
+                FROM user_accounts WHERE id=%s AND telegram_id=%s""", (acc_id2, tg_id))
+            row2=cur2.fetchone()
+            _uid2 = row2[4] if row2 else None
+        except Exception:
+            conn2.rollback()
+            cur2.execute("""SELECT account_index, full_name, role, class
+                FROM user_accounts WHERE id=%s AND telegram_id=%s""", (acc_id2, tg_id))
+            row2=cur2.fetchone(); _uid2 = None
         if not row2:
             cur2.close();conn2.close()
             await call.message.answer("❌ Akkaunt topilmadi"); return True
-        idx2, ism2, rol2, sinf2 = row2
-        eff2 = tg_id if not idx2 else tg_id*1000+int(idx2)
+        idx2, ism2, rol2, sinf2 = row2[0], row2[1], row2[2], row2[3]
+        eff2 = int(_uid2) if _uid2 else (tg_id if not idx2 else tg_id*1000+int(idx2))
 
         cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(tg_id,))
         cur2.execute("UPDATE user_accounts SET is_active=TRUE WHERE id=%s",(acc_id2,))
@@ -714,7 +737,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("""
             SELECT question, option_a, option_b, option_c, option_d,
                    correct_answer, explanation, question_type, is_latex,
-                   image_url, audio_text, language, time_limit
+                   COALESCE(NULLIF(image_file_id,''), image_url) AS image_url, audio_text, language, time_limit
             FROM generated_tests
             WHERE topic_code IN (
                 SELECT topic_code FROM dts_tree WHERE grade=%s AND is_deleted=FALSE
@@ -936,7 +959,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             cur2.execute(f"""
                 SELECT question, option_a, option_b, option_c, option_d,
                        correct_answer, explanation, question_type, is_latex,
-                       image_url, audio_text, language, time_limit
+                       COALESCE(NULLIF(image_file_id,''), image_url) AS image_url, audio_text, language, time_limit
                 FROM generated_tests
                 WHERE topic_code IN (
                     SELECT topic_code FROM dts_tree
