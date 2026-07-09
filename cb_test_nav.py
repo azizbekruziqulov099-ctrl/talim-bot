@@ -25,10 +25,11 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         user_state[user_id]["ts_subject"] = subj2
 
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
-        # Mavzu darajasida DISTINCT — kichik mavzular ko'rinmaydi
+        # Har mavzu uchun AYNAN qaysi topic_code lar borligini olamiz
         cur2.execute("""
             SELECT d.mavzu_name, d.mavzu_code,
-                   COUNT(g.id) as test_cnt
+                   ARRAY_AGG(DISTINCT d.topic_code) AS kodlar,
+                   COUNT(g.id) AS test_cnt
             FROM dts_tree d
             JOIN generated_tests g ON g.topic_code = d.topic_code
             WHERE d.subject_name=%s AND d.grade::TEXT=%s AND d.is_deleted=FALSE
@@ -39,10 +40,12 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
         topics2 = cur2.fetchall()
         cur2.close(); conn2.close()
 
+        import ts_cache
         rows = []
-        for mname, mcode, cnt in topics2:
-            # Sinf + mavzu NOMI hash -> aynan shu mavzu tanlanadi
-            cb = f"ts_mavzu:{mcode}|{grade2}|{_mavzu_hash(mname)}"
+        for mname, mcode, kodlar, cnt in topics2:
+            # Topic kodlarini saqlaymiz — bosilganda AYNAN shular olinadi
+            sid = ts_cache.saqla(kodlar, mname, grade2, subj2, cnt)
+            cb = f"ts_sel:{sid}" if sid else f"ts_mavzu:{mcode}|{grade2}|{_mavzu_hash(mname)}"
             rows.append([InlineKeyboardButton(
                 text=f"📝 {(mname or mcode)[:40]} ({cnt} ta)",
                 callback_data=cb
