@@ -13,6 +13,40 @@ def _db():
     return psycopg2.connect(DATABASE_URL)
 
 
+_KOL_CACHE = {}
+
+def _ustunlar(jadval):
+    """Jadvaldagi haqiqiy ustun nomlari va turlarini DB dan aniqlaydi.
+    Taxmin qilish o'rniga — bilib ishlatamiz, xato spam bo'lmaydi."""
+    if jadval in _KOL_CACHE:
+        return _KOL_CACHE[jadval]
+    kols = {}
+    try:
+        c = _db(); cr = c.cursor()
+        cr.execute("""SELECT column_name, data_type FROM information_schema.columns
+            WHERE table_name=%s""", (jadval,))
+        kols = {r[0]: r[1] for r in cr.fetchall()}
+        cr.close(); c.close()
+        if not kols:
+            print(f"[op] ⚠️ jadval topilmadi: {jadval}")
+    except Exception as e:
+        print(f"[op] ustunlar({jadval}): {e}")
+    _KOL_CACHE[jadval] = kols
+    return kols
+
+
+def _topuvchi(kols, nomzodlar, tur_ichida=None):
+    """kols dan mos ustunni topadi: avval aniq nom, keyin tur bo'yicha."""
+    for n in nomzodlar:
+        if n in kols:
+            return n
+    if tur_ichida:
+        for col, tur in kols.items():
+            if any(t in tur for t in tur_ichida):
+                return col
+    return None
+
+
 def _bir(sql, args=(), zaxira=None):
     try:
         c = _db(); cr = c.cursor()
@@ -53,21 +87,23 @@ def togaraklari(child_id):
 
 def yoqlama(child_id):
     """[(togarak_nomi, keldi, jami, foiz)]"""
+    kols = _ustunlar("togarak_yoqlama")
+    holat_u = _topuvchi(kols, ["holat", "status", "kelgan", "keldimi", "bor", "davomat"])
+
     natija = []
     for tid, nomi, fan in togaraklari(child_id):
         keldi = jami = 0
-        for ustun in ("holat", "kelgan", "status"):
+        if holat_u:
             r = _bir(f"""SELECT
-                COUNT(*) FILTER (WHERE {ustun} IN ('keldi','1','true','bor')),
+                COUNT(*) FILTER (WHERE {holat_u}::text IN ('keldi','1','true','True','TRUE','t','bor')),
                 COUNT(*)
                 FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s""",
                 (tid, child_id))
-            if r and r[1]:
+            if r:
                 keldi, jami = int(r[0] or 0), int(r[1] or 0)
-                break
-        if jami == 0:
-            r = _bir("""SELECT COUNT(*) FROM togarak_yoqlama
-                WHERE togarak_id=%s AND user_id=%s""", (tid, child_id))
+        else:
+            r = _bir("SELECT COUNT(*) FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s",
+                     (tid, child_id))
             jami = int(r[0]) if r else 0
         foiz = round(keldi * 100.0 / jami, 1) if jami else 0.0
         natija.append((nomi, keldi, jami, foiz))
@@ -106,16 +142,26 @@ def imtihonlar(child_id):
 # ═══════════════ BAHOLAR ═══════════════
 
 def baholar(child_id):
-    """[(togarak_nomi, baho, sana)]"""
+    """[(togarak_nomi, baho, sana)] — sana bo'lmasa None qaytadi."""
+    kols = _ustunlar("togarak_baholar")
+    if not kols:
+        return []
+    baho_u = _topuvchi(kols, ["baho", "ball", "score", "natija", "foiz"])
+    if not baho_u:
+        return []
+    sana_u = _topuvchi(kols, ["sana", "vaqt", "created_at", "yaratilgan", "tarix", "sanasi"],
+                       tur_ichida=["timestamp", "date"])
+    tartib_u = sana_u or ("id" if "id" in kols else None)
+
+    sel = f"{baho_u}, {sana_u}" if sana_u else f"{baho_u}, NULL"
+    tartib_sql = f"ORDER BY {tartib_u} DESC" if tartib_u else ""
+
     natija = []
     for tid, nomi, fan in togaraklari(child_id):
-        for ustun in ("baho", "ball", "score"):
-            r = _kop(f"""SELECT {ustun}, sana FROM togarak_baholar
-                WHERE togarak_id=%s AND user_id=%s
-                ORDER BY sana DESC LIMIT 10""", (tid, child_id))
-            if r:
-                natija += [(nomi, x[0], x[1]) for x in r]
-                break
+        r = _kop(f"""SELECT {sel} FROM togarak_baholar
+            WHERE togarak_id=%s AND user_id=%s {tartib_sql} LIMIT 10""",
+            (tid, child_id))
+        natija += [(nomi, x[0], x[1]) for x in r]
     return natija
 
 
