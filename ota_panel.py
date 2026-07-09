@@ -95,7 +95,8 @@ def yoqlama(child_id):
         keldi = jami = 0
         if holat_u:
             r = _bir(f"""SELECT
-                COUNT(*) FILTER (WHERE {holat_u}::text IN ('keldi','1','true','True','TRUE','t','bor')),
+                COUNT(*) FILTER (WHERE {holat_u}::text IN
+                    ('keldi','kech','1','true','True','TRUE','t','bor')),
                 COUNT(*)
                 FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s""",
                 (tid, child_id))
