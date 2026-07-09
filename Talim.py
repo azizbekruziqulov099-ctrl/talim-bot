@@ -1819,9 +1819,9 @@ async def _auto_generate_images(user_id, resume=False):
 
     total = len(rows)
     status = await bot.send_message(user_id, f"🎨 Rasm chizish\n📊 Qolgan: {total} ta")
-    ok = 0; fail = 0; skip = 0; limit_hit = False
+    ok = 0; fail = 0; skip = 0; limit_hit = False; cf_tugadi = False
 
-    from rasim_generator import generate_cf_flux_ex, generate_together_flux
+    from rasim_generator import generate_cf_flux_ex, generate_pollinations, generate_together_flux
     from aiogram.types import BufferedInputFile
 
     for idx, (tid, img_code) in enumerate(rows, 1):
@@ -1849,6 +1849,7 @@ async def _auto_generate_images(user_id, resume=False):
         try:
             await status.edit_text(
                 f"🎨 Chizilmoqda {idx}/{total}\n"
+                f"{'🌻 Pollinations' if cf_tugadi else '☁️ Cloudflare'}\n"
                 f"✅ {ok}   ❌ {fail}   ⏭ {skip}\n\n"
                 f"📝 {tavsif[:60]}"
             )
@@ -1859,21 +1860,33 @@ async def _auto_generate_images(user_id, resume=False):
                   f"Uzbek Central Asian people if any person appears")
 
         img = None; err = None
-        for _try in (1, 2):
-            img, err = await generate_cf_flux_ex(prompt, steps=8)
-            if img or err == "limit":
-                break
-            if _try == 1:
-                print(f"[auto_img] {tid} qayta urinamiz (15s)")
-                await _a.sleep(15)
+        if not cf_tugadi:
+            for _try in (1, 2):
+                img, err = await generate_cf_flux_ex(prompt, steps=8)
+                if img or err == "limit":
+                    break
+                if _try == 1:
+                    print(f"[auto_img] {tid} qayta urinamiz (10s)")
+                    await _a.sleep(10)
+            if err == "limit":
+                cf_tugadi = True
+                print("[auto_img] Cloudflare limiti tugadi -> Pollinations")
+                try:
+                    await bot.send_message(
+                        user_id,
+                        "⏸ Cloudflare kunlik limiti tugadi.\n"
+                        "🌻 Pollinations (bepul, cheksiz) bilan davom etmoqda..."
+                    )
+                except Exception: pass
 
-        # Limit tugadi — to'xtaymiz
-        if err == "limit":
-            limit_hit = True
-            print(f"[auto_img] LIMIT tugadi, {idx-1} ta chizildi")
-            break
+        # Cloudflare tugagan bo'lsa yoki ishlamasa — Pollinations
+        if not img:
+            for _try in (1, 2):
+                img = await generate_pollinations(prompt)
+                if img: break
+                if _try == 1: await _a.sleep(8)
 
-        # Cloudflare ishlamasa Together zaxira
+        # Oxirgi zaxira
         if not img:
             try: img = await generate_together_flux(prompt, steps=8)
             except Exception: img = None
@@ -1906,35 +1919,34 @@ async def _auto_generate_images(user_id, resume=False):
         await _a.sleep(1)
 
     # ═══ YAKUN ═══
-    qolgan = total - ok - skip - fail
-    if limit_hit:
-        try:
-            await status.edit_text(
-                f"⏸ <b>Kunlik limit tugadi</b>\n\n"
-                f"✅ Chizildi: {ok}\n"
-                f"⏳ Qolgan: {qolgan} ta\n\n"
-                f"🕐 Limit ertaga soat 05:00 da tiklanadi.\n"
-                f"Bot avtomatik davom ettiradi.",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="▶️ Hozir davom etish", callback_data="rsmres")
-                ]])
-            )
-        except Exception: pass
-        # Ertangi kunga belgilaymiz
+    manba = "🌻 Pollinations" if cf_tugadi else "☁️ Cloudflare"
+    if fail > 0:
         _IMG_PENDING[user_id] = True
-    else:
-        _IMG_PENDING.pop(user_id, None)
         try:
             await status.edit_text(
                 f"✅ <b>Rasm chizish tugadi</b>\n\n"
                 f"✅ Chizildi: {ok}\n"
                 f"⏭ O'tkazildi: {skip}\n"
-                f"❌ Xato: {fail}",
+                f"❌ Chizilmadi: {fail}\n\n"
+                f"Chizilmaganlarini qayta urinib ko'ramizmi?",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="🔄 Qayta urinish", callback_data="rsmres")
+                ]])
+            )
+        except Exception: pass
+    else:
+        _IMG_PENDING.pop(user_id, None)
+        try:
+            await status.edit_text(
+                f"🎉 <b>Barcha rasmlar tayyor!</b>\n\n"
+                f"✅ Chizildi: {ok}\n"
+                f"⏭ O'tkazildi: {skip}\n"
+                f"🖼 Manba: {manba}",
                 parse_mode="HTML"
             )
         except Exception: pass
-    print(f"[auto_img] tugadi ok={ok} fail={fail} skip={skip} limit={limit_hit}")
+    print(f"[auto_img] tugadi ok={ok} fail={fail} skip={skip} cf_tugadi={cf_tugadi}")
 
 
 async def _daily_image_resume():
@@ -2227,7 +2239,10 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         async def do_user_rasm():
             try:
                 from rasim_generator import generate_smart
-                img, prompt = await generate_smart(tavsif, "ta'lim", "", "multik", is_admin=False)
+                img, prompt = await generate_smart(
+                    tavsif, "ta'lim", "", "multik",
+                    is_admin=(user_id in ADMINS)
+                )
                 if img:
                     from aiogram.types import BufferedInputFile
                     fname = f"user_{user_id}_{int(__import__('time').time())}"
