@@ -1676,6 +1676,106 @@ async def import_tests_excel(target, path, user_id):
 
     admin_state[user_id] = None
 
+    # ═══ RASMLARNI AVTOMATIK CHIZISH ═══
+    asyncio.create_task(_auto_generate_images(target, user_id))
+
+
+async def _auto_generate_images(target, user_id):
+    """image_url da tavsif bor testlar uchun bitta-bitta rasm chizadi."""
+    import asyncio as _a
+    conn = _get_db_conn(); cur = conn.cursor()
+    try:
+        # image_url bo'sh emas, file_id yo'q (hali chizilmagan)
+        cur.execute("""
+            SELECT id, image_url, question, topic_code
+            FROM generated_tests
+            WHERE image_url IS NOT NULL AND image_url <> ''
+              AND (image_file_id IS NULL OR image_file_id = '')
+            ORDER BY id
+        """)
+        rows = cur.fetchall()
+    except Exception as e:
+        # image_file_id ustuni yo'q bo'lsa qo'shamiz
+        try:
+            cur.execute("ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS image_file_id TEXT")
+            conn.commit()
+            cur.execute("""
+                SELECT id, image_url, question, topic_code
+                FROM generated_tests
+                WHERE image_url IS NOT NULL AND image_url <> ''
+                  AND (image_file_id IS NULL OR image_file_id = '')
+                ORDER BY id
+            """)
+            rows = cur.fetchall()
+        except Exception as e2:
+            print(f"[auto_img] {e2}")
+            cur.close(); conn.close()
+            return
+    cur.close(); conn.close()
+
+    if not rows:
+        return
+
+    total = len(rows)
+    status = await target.answer(f"🎨 Rasm chizish boshlandi\n📊 Jami: {total} ta")
+    ok = 0; fail = 0
+
+    from rasim_generator import generate_smart
+    from aiogram.types import BufferedInputFile
+
+    for idx, (tid, tavsif, savol, tcode) in enumerate(rows, 1):
+        tavsif = (tavsif or "").strip()
+        # URL yoki LaTeX bo'lsa o'tkazamiz
+        if tavsif.startswith("http") or tavsif.startswith("\\") or tavsif.startswith("$"):
+            continue
+        try:
+            await status.edit_text(
+                f"🎨 Chizilmoqda... {idx}/{total}\n"
+                f"✅ {ok}  ❌ {fail}\n\n"
+                f"📝 {tavsif[:60]}"
+            )
+        except Exception: pass
+
+        try:
+            img, prompt = await generate_smart(tavsif, "ta'lim", "", "chizma", is_admin=True)
+        except Exception as e:
+            print(f"[auto_img] {tid}: {e}")
+            img = None
+
+        if img:
+            try:
+                sent = await target.answer_photo(
+                    BufferedInputFile(img, f"test_{tid}.png"),
+                    caption=f"🖼 #{idx}/{total} · ID {tid}\n📝 {tavsif[:70]}"
+                )
+                fid = sent.photo[-1].file_id
+                c2 = _get_db_conn(); cr2 = c2.cursor()
+                cr2.execute("UPDATE generated_tests SET image_file_id=%s WHERE id=%s", (fid, tid))
+                c2.commit(); cr2.close(); c2.close()
+                ok += 1
+            except Exception as e:
+                print(f"[auto_img] saqlash {tid}: {e}")
+                fail += 1
+        else:
+            fail += 1
+            try:
+                await target.answer(f"⚠️ #{idx} chizilmadi (ID {tid})\n15 soniya kutilmoqda...")
+            except Exception: pass
+            await _a.sleep(15)   # xato bo'lsa 15 soniya kutamiz
+            continue
+
+        await _a.sleep(2)   # limitga urilmaslik uchun
+
+    try:
+        await status.edit_text(
+            f"✅ Rasm chizish tugadi\n\n"
+            f"📊 Jami: {total}\n"
+            f"✅ Chizildi: {ok}\n"
+            f"❌ Xato: {fail}"
+        )
+    except Exception: pass
+
+
 @dp.message()
 async def handle_all(
     message: Message,
