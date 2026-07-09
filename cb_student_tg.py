@@ -53,10 +53,11 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         if bugun: txt+=f"🕐 Bugungi dars: {bugun[0]}\n"
         kb2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📅 Dars jadvali",  callback_data=f"stg_jadval:{tgid}:0")],
+            [InlineKeyboardButton(text="🎓 To'garak testlari", callback_data=f"tt_tg:{tgid}")],
             [InlineKeyboardButton(text="📚 Mavzular",      callback_data=f"stg_albomlar:{tgid}"),
              InlineKeyboardButton(text="📊 Baholarim",     callback_data=f"stg_baholar:{tgid}")],
             [InlineKeyboardButton(text="📝 Vazifalar",     callback_data=f"stg_hw:{tgid}"),
-             InlineKeyboardButton(text="🏆 Reyting",       callback_data=f"stg_reyting:{tgid}")],
+             InlineKeyboardButton(text="🏆 Reyting",       callback_data=f"im_reyt:{tgid}")],
             [InlineKeyboardButton(text="💬 Chat",          callback_data=f"stg_chat:{tgid}"),
              InlineKeyboardButton(text="⚙️ Sozlamalar",    callback_data=f"stg_sozla:{tgid}")],
         ])
@@ -472,15 +473,37 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         selected=list(temp_user.get(sel_key,[]))
         if not selected: await call.message.answer("❌ Mavzu tanlanmagan!"); return True
         temp_user.pop(sel_key,None)
-        # Barcha tanlangan mavzulardan test
+
         conn2=_get_db_conn();cur2=conn2.cursor()
-        codes_in="','".join(selected)
-        cur2.execute(f"""SELECT topic_code FROM dts_tree
-            WHERE mavzu_code IN ('{codes_in}') AND is_deleted=FALSE""")
+        # To'garak fani va o'quvchi sinfi — boshqa sinf/fandan test kelmasin
+        cur2.execute("SELECT fan FROM togaraklar WHERE id=%s",(tgid,))
+        _fan=(cur2.fetchone() or [None])[0]
+        cur2.execute("SELECT class FROM users WHERE user_id=%s",(user_id,))
+        _sinf=(cur2.fetchone() or [None])[0]
+        _gr = None
+        if _sinf:
+            import re as _re2
+            _m = _re2.search(r"\d+", str(_sinf))
+            if _m: _gr = _m.group(0)
+
+        shart = "mavzu_code = ANY(%s) AND is_deleted=FALSE"
+        args = [selected]
+        if _fan:
+            shart += " AND subject_name=%s"; args.append(_fan)
+        if _gr:
+            shart += " AND grade::TEXT=%s"; args.append(_gr)
+
+        cur2.execute(f"SELECT DISTINCT topic_code FROM dts_tree WHERE {shart}", tuple(args))
         topic_codes=[r[0] for r in cur2.fetchall()]
-        if not topic_codes: topic_codes=selected
+        print(f"[stg_test] mavzular={selected} fan={_fan} sinf={_gr} -> {len(topic_codes)} topic")
+
+        if not topic_codes:
+            cur2.close(); conn2.close()
+            await call.message.answer("❌ Bu mavzular uchun test topilmadi!")
+            return True
+
         cur2.execute("""SELECT question,option_a,option_b,option_c,option_d,
-            correct_answer,explanation,question_type,is_latex,image_url,audio_text,language,time_limit
+            correct_answer,explanation,question_type,is_latex,COALESCE(NULLIF(image_file_id,''), image_url) AS image_url,audio_text,language,time_limit
             FROM generated_tests WHERE topic_code=ANY(%s) ORDER BY RANDOM() LIMIT 20""",(topic_codes,))
         tests=cur2.fetchall(); cur2.close(); conn2.close()
         if not tests: await call.message.answer("❌ Test topilmadi!"); return True
