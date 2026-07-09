@@ -2091,6 +2091,17 @@ async def _save_quick_user(call, user_id):
 
 async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
+    # ═══ /start SINONIMLARI ═══
+    # "menyu", "bosh", "01" — /start bilan bir xil ishlaydi
+    if message.text:
+        _t = message.text.strip().lower().rstrip("!.?")
+        if _t in ("menyu", "menu", "bosh", "boshi", "01", "start",
+                  "меню", "бош", "бошига"):
+            # Yozuvli test javobi bo'lsa — tegmaymiz
+            from test_engine import test_sessions as _tsx
+            if not (user_id in _tsx and user_state.get(user_id) == "text_answer"):
+                await start(message, state)
+                return
 
     # ═══ OVOZ SINOVI (admin) ═══
     if message.text and message.text.startswith("/ovoz"):
