@@ -73,6 +73,38 @@ with open("regions.json", "r", encoding="utf-8") as f:
 
 ADMINS = [401251407]
 
+# ═══ MULTI-ACCOUNT: effektiv ID ═══
+# Har akkauntga alohida ichki ID: idx=0 -> telegram_id, idx=N -> telegram_id*1000+N
+_EFF_CACHE = {}   # {telegram_id: eff_uid}
+
+def _eff_uid(telegram_id):
+    """Aktiv akkauntning ichki ID sini qaytaradi (ma'lumot uchun)."""
+    if telegram_id in _EFF_CACHE:
+        return _EFF_CACHE[telegram_id]
+    eff = telegram_id
+    try:
+        conn = _get_db_conn(); cur = conn.cursor()
+        cur.execute("SELECT account_index FROM user_accounts WHERE telegram_id=%s AND is_active=TRUE LIMIT 1",
+                    (telegram_id,))
+        r = cur.fetchone(); cur.close(); conn.close()
+        if r and r[0]:
+            eff = telegram_id * 1000 + int(r[0])
+    except Exception as e:
+        print(f"[eff_uid] {e}")
+    _EFF_CACHE[telegram_id] = eff
+    return eff
+
+def _tg_id(uid):
+    """Ichki ID dan haqiqiy telegram ID (xabar yuborish uchun)."""
+    return uid // 1000 if uid > 10_000_000_000 else uid
+
+def _eff_clear(telegram_id):
+    """Akkaunt almashganda keshni tozalaymiz."""
+    _EFF_CACHE.pop(telegram_id, None)
+
+def _is_admin(uid):
+    return _tg_id(uid) in ADMINS
+
 # Excel dan o'qilgan rasm tavsiflari: {image_id: description_en}
 _RASM_TAVSIF = {}
 # Limit tugagan foydalanuvchilar (ertaga davom etish uchun)
@@ -1291,11 +1323,11 @@ async def _error_and_home(source, user_id, err, label="Xato"):
         row_  = cur_.fetchone()
         cur_.close(); conn_.close()
         role_ = row_[0] if row_ else "🧒 O'quvchi"
-        if user_id in ADMINS: role_ = "Admin"
+        if _is_admin(user_id): role_ = "Admin"
     except Exception:
         role_ = "🧒 O'quvchi"
 
-    n_err = _get_unread_errors() if user_id in ADMINS else 0
+    n_err = _get_unread_errors() if _is_admin(user_id) else 0
     kb_ = get_main_keyboard(role_, unread_errors=n_err)
     try:
         msg_fn = source.answer if hasattr(source, "answer") else source.message.answer
@@ -1339,23 +1371,12 @@ async def cmd_menu(message: types.Message, state: FSMContext):
         reply_markup=get_main_keyboard(role)
     )
 
-def _get_effective_uid(telegram_id):
-    """Aktiv akkauntning effektiv user_id sini qaytaradi.
-    Akkaunt 0 → telegram_id (asl). Akkaunt 1+ → telegram_id*1000+index."""
-    try:
-        conn=_get_db_conn();cur=conn.cursor()
-        cur.execute("SELECT account_index FROM user_accounts WHERE telegram_id=%s AND is_active=TRUE",(telegram_id,))
-        r=cur.fetchone();cur.close();conn.close()
-        if r and r[0] and r[0]>0:
-            return telegram_id*1000+r[0]
-    except Exception as e:
-        print(f"eff_uid: {e}")
-    return telegram_id
-
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
     # /start — har qanday holatda barcha state tozalanadi
-    uid = message.from_user.id
+    _tg = message.from_user.id
+    _eff_clear(_tg)                 # aktiv akkaunt o'zgargan bo'lishi mumkin
+    uid = _eff_uid(_tg)
     try: await state.clear()
     except: pass
     user_state.pop(uid, None)
@@ -1377,7 +1398,7 @@ async def start(message: types.Message, state: FSMContext):
 
     cur.execute(
         "SELECT role, full_name, class FROM users WHERE user_id=%s",
-        (message.from_user.id,)
+        (uid,)
     )
 
     user = cur.fetchone()
@@ -1389,7 +1410,7 @@ async def start(message: types.Message, state: FSMContext):
 
         role, full_name, grade = user
 
-        if message.from_user.id in ADMINS:
+        if _tg in ADMINS:
             role = "Admin"
 
         if role == "Admin":
@@ -1407,10 +1428,10 @@ async def start(message: types.Message, state: FSMContext):
             from progress import update_streak
             from student_dashboard import build_dashboard
 
-            update_streak(message.from_user.id)
+            update_streak(uid)
 
             try:
-                text, keyboard = await build_dashboard(message.from_user.id)
+                text, keyboard = await build_dashboard(uid)
             except Exception as _de:
                 import traceback
                 print(f"build_dashboard ERROR: {traceback.format_exc()}")
@@ -1419,7 +1440,7 @@ async def start(message: types.Message, state: FSMContext):
 
             # Majburiy imtihon bormi?
             from progress import get_pending_exams
-            pending   = get_pending_exams(message.from_user.id)
+            pending   = get_pending_exams(uid)
             mandatory = [e for e in pending if e[3]]
 
             if mandatory:
@@ -1801,7 +1822,7 @@ async def _auto_generate_images(user_id, resume=False):
     cur.close(); conn.close()
 
     if not rows:
-        try: await bot.send_message(user_id, "✅ Barcha rasmlar chizilgan!")
+        try: await bot.send_message(_tg_id(user_id), "✅ Barcha rasmlar chizilgan!")
         except Exception: pass
         return
 
@@ -1818,7 +1839,7 @@ async def _auto_generate_images(user_id, resume=False):
             print(f"[auto_img] tavsif DB: {e}")
 
     total = len(rows)
-    status = await bot.send_message(user_id, f"🎨 Rasm chizish\n📊 Qolgan: {total} ta")
+    status = await bot.send_message(_tg_id(user_id), f"🎨 Rasm chizish\n📊 Qolgan: {total} ta")
     ok = 0; fail = 0; skip = 0; limit_hit = False; cf_tugadi = False
 
     from rasim_generator import generate_cf_flux_ex, generate_pollinations, generate_together_flux
@@ -1857,7 +1878,9 @@ async def _auto_generate_images(user_id, resume=False):
 
         prompt = (f"{tavsif}, colorful cartoon illustration for children, "
                   f"clean simple shapes, bright colors, white background, "
-                  f"Uzbek Central Asian people if any person appears")
+                  f"if any person appears they are modern present-day Uzbek Central Asian "
+                  f"people in clean contemporary clothes, cheerful 2020s setting, "
+                  f"no vintage, no traditional costumes, no rural poverty")
 
         img = None; err = None
         if not cf_tugadi:
@@ -1873,7 +1896,7 @@ async def _auto_generate_images(user_id, resume=False):
                 print("[auto_img] Cloudflare limiti tugadi -> Pollinations")
                 try:
                     await bot.send_message(
-                        user_id,
+                        _tg_id(user_id),
                         "⏸ Cloudflare kunlik limiti tugadi.\n"
                         "🌻 Pollinations (bepul, cheksiz) bilan davom etmoqda..."
                     )
@@ -1894,7 +1917,7 @@ async def _auto_generate_images(user_id, resume=False):
         if img:
             try:
                 sent = await bot.send_photo(
-                    chat_id=user_id,
+                    chat_id=_tg_id(user_id),
                     photo=BufferedInputFile(img, f"{img_code}.png"),
                     caption=f"🖼 {idx}/{total} · <code>{img_code}</code>\n📝 {tavsif[:70]}",
                     parse_mode="HTML",
@@ -1995,7 +2018,7 @@ async def handle_all(
     message: Message,
     state: FSMContext
 ):
-    user_id = message.from_user.id
+    user_id = _eff_uid(message.from_user.id)
     try:
         await _handle_all_inner(message, state, user_id)
     except Exception as _e:
@@ -2241,14 +2264,14 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 from rasim_generator import generate_smart
                 img, prompt = await generate_smart(
                     tavsif, "ta'lim", "", "multik",
-                    is_admin=(user_id in ADMINS)
+                    is_admin=(_is_admin(user_id))
                 )
                 if img:
                     from aiogram.types import BufferedInputFile
                     fname = f"user_{user_id}_{int(__import__('time').time())}"
                     sent = await message.answer_photo(
                         BufferedInputFile(img, f"{fname}.png"),
-                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:250]}</i>",
+                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:800]}</i>",
                         parse_mode="HTML"
                     )
                     fid = sent.photo[-1].file_id
@@ -2958,7 +2981,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if message.text == "/id":
-        await message.answer(f"🆔 Sizning Telegram ID ingiz:\n<code>{user_id}</code>\n\nOta-onangizga yuboring!", parse_mode="HTML")
+        await message.answer(f"🆔 Sizning Telegram ID ingiz:\n<code>{_tg_id(user_id)}</code>\n\nOta-onangizga yuboring!", parse_mode="HTML")
         return
 
     if message.text == "/stop":
@@ -2972,7 +2995,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT role FROM users WHERE user_id=%s",(user_id,))
         row2=cur2.fetchone(); cur2.close(); conn2.close()
         role2 = str(row2[0] if row2 else "")
-        is_admin = user_id in ADMINS
+        is_admin = _is_admin(user_id)
 
         if is_admin:
             txt = ("🤖 Admin AI Yordamchi\n\n"
@@ -3123,7 +3146,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT full_name,role,class,school,birth_date FROM users WHERE user_id=%s",(user_id,))
         u=cur2.fetchone()
         # Akkauntlar soni
-        cur2.execute("SELECT COUNT(*) FROM user_accounts WHERE telegram_id=%s",(user_id,))
+        cur2.execute("SELECT COUNT(*) FROM user_accounts WHERE telegram_id=%s",(_tg_id(user_id),))
         acc_count=(cur2.fetchone() or [0])[0]
         cur2.close();conn2.close()
         if not u:
@@ -3226,7 +3249,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     from aiogram.types import BufferedInputFile
                     sent = await message.answer_photo(
                         BufferedInputFile(img, "rasm.png"),
-                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:250]}</i>",
+                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:800]}</i>",
                         parse_mode="HTML"
                     )
                     await status_r.edit_text(
@@ -3446,7 +3469,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     # ── Excel RASMLAR varog'i bo'lsa — avtomatik rasm yaratish ──
-    if (message.document and user_id in ADMINS and
+    if (message.document and _is_admin(user_id) and
             message.document.file_name and
             (message.document.file_name or "").endswith(".xlsx")):
         # RASMLAR varog'i borligini tekshiramiz
@@ -3479,7 +3502,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         except: pass
 
     # ── Kitob PDF yuklash ──
-    if (message.document and user_id in ADMINS and
+    if (message.document and _is_admin(user_id) and
             message.document.file_name and
             message.document.file_name.lower().endswith(".pdf")):
         # State bo'lmasa ham qabul qilamiz
@@ -3569,7 +3592,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     # ── Excel shablon yuborilsa — faqat "excel_merge" state da ──
-    if (message.document and user_id in ADMINS and
+    if (message.document and _is_admin(user_id) and
             message.document.file_name and
             (message.document.file_name or "").endswith(".xlsx") and
             admin_state.get(user_id) == "excel_merge"):
@@ -5509,7 +5532,7 @@ def _mk_ts_kb(st2, cnt_total):
 
 @dp.callback_query()
 async def test_buttons(call: CallbackQuery, state: FSMContext):
-    user_id = call.from_user.id
+    user_id = _eff_uid(call.from_user.id)
     # BIRINCHI call.answer() — Telegram "yuklanyapti" ni darhol to'xtatadi
     try:
         await call.answer()
