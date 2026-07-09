@@ -6,6 +6,12 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
 def _get_db_conn(): return psycopg2.connect(DATABASE_URL)
 
+def _mavzu_hash(nom):
+    """Mavzu nomining qisqa belgisi (Talim.py bilan bir xil)."""
+    import hashlib
+    return hashlib.md5((nom or "").strip().encode()).hexdigest()[:6]
+
+
 async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
     # ── KITOB CALLBACKS ──
@@ -267,8 +273,7 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
 
         rows2=[]
         for m in page_items:
-            cb=f"ts_mavzu:{m[1]}|{gr}|{fan2}"
-            if len(cb.encode())>60: cb=f"ts_mavzu:{m[1]}|{gr}|"
+            cb=f"ts_mavzu:{m[1]}|{gr}|{_mavzu_hash(m[0])}"
             rows2.append([InlineKeyboardButton(
                 text=f"📝 {(m[0] or m[1])[:38]} ({m[2]})",
                 callback_data=cb
