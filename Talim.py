@@ -1446,9 +1446,9 @@ async def start(message: types.Message, state: FSMContext):
             else:
                 # Dashboard inline keyboard bilan
                 if keyboard:
-                    await message.answer(text, reply_markup=keyboard)
+                    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
                 else:
-                    await message.answer(text)
+                    await message.answer(text, parse_mode="HTML")
                 # O'quvchi reply keyboard — har doim yuboriladi
                 _student_kb = get_main_keyboard("🧒 O'quvchi")
                 await message.answer("👇", reply_markup=_student_kb)
@@ -3058,7 +3058,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         try:
             from student_dashboard import build_dashboard
             text, kb = await build_dashboard(user_id)
-            await message.answer(text, reply_markup=kb)
+            await message.answer(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
             pass
         conn2 = _get_db_conn()
@@ -6330,6 +6330,36 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             call.message
         )
 
+        return
+
+    # ═══ BOSH EKRAN (dashboard) ═══
+    if call.data.startswith("dash_"):
+        await call.answer()
+        import student_dashboard as _sd
+        uid_d = call.from_user.id
+        try:
+            if call.data == "dash_refresh":
+                txt, kb = await _sd.build_dashboard(uid_d)
+            elif call.data == "dash_togarak":
+                txt, kb = await _sd.build_togarak_stat(uid_d)
+            elif call.data == "dash_maktab":
+                txt, kb = await _sd.build_maktab_stat(uid_d)
+            elif call.data == "dash_bugun":
+                txt, kb = await _sd.build_bugungi(uid_d)
+            elif call.data == "dash_vazifa":
+                txt, kb = await _sd.build_vazifalar(uid_d)
+            elif call.data == "dash_stat":
+                txt, kb = await _sd.build_maktab_stat(uid_d)
+            else:
+                return
+            try:
+                await call.message.edit_text(txt[:4000], parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                await call.message.answer(txt[:4000], parse_mode="HTML", reply_markup=kb)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            try: await call.message.answer(f"⚠️ Xatolik: {e}")
+            except Exception: pass
         return
 
     if call.data == "rsmlat":
