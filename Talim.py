@@ -3761,13 +3761,23 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         except: pass
         return
 
-    if user_state.get(message.from_user.id) == "text_answer":
+    if user_state.get(user_id) == "text_answer":
+
+        _javob = message.text
+        _chat  = message.chat.id
+        _mid   = message.message_id
 
         await check_text_answer(
-            message.from_user.id,
-            message.text,
+            user_id,
+            _javob,
             message
         )
+
+        # Foydalanuvchi yozgan javobni o'chiramiz — ekran to'lmasin
+        try:
+            await bot.delete_message(_chat, _mid)
+        except Exception:
+            pass
 
         return
 
