@@ -5573,10 +5573,19 @@ def _mk_ts_kb(st2, cnt_total):
     timed = st2.get("ts_timed", "mix")   # True/False/"mix"
     write = st2.get("ts_write", False)   # True/False/"mix"
     img   = st2.get("ts_img", "mix")     # True/False/"mix"
+
+    # Son tugmalari — mavjuddan oshmasin
+    son_qatori = []
+    for n in (10, 20, 40):
+        if n < cnt_total:
+            son_qatori.append(InlineKeyboardButton(
+                text=f"{c(cnt==n)}{n} ta", callback_data=f"ts_cnt_{n}"))
+    son_qatori.append(InlineKeyboardButton(
+        text=f"{c(cnt==cnt_total)}Barchasi ({cnt_total})",
+        callback_data=f"ts_cnt_{cnt_total}"))
+
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{c(cnt==20)}20 ta",    callback_data="ts_cnt_20"),
-         InlineKeyboardButton(text=f"{c(cnt==40)}40 ta",    callback_data="ts_cnt_40"),
-         InlineKeyboardButton(text=f"{c(cnt==cnt_total)}Barchasi ({cnt_total})", callback_data=f"ts_cnt_{cnt_total}")],
+        son_qatori,
         [InlineKeyboardButton(text=f"{c(diff=='oson')}🟢 Oson",   callback_data="ts_dif_oson"),
          InlineKeyboardButton(text=f"{c(diff=='orta')}🟡 O'rta",  callback_data="ts_dif_orta"),
          InlineKeyboardButton(text=f"{c(diff=='qiyin')}🔴 Qiyin", callback_data="ts_dif_qiyin"),
@@ -5587,7 +5596,7 @@ def _mk_ts_kb(st2, cnt_total):
         [InlineKeyboardButton(text=f"{c(write==False)}🔘 Tugmali",   callback_data="ts_wr_0"),
          InlineKeyboardButton(text=f"{c(write==True)}✍️ Yozuvli",   callback_data="ts_wr_1"),
          InlineKeyboardButton(text=f"{c(write=='mix')}🔀 Aralash",   callback_data="ts_wr_mix")],
-        [InlineKeyboardButton(text=f"{c(img==True)}🖼 Rasimli",      callback_data="ts_img_1"),
+        [InlineKeyboardButton(text=f"{c(img==True)}🖼 Rasmli",       callback_data="ts_img_1"),
          InlineKeyboardButton(text=f"{c(img==False)}📝 Rasmsiz",     callback_data="ts_img_0"),
          InlineKeyboardButton(text=f"{c(img=='mix')}🔀 Aralash",     callback_data="ts_img_mix")],
         [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
@@ -5740,17 +5749,29 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if call.data.startswith("ts_mavzu:"):
         mavzu_code = call.data[9:]
-        # Shu mavzu_code dagi barcha topic_code lar bo'yicha testlar
+        from storage import user_state as _us0
+        _sel = _us0.get(user_id) if isinstance(_us0.get(user_id), dict) else {}
+        gr_sel   = _sel.get("ts_grade")
+        subj_sel = _sel.get("ts_subject")
+
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
-        cur2.execute("""SELECT DISTINCT topic_code FROM dts_tree
-            WHERE mavzu_code=%s AND is_deleted=FALSE""", (mavzu_code,))
+        # mavzu_code sinflar bo'ylab TAKRORLANADI -> sinf/fan bilan cheklaymiz
+        shart = "mavzu_code=%s AND is_deleted=FALSE"
+        args = [mavzu_code]
+        if gr_sel:
+            shart += " AND grade::TEXT=%s"; args.append(str(gr_sel))
+        if subj_sel:
+            shart += " AND subject_name=%s"; args.append(subj_sel)
+        cur2.execute(f"SELECT DISTINCT topic_code FROM dts_tree WHERE {shart}", tuple(args))
         topic_codes = [r[0] for r in cur2.fetchall()]
         if not topic_codes:
             topic_codes = [mavzu_code]
+        print(f"[ts_mavzu] {mavzu_code} gr={gr_sel} fan={subj_sel} -> {len(topic_codes)} topic")
+
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
                     (topic_codes,))
         cnt = cur2.fetchone()[0]
-        cur2.execute("SELECT mavzu_name FROM dts_tree WHERE mavzu_code=%s LIMIT 1",(mavzu_code,))
+        cur2.execute(f"SELECT mavzu_name FROM dts_tree WHERE {shart} LIMIT 1", tuple(args))
         mname = (cur2.fetchone() or [mavzu_code])[0]
         cur2.close(); conn2.close()
         if cnt == 0:
@@ -5762,7 +5783,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "ts_topic_codes": topic_codes,
             "ts_mavzu_name": mname,
             "ts_count": 20, "ts_diff": "all",
-            "ts_timed": True, "ts_write": False,
+            "ts_timed": True, "ts_write": False, "ts_img": "mix",
             "_ts_cnt_total": cnt
         })
         await call.message.answer(
@@ -5783,11 +5804,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         # Sozlamalar ekrani
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
-        _us[user_id]["ts_topic"] = topic_code
-        from storage import user_state as _us
-        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
-        _us[user_id].update({"ts_topic": topic_code, "ts_count": 20,
-                              "ts_diff": "all", "ts_timed": True, "ts_write": False,
+        _us[user_id].update({"ts_topic": topic_code,
+                              "ts_topic_codes": [topic_code],
+                              "ts_count": 20,
+                              "ts_diff": "all", "ts_timed": True,
+                              "ts_write": False, "ts_img": "mix",
                               "_ts_cnt_total": cnt})
         await call.message.answer(
             f"🧪 Test: {topic_code}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
@@ -5796,7 +5817,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if (call.data.startswith("ts_cnt_") or call.data.startswith("ts_dif_")
-            or call.data.startswith("ts_wr_") or call.data.startswith("ts_time_")):
+            or call.data.startswith("ts_wr_") or call.data.startswith("ts_time_")
+            or call.data.startswith("ts_img_")):
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
         st2 = _us[user_id]
@@ -5812,8 +5834,34 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         elif call.data == "ts_img_0":         st2["ts_img"]   = False
         elif call.data == "ts_img_mix":       st2["ts_img"]   = "mix"
         await call.answer("✅")
-        # Klaviaturani ✅ bilan yangilaymiz
+        # Filtrga mos test sonini qayta hisoblaymiz
         cnt_total = st2.get("_ts_cnt_total", 999)
+        try:
+            tcs = st2.get("ts_topic_codes") or ([st2["ts_topic"]] if st2.get("ts_topic") else [])
+            if tcs:
+                d2 = st2.get("ts_diff", "all")
+                w2 = st2.get("ts_write", False)
+                i2 = st2.get("ts_img", "mix")
+                f1 = "" if d2 == "all" else f"AND difficulty='{d2}'"
+                if w2 == "mix": f2 = ""
+                elif w2 is True: f2 = "AND question_type = 'write_answer'"
+                else: f2 = "AND question_type != 'write_answer'"
+                if i2 == "mix": f3 = ""
+                elif i2 is True: f3 = "AND image_url IS NOT NULL AND image_url != ''"
+                else: f3 = "AND (image_url IS NULL OR image_url = '')"
+                c3 = _get_db_conn(); cr3 = c3.cursor()
+                cr3.execute(f"""SELECT COUNT(*) FROM generated_tests
+                    WHERE topic_code=ANY(%s) {f1} {f2} {f3}""", (tcs,))
+                mavjud = (cr3.fetchone() or [0])[0]
+                cr3.close(); c3.close()
+                cnt_total = mavjud
+                st2["_ts_mavjud"] = mavjud
+                # Tanlangan son mavjuddan ko'p bo'lsa — kamaytiramiz
+                if st2.get("ts_count", 20) > mavjud and mavjud > 0:
+                    st2["ts_count"] = mavjud
+        except Exception as e:
+            print(f"[ts_filter] {e}")
+
         try:
             await call.message.edit_reply_markup(reply_markup=_mk_ts_kb(st2, cnt_total))
         except Exception: pass
@@ -6039,6 +6087,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             ORDER BY RANDOM() LIMIT %s
         """, (topic_codes, cnt2))
         tests = cur2.fetchall(); cur2.close(); conn2.close()
+        print(f"[ts_go] topics={len(topic_codes)} soralgan={cnt2} topildi={len(tests)} "
+              f"img={img} write={write} diff={diff}")
         if not tests:
             await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
             return
