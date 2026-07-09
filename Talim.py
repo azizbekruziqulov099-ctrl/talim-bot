@@ -73,6 +73,11 @@ with open("regions.json", "r", encoding="utf-8") as f:
 
 ADMINS = [401251407]
 
+# Excel dan o'qilgan rasm tavsiflari: {image_id: description_en}
+_RASM_TAVSIF = {}
+# Limit tugagan foydalanuvchilar (ertaga davom etish uchun)
+_IMG_PENDING = {}
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 API_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -1515,6 +1520,94 @@ async def import_tests_excel(target, path, user_id):
         await target.answer(f"❌ Excel o'qib bo'lmadi: {_e}")
         return
 
+    # ── RASM TAVSIFLARI (varaq nomi har xil bo'lishi mumkin) ──
+    global _RASM_TAVSIF
+    _RASM_TAVSIF = {}
+
+    # 1) TESTLAR varag'ining o'zida tavsif ustuni bormi? (eng ishonchli)
+    try:
+        _tc = next((c for c in df.columns
+                    if "tavsif" in str(c).lower() or "description" in str(c).lower()), None)
+        if _tc is not None and "image_url" in df.columns:
+            for _, _r in df.iterrows():
+                _k = str(_r.get("image_url") or "").strip()
+                _v = str(_r.get(_tc) or "").strip()
+                if _k and _v and _k.lower() != "nan" and _v.lower() != "nan":
+                    _RASM_TAVSIF[_k] = _v
+            if _RASM_TAVSIF:
+                print(f"[rasm_tavsif] TESTLAR '{_tc}' ustunidan {len(_RASM_TAVSIF)} ta")
+    except Exception as _e:
+        print(f"[rasm_tavsif] ustun xato: {_e}")
+
+    # 2) Topilmasa — boshqa varaqlarni mazmuni bo'yicha qidiramiz
+    if not _RASM_TAVSIF:
+        # TESTLAR dagi haqiqiy rasm kodlari (moslikni tekshirish uchun)
+        try:
+            _kodlar = set(str(v).strip() for v in df.get("image_url", pd.Series([])).dropna())
+        except Exception:
+            _kodlar = set()
+        try:
+            for _sn in _xls.sheet_names:
+                if _sn == _sheet:
+                    continue
+                try:
+                    _dfr = pd.read_excel(path, sheet_name=_sn)
+                except Exception:
+                    continue
+                if _dfr.shape[1] < 2 or len(_dfr) == 0:
+                    continue
+                _cols = [str(c).lower() for c in _dfr.columns]
+                # id ustuni: qiymatlari haqiqiy rasm kodlariga mos kelishi SHART
+                _idc = None
+                for _c in _dfr.columns:
+                    _vals = set(str(x).strip() for x in _dfr[_c].dropna().head(50))
+                    if _kodlar and len(_vals & _kodlar) >= max(1, len(_vals) // 2):
+                        _idc = _c; break
+                if _idc is None:
+                    continue
+                # tavsif ustuni: desc/tavsif/_en/prompt, yoki eng uzun matnli
+                _dsc = next((c for c, l in zip(_dfr.columns, _cols)
+                             if "desc" in l or "tavsif" in l or "_en" in l or "prompt" in l), None)
+                if _dsc is None:
+                    _best, _blen = None, 0
+                    for _c in _dfr.columns:
+                        if _c == _idc: continue
+                        try:
+                            _ml = _dfr[_c].dropna().astype(str).str.len().mean()
+                        except Exception:
+                            _ml = 0
+                        if _ml > _blen: _best, _blen = _c, _ml
+                    if _blen > 10: _dsc = _best
+                if _dsc is None:
+                    continue
+                for _, _r in _dfr.iterrows():
+                    _k = str(_r[_idc]).strip()
+                    _v = str(_r[_dsc]).strip()
+                    if _k and _v and _k.lower() != "nan" and _v.lower() != "nan":
+                        _RASM_TAVSIF[_k] = _v
+                if _RASM_TAVSIF:
+                    print(f"[rasm_tavsif] '{_sn}' varaqdan {len(_RASM_TAVSIF)} ta")
+                    break
+        except Exception as _e:
+            print(f"[rasm_tavsif] varaq xato: {_e}")
+
+    if not _RASM_TAVSIF:
+        print("[rasm_tavsif] tavsif topilmadi")
+    else:
+        # DB ga saqlaymiz (bot qayta ishga tushsa ham yo'qolmasin)
+        try:
+            _c = _get_db_conn(); _cr = _c.cursor()
+            _cr.execute("""CREATE TABLE IF NOT EXISTS rasm_tavsif(
+                image_id TEXT PRIMARY KEY, description TEXT)""")
+            for _k, _v in _RASM_TAVSIF.items():
+                _cr.execute("""INSERT INTO rasm_tavsif(image_id,description) VALUES(%s,%s)
+                    ON CONFLICT(image_id) DO UPDATE SET description=EXCLUDED.description""",
+                    (_k, _v))
+            _c.commit(); _cr.close(); _c.close()
+            print(f"[rasm_tavsif] DB ga {len(_RASM_TAVSIF)} ta saqlandi")
+        except Exception as _e:
+            print(f"[rasm_tavsif] DB xato: {_e}")
+
     if "topic_code" not in df.columns:
         await target.answer(
             "❌ Excel ustunlari mos emas.\n"
@@ -1677,17 +1770,24 @@ async def import_tests_excel(target, path, user_id):
     admin_state[user_id] = None
 
     # ═══ RASMLARNI AVTOMATIK CHIZISH ═══
-    asyncio.create_task(_auto_generate_images(target, user_id))
+    asyncio.create_task(_auto_generate_images(user_id))
 
 
-async def _auto_generate_images(target, user_id):
-    """image_url da tavsif bor testlar uchun bitta-bitta rasm chizadi."""
+async def _auto_generate_images(user_id, resume=False):
+    """image_url kodiga mos tavsif bo'yicha rasm chizadi.
+    Limit tugasa to'xtaydi va 'davom etish' tugmasini beradi."""
     import asyncio as _a
+    print(f"[auto_img] boshlandi (resume={resume})")
+
     conn = _get_db_conn(); cur = conn.cursor()
     try:
-        # image_url bo'sh emas, file_id yo'q (hali chizilmagan)
+        cur.execute("ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS image_file_id TEXT")
+        conn.commit()
+    except Exception as e:
+        print(f"[auto_img] alter: {e}"); conn.rollback()
+    try:
         cur.execute("""
-            SELECT id, image_url, question, topic_code
+            SELECT id, image_url
             FROM generated_tests
             WHERE image_url IS NOT NULL AND image_url <> ''
               AND (image_file_id IS NULL OR image_file_id = '')
@@ -1695,86 +1795,188 @@ async def _auto_generate_images(target, user_id):
         """)
         rows = cur.fetchall()
     except Exception as e:
-        # image_file_id ustuni yo'q bo'lsa qo'shamiz
-        try:
-            cur.execute("ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS image_file_id TEXT")
-            conn.commit()
-            cur.execute("""
-                SELECT id, image_url, question, topic_code
-                FROM generated_tests
-                WHERE image_url IS NOT NULL AND image_url <> ''
-                  AND (image_file_id IS NULL OR image_file_id = '')
-                ORDER BY id
-            """)
-            rows = cur.fetchall()
-        except Exception as e2:
-            print(f"[auto_img] {e2}")
-            cur.close(); conn.close()
-            return
+        print(f"[auto_img] select: {e}")
+        cur.close(); conn.close()
+        return
     cur.close(); conn.close()
 
     if not rows:
+        try: await bot.send_message(user_id, "✅ Barcha rasmlar chizilgan!")
+        except Exception: pass
         return
 
-    total = len(rows)
-    status = await target.answer(f"🎨 Rasm chizish boshlandi\n📊 Jami: {total} ta")
-    ok = 0; fail = 0
+    # Tavsiflar xotirada yo'q bo'lsa DB dan yuklaymiz
+    if not _RASM_TAVSIF:
+        try:
+            c1=_get_db_conn(); cr1=c1.cursor()
+            cr1.execute("SELECT image_id, description FROM rasm_tavsif")
+            for _k,_v in cr1.fetchall():
+                _RASM_TAVSIF[_k]=_v
+            cr1.close(); c1.close()
+            print(f"[auto_img] DB dan {len(_RASM_TAVSIF)} ta tavsif")
+        except Exception as e:
+            print(f"[auto_img] tavsif DB: {e}")
 
-    from rasim_generator import generate_smart
+    total = len(rows)
+    status = await bot.send_message(user_id, f"🎨 Rasm chizish\n📊 Qolgan: {total} ta")
+    ok = 0; fail = 0; skip = 0; limit_hit = False
+
+    from rasim_generator import generate_cf_flux_ex, generate_together_flux
     from aiogram.types import BufferedInputFile
 
-    for idx, (tid, tavsif, savol, tcode) in enumerate(rows, 1):
-        tavsif = (tavsif or "").strip()
-        # URL yoki LaTeX bo'lsa o'tkazamiz
-        if tavsif.startswith("http") or tavsif.startswith("\\") or tavsif.startswith("$"):
-            continue
+    for idx, (tid, img_code) in enumerate(rows, 1):
+        img_code = (img_code or "").strip()
+        if img_code.startswith("http") or img_code.startswith("\\") or img_code.startswith("$"):
+            skip += 1; continue
+
+        tavsif = _RASM_TAVSIF.get(img_code, "")
+        if not tavsif:
+            print(f"[auto_img] {tid} tavsif yo'q: {img_code}")
+            skip += 1; continue
+
+        # Allaqachon chizilganmi?
+        try:
+            c0=_get_db_conn(); cr0=c0.cursor()
+            cr0.execute("SELECT file_id FROM images WHERE name=%s LIMIT 1",(img_code,))
+            ex=cr0.fetchone()
+            if ex and ex[0]:
+                cr0.execute("UPDATE generated_tests SET image_file_id=%s WHERE id=%s",(ex[0],tid))
+                c0.commit(); cr0.close(); c0.close()
+                ok += 1; continue
+            cr0.close(); c0.close()
+        except Exception: pass
+
         try:
             await status.edit_text(
-                f"🎨 Chizilmoqda... {idx}/{total}\n"
-                f"✅ {ok}  ❌ {fail}\n\n"
+                f"🎨 Chizilmoqda {idx}/{total}\n"
+                f"✅ {ok}   ❌ {fail}   ⏭ {skip}\n\n"
                 f"📝 {tavsif[:60]}"
             )
         except Exception: pass
 
-        try:
-            img, prompt = await generate_smart(tavsif, "ta'lim", "", "chizma", is_admin=True)
-        except Exception as e:
-            print(f"[auto_img] {tid}: {e}")
-            img = None
+        prompt = (f"{tavsif}, colorful cartoon illustration for children, "
+                  f"clean simple shapes, bright colors, white background, "
+                  f"Uzbek Central Asian people if any person appears")
+
+        img = None; err = None
+        for _try in (1, 2):
+            img, err = await generate_cf_flux_ex(prompt, steps=8)
+            if img or err == "limit":
+                break
+            if _try == 1:
+                print(f"[auto_img] {tid} qayta urinamiz (15s)")
+                await _a.sleep(15)
+
+        # Limit tugadi — to'xtaymiz
+        if err == "limit":
+            limit_hit = True
+            print(f"[auto_img] LIMIT tugadi, {idx-1} ta chizildi")
+            break
+
+        # Cloudflare ishlamasa Together zaxira
+        if not img:
+            try: img = await generate_together_flux(prompt, steps=8)
+            except Exception: img = None
 
         if img:
             try:
-                sent = await target.answer_photo(
-                    BufferedInputFile(img, f"test_{tid}.png"),
-                    caption=f"🖼 #{idx}/{total} · ID {tid}\n📝 {tavsif[:70]}"
+                sent = await bot.send_photo(
+                    chat_id=user_id,
+                    photo=BufferedInputFile(img, f"{img_code}.png"),
+                    caption=f"🖼 {idx}/{total} · <code>{img_code}</code>\n📝 {tavsif[:70]}",
+                    parse_mode="HTML",
+                    disable_notification=True
                 )
                 fid = sent.photo[-1].file_id
-                c2 = _get_db_conn(); cr2 = c2.cursor()
-                cr2.execute("UPDATE generated_tests SET image_file_id=%s WHERE id=%s", (fid, tid))
+                c2=_get_db_conn(); cr2=c2.cursor()
+                cr2.execute("UPDATE generated_tests SET image_file_id=%s WHERE id=%s",(fid,tid))
+                try:
+                    cr2.execute("INSERT INTO images(name,file_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                                (img_code,fid))
+                except Exception: pass
                 c2.commit(); cr2.close(); c2.close()
                 ok += 1
             except Exception as e:
-                print(f"[auto_img] saqlash {tid}: {e}")
+                print(f"[auto_img] {tid} yuborish: {e}")
                 fail += 1
         else:
             fail += 1
+            print(f"[auto_img] {tid} chizilmadi")
+
+        await _a.sleep(1)
+
+    # ═══ YAKUN ═══
+    qolgan = total - ok - skip - fail
+    if limit_hit:
+        try:
+            await status.edit_text(
+                f"⏸ <b>Kunlik limit tugadi</b>\n\n"
+                f"✅ Chizildi: {ok}\n"
+                f"⏳ Qolgan: {qolgan} ta\n\n"
+                f"🕐 Limit ertaga soat 05:00 da tiklanadi.\n"
+                f"Bot avtomatik davom ettiradi.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="▶️ Hozir davom etish", callback_data="rsmres")
+                ]])
+            )
+        except Exception: pass
+        # Ertangi kunga belgilaymiz
+        _IMG_PENDING[user_id] = True
+    else:
+        _IMG_PENDING.pop(user_id, None)
+        try:
+            await status.edit_text(
+                f"✅ <b>Rasm chizish tugadi</b>\n\n"
+                f"✅ Chizildi: {ok}\n"
+                f"⏭ O'tkazildi: {skip}\n"
+                f"❌ Xato: {fail}",
+                parse_mode="HTML"
+            )
+        except Exception: pass
+    print(f"[auto_img] tugadi ok={ok} fail={fail} skip={skip} limit={limit_hit}")
+
+
+async def _daily_image_resume():
+    """Har kuni limit tiklangach (00:10 UTC) rasm chizishni davom ettiradi."""
+    import asyncio as _a
+    from datetime import datetime, timezone
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            secs = ((23 - now.hour) * 3600 + (59 - now.minute) * 60) + 600
+            await _a.sleep(max(secs, 60))
+
+            # Chizilmagan rasm bormi?
             try:
-                await target.answer(f"⚠️ #{idx} chizilmadi (ID {tid})\n15 soniya kutilmoqda...")
-            except Exception: pass
-            await _a.sleep(15)   # xato bo'lsa 15 soniya kutamiz
-            continue
+                c=_get_db_conn(); cr=c.cursor()
+                cr.execute("""SELECT COUNT(*) FROM generated_tests
+                    WHERE image_url IS NOT NULL AND image_url<>''
+                      AND (image_file_id IS NULL OR image_file_id='')""")
+                qolgan=(cr.fetchone() or [0])[0]
+                cr.close(); c.close()
+            except Exception:
+                qolgan = 0
+            if qolgan == 0:
+                continue
 
-        await _a.sleep(2)   # limitga urilmaslik uchun
-
-    try:
-        await status.edit_text(
-            f"✅ Rasm chizish tugadi\n\n"
-            f"📊 Jami: {total}\n"
-            f"✅ Chizildi: {ok}\n"
-            f"❌ Xato: {fail}"
-        )
-    except Exception: pass
-
+            for uid in ADMINS:
+                try:
+                    await bot.send_message(
+                        uid,
+                        f"🌅 <b>Limit tiklandi</b>\n\n"
+                        f"⏳ Chizilmagan rasm: {qolgan} ta\n\nDavom etamizmi?",
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="▶️ Ha, davom et", callback_data="rsmres"),
+                            InlineKeyboardButton(text="⏸ Keyinroq", callback_data="rsmlat"),
+                        ]])
+                    )
+                except Exception as e:
+                    print(f"[daily_img] {uid}: {e}")
+        except Exception as e:
+            print(f"[daily_img] {e}")
+            await _a.sleep(3600)
 
 @dp.message()
 async def handle_all(
@@ -6115,6 +6317,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         return
 
+    if call.data == "rsmlat":
+        await call.answer("⏸ Keyinroq")
+        try: await call.message.edit_text("⏸ Rasm chizish kechiktirildi.\nErtaga yana so'rayman.")
+        except Exception: pass
+        return
+
+    if call.data == "rsmres":
+        await call.answer("▶️ Davom etmoqda...")
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        asyncio.create_task(_auto_generate_images(call.from_user.id, resume=True))
+        return
+
     if call.data == "test_stop":
         await call.answer()
         await call.message.answer(
@@ -6214,6 +6429,7 @@ async def main():
     # Health server
     try:
         asyncio.create_task(_health_server())
+        asyncio.create_task(_daily_image_resume())
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
