@@ -261,7 +261,9 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         PAGE = 10
         conn2=_get_db_conn();cur2=conn2.cursor()
         # MAVZU darajasi — kichik mavzular ko'rinmaydi
-        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, COUNT(g.id) as cnt
+        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code,
+                   ARRAY_AGG(DISTINCT d.topic_code) AS kodlar,
+                   COUNT(g.id) as cnt
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.grade=%s AND d.subject_name=%s AND d.is_deleted=FALSE
             AND d.mavzu_code IS NOT NULL
@@ -271,11 +273,13 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         total = len(mavzular)
         page_items = mavzular[page*PAGE:(page+1)*PAGE]
 
+        import ts_cache
         rows2=[]
-        for m in page_items:
-            cb=f"ts_mavzu:{m[1]}|{gr}|{_mavzu_hash(m[0])}"
+        for mname, mcode, kodlar, cnt in page_items:
+            sid = ts_cache.saqla(kodlar, mname, gr, fan2, cnt)
+            cb = f"ts_sel:{sid}" if sid else f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
             rows2.append([InlineKeyboardButton(
-                text=f"📝 {(m[0] or m[1])[:38]} ({m[2]})",
+                text=f"📝 {(mname or mcode)[:38]} ({cnt})",
                 callback_data=cb
             )])
 
