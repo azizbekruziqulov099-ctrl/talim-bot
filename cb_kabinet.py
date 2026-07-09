@@ -14,25 +14,28 @@ def render_text(t):
     return t.strip()
 
 def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
-    """Yangi akkaunt — alohida effektiv user_id bilan."""
+    """Yangi akkaunt — ALOHIDA ma'lumot bazasi bilan.
+    idx=0 -> user_id = telegram_id
+    idx=N -> user_id = telegram_id*1000+N  (baho/to'garak alohida)"""
     conn=_get_db_conn();cur=conn.cursor()
     try:
         cur.execute("SELECT COALESCE(MAX(account_index),-1)+1 FROM user_accounts WHERE telegram_id=%s",(telegram_id,))
         new_idx=cur.fetchone()[0]
-        # Effektiv user_id: idx=0 → telegram_id, idx>0 → telegram_id*1000+idx
         eff_uid = telegram_id if new_idx==0 else telegram_id*1000+new_idx
-        print(f"[new_acc] telegram={telegram_id} name={name} rol={rol_uz} idx={new_idx} eff_uid={eff_uid}")
+        print(f"[new_acc] tg={telegram_id} idx={new_idx} eff={eff_uid} rol={rol_uz}")
+
         cur.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(telegram_id,))
         cur.execute("""INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
             VALUES(%s,%s,%s,%s,%s,TRUE)""",(telegram_id,new_idx,name,rol_uz,sinf_txt))
-        # users da alohida qator (effektiv uid)
+
+        # Har akkauntning users da O'Z qatori (eff_uid bo'yicha)
         cur.execute("UPDATE users SET full_name=%s,role=%s,class=%s WHERE user_id=%s",
                     (name,rol_uz,sinf_txt,eff_uid))
         if cur.rowcount==0:
             cur.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
                         (eff_uid,name,rol_uz,sinf_txt))
         conn.commit()
-        print(f"[new_acc] ✅ saqlandi eff_uid={eff_uid}")
+        print(f"[new_acc] ✅ eff_uid={eff_uid}")
         ok=True
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -41,8 +44,19 @@ def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
     cur.close();conn.close()
     return ok
 
+def _clear_eff_cache(tg_id):
+    """Talim.py dagi effektiv-ID keshini tozalaydi."""
+    try:
+        import sys as _s
+        _t = _s.modules.get("Talim") or _s.modules.get("__main__")
+        if _t and hasattr(_t, "_EFF_CACHE"):
+            _t._EFF_CACHE.pop(tg_id, None)
+    except Exception as e:
+        print(f"[eff_cache] {e}")
+
 async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
+    tg_id = call.from_user.id   # haqiqiy telegram ID (akkaunt boshqaruv uchun)
     if call.data == "parent_link":
         await call.answer()
         user_state[user_id]="parent_link_id"
@@ -192,7 +206,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         rol_uz={"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol_uz,user_id))
-        cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol_uz,user_id))
+        cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol_uz,tg_id))
         conn2.commit();cur2.close();conn2.close()
         from keyboards import get_main_keyboard
         await call.message.answer(f"✅ Rol o'zgartirildi: {rol_uz}",reply_markup=get_main_keyboard(rol_uz))
@@ -221,7 +235,8 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             await call.message.edit_text(f"🧒 {name}\n\nSinfni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         else:
             # Darhol saqlaymiz
-            ok=_create_new_account(user_id,name,rol_uz,"")
+            ok=_create_new_account(tg_id,name,rol_uz,"")
+            _clear_eff_cache(tg_id)
             user_state.pop(user_id,None)
             from keyboards import get_main_keyboard
             if ok:
@@ -235,7 +250,8 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         parts2=call.data[10:].split("|")
         name=parts2[0]; sinf=parts2[1]
         await call.answer()
-        ok=_create_new_account(user_id,name,"O'quvchi",f"{sinf}-sinf")
+        ok=_create_new_account(tg_id,name,"O'quvchi",f"{sinf}-sinf")
+        _clear_eff_cache(tg_id)
         user_state.pop(user_id,None)
         from keyboards import get_main_keyboard
         if ok:
@@ -251,23 +267,23 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             SELECT id, account_index, full_name, role, class, is_active
             FROM user_accounts WHERE telegram_id=%s
             ORDER BY account_index
-        """, (user_id,))
+        """, (tg_id,))
         accs = cur2.fetchall(); cur2.close(); conn2.close()
         if not accs:
             await call.message.answer("❌ Akkaunt topilmadi"); return True
         rows2=[]
         for a in accs:
-            aktiv = a[5]  # is_active
+            aktiv = a[5]
             sinf = f" {a[4]}" if a[4] else ""
-            rol_uz = a[3] or "—"
             belgi = "✅" if aktiv else "👤"
             rows2.append([InlineKeyboardButton(
-                text=f"{belgi} {a[2] or '—'} — {rol_uz}{sinf}",
+                text=f"{belgi} {a[2] or '—'} — {a[3] or '—'}{sinf}",
                 callback_data=f"kb_activate:{a[0]}"
             )])
         rows2.append([InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")])
         await call.message.answer(
-            f"🔄 <b>Akkauntlaringiz</b> ({len(accs)} ta)\nAlmashtirish uchun tanlang:",
+            f"🔄 <b>Akkauntlaringiz</b> ({len(accs)} ta)\n"
+            f"<i>Har akkaunt alohida: baho, to'garak, natijalar</i>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2)
         )
@@ -276,21 +292,40 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("kb_activate:"):
         acc_id2=int(call.data[12:]); await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
-        cur2.execute("""
-            UPDATE user_accounts SET is_active=TRUE WHERE id=%s
-            RETURNING full_name, role, class
-        """, (acc_id2,))
+        cur2.execute("SELECT account_index, full_name, role, class FROM user_accounts WHERE id=%s AND telegram_id=%s",
+                    (acc_id2, tg_id))
         row2=cur2.fetchone()
-        if row2:
-            cur2.execute("UPDATE users SET full_name=%s, role=%s, class=%s WHERE user_id=%s",
-                        (row2[0],row2[1],row2[2],user_id))
+        if not row2:
+            cur2.close();conn2.close()
+            await call.message.answer("❌ Akkaunt topilmadi"); return True
+        idx2, ism2, rol2, sinf2 = row2
+        eff2 = tg_id if not idx2 else tg_id*1000+int(idx2)
+
+        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(tg_id,))
+        cur2.execute("UPDATE user_accounts SET is_active=TRUE WHERE id=%s",(acc_id2,))
+
+        # Bu akkauntning users qatori bormi? Bo'lmasa yaratamiz
+        cur2.execute("SELECT 1 FROM users WHERE user_id=%s",(eff2,))
+        if not cur2.fetchone():
+            cur2.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
+                        (eff2,ism2,rol2,sinf2))
         conn2.commit();cur2.close();conn2.close()
+
+        # Kesh tozalanadi — endi yangi akkaunt ma'lumoti o'qiladi
+        _clear_eff_cache(tg_id)
+
+        user_state.pop(user_id, None); user_state.pop(tg_id, None)
+        admin_state.pop(user_id, None); admin_state.pop(tg_id, None)
+
         from keyboards import get_main_keyboard
-        sinf=f" {row2[2]}" if row2 and row2[2] else ""
+        sinf_txt = f" · {sinf2}" if sinf2 else ""
+        print(f"[kb_activate] tg={tg_id} idx={idx2} eff={eff2} rol={rol2}")
         await call.message.answer(
-            f"✅ Akkaunt almashtirildi!\n👤 {row2[0] if row2 else ''}\n🎭 {row2[1] if row2 else ''}{sinf}",
-            reply_markup=get_main_keyboard(row2[1] if row2 else "")
+            f"✅ <b>Akkaunt almashtirildi</b>\n\n"
+            f"👤 {ism2}\n🎭 {rol2}{sinf_txt}\n\n"
+            f"<i>Bu akkauntning ma'lumotlari alohida.</i>",
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(rol2 or "")
         )
         return True
 
