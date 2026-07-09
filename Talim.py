@@ -2368,7 +2368,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         user_state.pop(user_id, None)
         _ak = _modul('akkaunt')
         if not _ak:
-            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
         kod = message.text.strip().upper()
         if len(kod) != 8:
             await message.answer("❌ Kod 8 belgi bo'lishi kerak.")
@@ -2395,17 +2395,18 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         _bh = _modul('baholash')
         if not _bh:
-            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ baholash.py yuklanmagan'); return
         iid = _bh.imtihon_yarat(tgid, user_id, nomi, turi)
         if not iid:
             await message.answer("❌ Imtihon yaratilmadi."); return
 
-        if turi == "yozma":
+        if turi in ("yozma", "loyiha"):
+            tugma = "🎨 Baho qo'yish" if turi == "loyiha" else "✍️ Baho qo'yish"
             await message.answer(
                 f"✅ <b>{nomi}</b> yaratildi\n\nEndi baho qo'ying:",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✍️ Baho qo'yish", callback_data=f"im_bal:{iid}")]]))
+                    InlineKeyboardButton(text=tugma, callback_data=f"im_bal:{iid}")]]))
         else:
             admin_state[user_id] = f"im_soni:{tgid}:{iid}"
             await message.answer(
@@ -2455,7 +2456,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
         _bh = _modul('baholash')
         if not _bh:
-            await call.answer('⚠️ baholash.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ baholash.py yuklanmagan'); return
         _bh.baho_qoy(iid, uid2, foiz, manba="teacher")
         imt = _bh.imtihon_ol(iid)
         d = _bh.daraja(foiz)
@@ -3193,7 +3194,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 u=cur2.fetchone(); cur2.close(); conn2.close()
                 uname = f"{u[0]} ({u[1] or ''})" if u else str(user_id)
                 await message.bot.send_message(
-                    res["teacher_id"],
+                    _tg_id(res["teacher_id"]),
                     f"📨 Yangi so'rov!\n👤 {uname}\n📚 {res['togarak_nomi']}\n\nQabul qilasizmi?",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="✅ Qabul", callback_data=f"tg_req_approve:{user_id}|{tgid}"),
@@ -3221,8 +3222,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
         sender_name=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         try:
-            await message.bot.send_message(uid3, f"💬 {sender_name}:\n{matn}")
-        except: pass
+            await message.bot.send_message(_tg_id(uid3), f"💬 {sender_name}:\n{matn}")
+        except Exception as e: print(f"[tg_send_pm] uid={uid3}: {e}")
         await message.answer("✅ Yuborildi!")
         return
 
@@ -3247,9 +3248,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
         uname=(cur2.fetchone() or ["?"])[0]; cur2.close(); conn2.close()
         if hw2:
-            try: await message.bot.send_message(hw2[0],
+            try: await message.bot.send_message(_tg_id(hw2[0]),
                 f"📝 Yangi topshiriq!\n👤 {uname}\n📌 {hw2[1]}\n\n{message.text[:200]}")
-            except: pass
+            except Exception as e: print(f"[hw_submit] teacher={hw2[0]}: {e}")
         await message.answer("✅ Vazifa topshirildi!")
         return
 
@@ -3281,9 +3282,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             members=get_group_members(tgid3)
             dl_txt=str(deadline) if deadline else "muddatsiz"
             for uid3 in members:
-                try: await message.bot.send_message(uid3,
+                try: await message.bot.send_message(_tg_id(uid3),
                     f"📝 Yangi uyga vazifa!\n📌 {mavzu}\n{topshiriq}\n📅 {dl_txt}")
-                except: pass
+                except Exception as e: print(f"[hw_new] a'zo={uid3}: {e}")
             await message.answer(f"✅ Vazifa qo'shildi va {len(members)} ta o'quvchiga yuborildi!")
         return
 
@@ -3299,9 +3300,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         for uid3 in members:
             if uid3==user_id: continue
             try:
-                await message.bot.send_message(uid3, f"📢 To'garak xabari:\n\n{matn}")
+                await message.bot.send_message(_tg_id(uid3), f"📢 To'garak xabari:\n\n{matn}")
                 sent+=1
-            except: pass
+            except Exception as e: print(f"[tg_broadcast] uid={uid3}: {e}")
         send_group_message(tgid3, user_id, matn)
         await message.answer(f"✅ Xabar {sent} ta a'zoga yuborildi!")
         return
@@ -3394,7 +3395,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         user_state.pop(user_id, None)
         _oo = _modul('ota_ona')
         if not _oo:
-            await call.answer('⚠️ ota_ona.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ ota_ona.py yuklanmagan'); return
         kod = message.text.strip()
         if not (kod.isdigit() and len(kod) == 6):
             await message.answer(
@@ -3457,7 +3458,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         cur2.execute("SELECT full_name FROM users WHERE user_id=%s",(user_id,))
         sender=(cur2.fetchone() or ["Ota-ona"])[0]; cur2.close(); conn2.close()
         try:
-            await message.bot.send_message(teacher_id,
+            await message.bot.send_message(_tg_id(teacher_id),
                 f"📨 Ota-ona xabari ({sender}):\n{message.text}")
             await message.answer("✅ O'qituvchiga yuborildi!")
         except:
@@ -7391,7 +7392,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("ak_"):
         _ak = _modul('akkaunt')
         if not _ak:
-            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
         _ak.jadval()
         qism = call.data.split(":")
         amal = qism[0]
@@ -7488,7 +7489,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if amal == "fk_add":
             _ak = _modul('akkaunt')
         if not _ak:
-            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
             tg = _tg_id(user_id)
             # Shu telefondagi boshqa akkauntlar (kod kerak emas — egasi o'zi)
             boshqa = [a for a in _ak.akkauntlar(tg) if a[0] and int(a[0]) != user_id]
@@ -7519,7 +7520,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 await call.answer("❌ O'zingizni ulay olmaysiz", show_alert=True); return
             _ak = _modul('akkaunt')
         if not _ak:
-            await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
+            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
             tg = _tg_id(user_id)
             # Haqiqatan shu telefondami?
             egasi = {int(a[0]) for a in _ak.akkauntlar(tg) if a[0]}
@@ -7852,7 +7853,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             t = ["📊 <b>Imtihonlar</b>\n"]
             rows = []
             for iid, nomi, turi, sana, n in lst:
-                belgi = "✍️" if turi == "yozma" else "🧪"
+                belgi = {"yozma": "✍️", "test": "🧪", "loyiha": "🎨"}.get(turi, "📌")
                 t.append(f"{belgi} {nomi} — {n} ta baho")
                 rows.append([InlineKeyboardButton(
                     text=f"{belgi} {nomi[:28]} ({n})", callback_data=f"im_ko:{iid}")])
@@ -7880,6 +7881,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                                           callback_data=f"im_tur:{tgid}:yozma")],
                     [InlineKeyboardButton(text="🧪 Test — bot baholaydi",
                                           callback_data=f"im_tur:{tgid}:test")],
+                    [InlineKeyboardButton(text="🎨 Loyiha ishi — o'zim baho qo'yaman",
+                                          callback_data=f"im_tur:{tgid}:loyiha")],
                     [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_menu:{tgid}")],
                 ]))
             return
@@ -7887,9 +7890,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if amal == "im_tur":
             tgid = int(qism[1]); turi = qism[2]
             admin_state[user_id] = f"im_nom:{tgid}:{turi}"
+            nomlar = {"yozma": "✍️ Yozma", "test": "🧪 Test", "loyiha": "🎨 Loyiha ishi"}
+            misol = ("Masalan: <code>Retro avtomobil maketi</code>" if turi == "loyiha"
+                     else "Masalan: <code>1-chorak yakuniy</code>")
             await call.message.answer(
-                f"{'✍️ Yozma' if turi=='yozma' else '🧪 Test'} imtihon\n\n"
-                f"Imtihon nomini yozing:\nMasalan: <code>1-chorak yakuniy</code>",
+                f"{nomlar.get(turi, turi)} imtihon\n\n"
+                f"Imtihon nomini yozing:\n{misol}",
                 parse_mode="HTML")
             return
 
@@ -7952,8 +7958,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 t.append("<i>Hali baho qo'yilmagan.</i>")
 
             rows = []
-            if imt["turi"] == "yozma":
-                rows.append([InlineKeyboardButton(text="✍️ Baho qo'yish",
+            if imt["turi"] in ("yozma", "loyiha"):
+                tugma = "🎨 Baho qo'yish" if imt["turi"] == "loyiha" else "✍️ Baho qo'yish"
+                rows.append([InlineKeyboardButton(text=tugma,
                                                   callback_data=f"im_bal:{iid}")])
             else:
                 rows.append([InlineKeyboardButton(text="📢 Qayta e'lon qilish",
@@ -8192,13 +8199,36 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
         else:
             t.append("\n<i>Hali to'garakka a'zo emas.</i>")
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{child_id}"),
-             InlineKeyboardButton(text="📝 Uy vazifasi", callback_data=f"op_vazifa:{child_id}")],
-            [InlineKeyboardButton(text="🎓 Imtihonlar", callback_data=f"op_imtihon:{child_id}"),
-             InlineKeyboardButton(text="⭐ Baholar", callback_data=f"op_baho:{child_id}")],
-            [InlineKeyboardButton(text="📊 Nazorat", callback_data=f"op_nazorat:{child_id}")],
+            [InlineKeyboardButton(text="📚 Mavzular", callback_data=f"op_mavzu:{child_id}"),
+             InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{child_id}")],
+            [InlineKeyboardButton(text="📝 Uy vazifasi", callback_data=f"op_vazifa:{child_id}"),
+             InlineKeyboardButton(text="🎓 Imtihonlar", callback_data=f"op_imtihon:{child_id}")],
+            [InlineKeyboardButton(text="⭐ Baholar", callback_data=f"op_baho:{child_id}"),
+             InlineKeyboardButton(text="📊 Nazorat", callback_data=f"op_nazorat:{child_id}")],
         ])
         await _javob(source, "\n".join(t)[:3800], kb)
+        return
+
+    if bolim == "mavzu":
+        royxat = _op.mavzular_royxati(child_id)
+        t = [bosh, "📚 <b>O'quv rejasi</b>\n"]
+        bor = False
+        for tg_nomi, mavzular in royxat:
+            if not mavzular:
+                continue
+            bor = True
+            otilgan = sum(1 for _, ok, _ in mavzular if ok)
+            t.append(f"📖 <b>{tg_nomi}</b> — {otilgan}/{len(mavzular)} o'tildi")
+            for nom, ok, vaqt in mavzular[:25]:
+                belgi = "✅" if ok else "⏳"
+                vt = f" · {vaqt}" if (ok and vaqt) else ""
+                t.append(f"  {belgi} {nom[:42]}{vt}")
+            if len(mavzular) > 25:
+                t.append(f"  <i>... yana {len(mavzular)-25} ta</i>")
+            t.append("")
+        if not bor:
+            t.append("<i>Bu to'garakda hali o'quv rejasi tuzilmagan.</i>")
+        await _javob(source, "\n".join(t)[:3900], _ota_orqaga(child_id))
         return
 
     if bolim == "yoqlama":
@@ -8236,7 +8266,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
             for nomi, foiz, turi, sana in im:
                 f = float(foiz or 0)
                 belgi = "🏆" if f >= 90 else ("⭐" if f >= 75 else ("👍" if f >= 60 else "📖"))
-                tur = "✍️" if turi == "yozma" else "🧪"
+                tur = {"yozma": "✍️", "test": "🧪", "loyiha": "🎨"}.get(turi, "📌")
                 s = sana.strftime("%d.%m") if sana else ""
                 t.append(f"{belgi} {tur} {nomi[:28]} — <b>{f:.0f}%</b>  {s}")
         else:
@@ -8458,8 +8488,8 @@ async def main():
                                f"📋 Davomat: {rep['keldi']} kun keldi\n"
                                f"⭐ O'rt.baho: {rep['avg_baho']}\n"
                                f"📝 Vazifa: {rep['hw_done']} ta topshirdi")
-                        try: await bot.send_message(r[0], txt)
-                        except: pass
+                        try: await bot.send_message(_tg_id(r[0]), txt)
+                        except Exception as e: print(f"[weekly_report] parent={r[0]}: {e}")
                 except Exception as e:
                     print(f"weekly_report: {e}")
             await asyncio.sleep(60)
