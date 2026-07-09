@@ -7,6 +7,21 @@ def _get_db_conn():
     import psycopg2 as _p; return _p.connect(DATABASE_URL)
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
 
+def _chat_id(uid):
+    """Ichki uid dan haqiqiy telegram chat_id topadi (cb_togarak.py bilan bir xil)."""
+    tg = uid // 1000 if uid > 10_000_000_000 else uid
+    try:
+        conn = _get_db_conn(); cur = conn.cursor()
+        cur.execute("""SELECT telegram_id FROM user_accounts WHERE uid=%s
+            ORDER BY is_active DESC LIMIT 1""", (uid,))
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        if r and r[0]:
+            tg = int(r[0])
+    except Exception as e:
+        print(f"[cb_student_tg] chat_id({uid}): {e}")
+    return tg
+
 def _mavzu_hash(nom):
     """Mavzu nomining qisqa belgisi (Talim.py bilan bir xil)."""
     import hashlib
@@ -306,14 +321,15 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         if res["ok"]:
             try:
                 await call.bot.send_message(
-                    res["teacher_id"],
+                    _chat_id(res["teacher_id"]),
                     f"⚠️ Chiqish so'rovi!\n👤 {res['user_name']}\n📚 {res['tg_nomi']}",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="✅ Ruxsat", callback_data=f"tg_leave_ok:{user_id}|{tgid}"),
                         InlineKeyboardButton(text="❌ Yo'q",   callback_data=f"tg_leave_no:{user_id}|{tgid}"),
                     ]])
                 )
-            except: pass
+            except Exception as e:
+                print(f"[stg_leave_req] xabar yuborilmadi teacher={res['teacher_id']}: {e}")
             await call.message.answer("✅ So'rov yuborildi! O'qituvchi javobini kuting.")
         return True
 
@@ -322,16 +338,16 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         from togarak import confirm_leave
         confirm_leave(tgid2,uid2)
-        try: await call.bot.send_message(uid2,"✅ To'garakdan chiqishingizga ruxsat berildi.")
-        except: pass
+        try: await call.bot.send_message(_chat_id(uid2),"✅ To'garakdan chiqishingizga ruxsat berildi.")
+        except Exception as e: print(f"[tg_leave_ok] uid={uid2}: {e}")
         await call.message.edit_text("✅ Tasdiqlandi.",reply_markup=None)
         return True
 
     if call.data.startswith("tg_leave_no:"):
         parts2=call.data[12:].split("|"); uid2=int(parts2[0])
         await call.answer()
-        try: await call.bot.send_message(uid2,"❌ Chiqish so'rovingiz rad etildi.")
-        except: pass
+        try: await call.bot.send_message(_chat_id(uid2),"❌ Chiqish so'rovingiz rad etildi.")
+        except Exception as e: print(f"[tg_leave_no] uid={uid2}: {e}")
         await call.message.edit_text("❌ Rad etildi.",reply_markup=None)
         return True
 
