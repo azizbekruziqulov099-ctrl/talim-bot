@@ -2232,6 +2232,54 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                              reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
 
+    # ═══════════════════════════════════════════
+    # 👨‍👩‍👧 OTA-ONA PANELI (matn tugmalari)
+    # handler_parent.py routeri handle_all dan keyin ulanadi va
+    # hech qachon ishlamaydi — shuning uchun shu yerda ushlaymiz.
+    # ═══════════════════════════════════════════
+    if message.text and not message.text.startswith("/"):
+        _mt = message.text.strip().lower()
+        _ota_tugma = None
+        if "farzand" in _mt and "qo'sh" not in _mt and "qosh" not in _mt:
+            _ota_tugma = "asosiy"
+        elif "yo'qlama" in _mt or "yoqlama" in _mt or "davomat" in _mt:
+            _ota_tugma = "yoqlama"
+        elif "uy vazifa" in _mt or _mt in ("📝 uy", "uy"):
+            _ota_tugma = "vazifa"
+        elif "imtihon" in _mt and not _mt.startswith("/"):
+            _ota_tugma = "imtihon"
+        elif "nazorat" in _mt:
+            _ota_tugma = "nazorat"
+        elif "baho" in _mt and "qo'y" not in _mt:
+            _ota_tugma = "baho"
+
+        if _ota_tugma:
+            _rol = (_get_user_qisqa(user_id)[1] or "").lower()
+            _ota_mi = ("ota" in _rol or "ona" in _rol or "parent" in _rol)
+            # Ota-ona paneli FAQAT ota-onaga. Boshqalar o'z handlerlariga o'tadi.
+            if not _ota_mi:
+                _ota_tugma = None
+
+        if _ota_tugma:
+            import ota_ona as _oo
+            lst = _oo.farzandlar(user_id)
+            if not lst:
+                await message.answer(
+                    "👨‍👩‍👧 <b>Sizda farzand ulanmagan</b>\n\n"
+                    "Farzandingizni ulash uchun:",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="➕ Farzand qo'shish", callback_data="fk_add")]]))
+                return
+            if len(lst) == 1:
+                await _ota_ekran(message, user_id, lst[0][0], _ota_tugma)
+                return
+            rows = [[InlineKeyboardButton(text=f"👤 {ism[:24]} {sinf}",
+                     callback_data=f"op_{_ota_tugma}:{cid}")] for cid, ism, sinf in lst]
+            await message.answer("👨‍👩‍👧 Farzandni tanlang:",
+                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
     # ═══ AKKAUNT: ko'chirish kodi kiritildi ═══
     if user_state.get(user_id) == "ak_kod_kirit" and message.text:
         user_state.pop(user_id, None)
@@ -7157,6 +7205,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ═══════════════════════════════════════════
+    # 👨‍👩‍👧 OTA-ONA PANELI (op_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("op_"):
+        qism = call.data.split(":")
+        bolim = qism[0][3:]           # asosiy / yoqlama / vazifa / imtihon / baho / nazorat
+        child_id = int(qism[1])
+        await _ota_ekran(call, user_id, child_id, bolim)
+        return
+
+    # ═══════════════════════════════════════════
     # 📲 AKKAUNT KO'CHIRISH (ak_)
     # ═══════════════════════════════════════════
     if call.data.startswith("ak_"):
@@ -7911,6 +7969,139 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.delete()
         except: pass
         return
+
+
+async def _ota_ekran(source, parent_id, child_id, bolim):
+    """Ota-ona uchun farzand ekranlari."""
+    import ota_panel as _op
+    import ota_ona as _oo
+
+    if not _oo.bogliqmi(parent_id, child_id):
+        await _javob(source, "❌ Bu farzand sizga ulanmagan.")
+        return
+
+    info = _op.farzand_info(child_id)
+    bosh = f"👤 <b>{info['ism']}</b> {info['sinf']}\n"
+
+    if bolim == "asosiy":
+        naz = _op.nazorat(child_id)
+        t = [bosh]
+        if naz:
+            for y in naz:
+                t.append(f"\n📚 <b>{y['togarak']}</b>")
+                t.append(f"   🎯 Yakuniy: <b>{y['yakuniy']}%</b> {y['daraja']}")
+                if y["orin"]:
+                    t.append(f"   🏆 O'rin: {y['orin']}/{y['jami']}")
+        else:
+            t.append("\n<i>Hali to'garakka a'zo emas.</i>")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{child_id}"),
+             InlineKeyboardButton(text="📝 Uy vazifasi", callback_data=f"op_vazifa:{child_id}")],
+            [InlineKeyboardButton(text="🎓 Imtihonlar", callback_data=f"op_imtihon:{child_id}"),
+             InlineKeyboardButton(text="⭐ Baholar", callback_data=f"op_baho:{child_id}")],
+            [InlineKeyboardButton(text="📊 Nazorat", callback_data=f"op_nazorat:{child_id}")],
+        ])
+        await _javob(source, "\n".join(t)[:3800], kb)
+        return
+
+    if bolim == "yoqlama":
+        y = _op.yoqlama(child_id)
+        t = [bosh, "📋 <b>Davomat</b>\n"]
+        if y:
+            for nomi, keldi, jami, foiz in y:
+                belgi = "🟢" if foiz >= 80 else ("🟡" if foiz >= 60 else "🔴")
+                t.append(f"{belgi} {nomi}")
+                t.append(f"   {keldi}/{jami} dars · {foiz}%")
+        else:
+            t.append("<i>Yo'qlama ma'lumoti yo'q.</i>")
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        return
+
+    if bolim == "vazifa":
+        v = _op.vazifalar(child_id)
+        t = [bosh, "📝 <b>Uy vazifalari</b>\n"]
+        if v:
+            bajardi = sum(1 for x in v if x[3])
+            t.append(f"✅ Topshirdi: {bajardi}/{len(v)}\n")
+            for nomi, mavzu, dl, ok in v[:12]:
+                belgi = "✅" if ok else "⏳"
+                sana = f" · {dl}" if dl else ""
+                t.append(f"{belgi} {mavzu[:38]}{sana}")
+        else:
+            t.append("<i>Vazifa yo'q.</i>")
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        return
+
+    if bolim == "imtihon":
+        im = _op.imtihonlar(child_id)
+        t = [bosh, "🎓 <b>Imtihon natijalari</b>\n"]
+        if im:
+            for nomi, foiz, turi, sana in im:
+                f = float(foiz or 0)
+                belgi = "🏆" if f >= 90 else ("⭐" if f >= 75 else ("👍" if f >= 60 else "📖"))
+                tur = "✍️" if turi == "yozma" else "🧪"
+                s = sana.strftime("%d.%m") if sana else ""
+                t.append(f"{belgi} {tur} {nomi[:28]} — <b>{f:.0f}%</b>  {s}")
+        else:
+            t.append("<i>Hali imtihon topshirmagan.</i>")
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        return
+
+    if bolim == "baho":
+        b = _op.baholar(child_id)
+        tn = _op.test_natijalari(child_id)
+        t = [bosh, "⭐ <b>Baholar</b>\n"]
+        if b:
+            t.append("👨‍🏫 O'qituvchi bahosi:")
+            for nomi, baho, sana in b[:10]:
+                s = sana.strftime("%d.%m") if hasattr(sana, "strftime") else ""
+                t.append(f"   {baho} · {nomi[:24]} {s}")
+        if tn:
+            t.append("\n🧪 Mustaqil testlar:")
+            for fan, foiz, _ in tn[:8]:
+                t.append(f"   {fan[:24]} — {int(foiz or 0)}%")
+        if not b and not tn:
+            t.append("<i>Baho yo'q.</i>")
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        return
+
+    if bolim == "nazorat":
+        naz = _op.nazorat(child_id)
+        t = [bosh, "📊 <b>Umumiy nazorat</b>\n"]
+        if naz:
+            for y in naz:
+                t.append(f"📚 <b>{y['togarak']}</b>")
+                t.append(f"   🎯 Yakuniy: <b>{y['yakuniy']}%</b> {y['daraja']}")
+                imt = y["imtihon"] if y["imtihon"] is not None else "—"
+                t.append(f"   🎓 Imtihon: {imt} <i>(80%)</i>")
+                t.append(f"   📝 Vazifa: {y['vazifa']}% <i>(10%)</i>")
+                t.append(f"   🧪 Test: {y['test']}% <i>(10%)</i>")
+                if y["orin"]:
+                    t.append(f"   🏆 Reyting: {y['orin']}/{y['jami']}")
+                t.append("")
+        else:
+            t.append("<i>To'garak yo'q.</i>")
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        return
+
+
+def _ota_orqaga(child_id):
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")]])
+
+
+async def _javob(source, matn, kb=None):
+    """Message yoki CallbackQuery ga javob."""
+    try:
+        if hasattr(source, "message") and source.message is not None:
+            try:
+                await source.message.edit_text(matn, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                await source.message.answer(matn, parse_mode="HTML", reply_markup=kb)
+        else:
+            await source.answer(matn, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        print(f"[ota_ekran] {e}")
 
 
 async def _im_elon(call, tgid, iid, bot):
