@@ -6,6 +6,22 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 def _get_db_conn():
     import psycopg2 as _p; return _p.connect(DATABASE_URL)
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
+
+def _chat_id(uid):
+    """Ichki uid dan haqiqiy telegram chat_id topadi (boshqa cb_*.py fayllar bilan bir xil)."""
+    tg = uid // 1000 if uid > 10_000_000_000 else uid
+    try:
+        conn = _get_db_conn(); cur = conn.cursor()
+        cur.execute("""SELECT telegram_id FROM user_accounts WHERE uid=%s
+            ORDER BY is_active DESC LIMIT 1""", (uid,))
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        if r and r[0]:
+            tg = int(r[0])
+    except Exception as e:
+        print(f"[cb_kabinet] chat_id({uid}): {e}")
+    return tg
+
 def render_text(t):
     if not t: return ""
     import re as _r
@@ -58,6 +74,39 @@ def _clear_eff_cache(tg_id):
             _t._EFF_CACHE.pop(tg_id, None)
     except Exception as e:
         print(f"[eff_cache] {e}")
+
+
+async def _rol_ogohlantirish(call, tg_id):
+    """Rol o'zgartirish taqiqlangan — akkaunt ochish kerak."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    import akkaunt as _ak
+    _ak.jadval()
+    joy = _ak.joy_bormi(tg_id)
+    n = _ak.soni(tg_id)
+
+    matn = (
+        "🚫 <b>Rolni o'zgartirib bo'lmaydi</b>\n\n"
+        "Bitta akkaunt — bitta rol.\n"
+        "Bir odam ham o'quvchi, ham o'qituvchi,\n"
+        "ham ota-ona bo'la olmaydi.\n\n"
+        "Boshqa rol kerak bo'lsa <b>yangi akkaunt</b> oching.\n"
+        "Har akkauntning o'z bahosi, to'garagi, natijasi.\n\n"
+        f"📱 Akkauntlar: {n}/{_ak.MAX_AKKAUNT}"
+    )
+    rows = []
+    if joy:
+        rows.append([InlineKeyboardButton(text="➕ Yangi akkaunt ochish",
+                                          callback_data="kb_new_acc")])
+    if n > 1:
+        rows.append([InlineKeyboardButton(text="🔄 Akkaunt almashtirish",
+                                          callback_data="kb_switch_acc")])
+    if not joy:
+        matn += f"\n\n🚫 Limit to'lgan. Bittasini uzing."
+        rows.append([InlineKeyboardButton(text="📱 Akkauntlar", callback_data="ak_menu")])
+
+    await call.message.answer(matn, parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+
 
 async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
@@ -171,7 +220,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             await call.message.answer("❌ Bu mavzuda testlar yo'q!"); return True
         # Farzandga test yuborish
         try:
-            await call.bot.send_message(child_id,
+            await call.bot.send_message(_chat_id(child_id),
                 f"📝 Ota-onangiz sizga test yubordi!\nMavzu: {tcode}")
             from test_engine import start_test
             await start_test(child_id, tests, call.message)
@@ -196,25 +245,9 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer("✏️ Yangi ismingizni yozing:")
         return True
 
-    if call.data == "kb_change_role":
+    if call.data == "kb_change_role" or call.data.startswith("kb_set_role:"):
         await call.answer()
-        rows2=[
-            [InlineKeyboardButton(text="🧒 O'quvchi",callback_data="kb_set_role:student")],
-            [InlineKeyboardButton(text="👨‍🏫 O'qituvchi",callback_data="kb_set_role:teacher")],
-            [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",callback_data="kb_set_role:parent")],
-        ]
-        await call.message.answer("🎭 Yangi rolni tanlang:",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
-        return True
-
-    if call.data.startswith("kb_set_role:"):
-        rol=call.data[12:]; await call.answer()
-        rol_uz={"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol_uz,user_id))
-        cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol_uz,tg_id))
-        conn2.commit();cur2.close();conn2.close()
-        from keyboards import get_main_keyboard
-        await call.message.answer(f"✅ Rol o'zgartirildi: {rol_uz}",reply_markup=get_main_keyboard(rol_uz))
+        await _rol_ogohlantirish(call, tg_id)
         return True
 
     if call.data == "kb_new_acc":
@@ -386,30 +419,13 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             "school": "🏛 Maktab nomini yozing:",
         }
         if field == "role":
-            await call.message.answer("🎭 Yangi rolni tanlang:",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🧒 O'quvchi",   callback_data="kb_set_role:O'quvchi")],
-                    [InlineKeyboardButton(text="👨‍🏫 O'qituvchi", callback_data="kb_set_role:O'qituvchi")],
-                    [InlineKeyboardButton(text="👨‍👩‍👧 Ota-ona",    callback_data="kb_set_role:Ota-ona")],
-                ]))
+            await _rol_ogohlantirish(call, tg_id)
         elif field == "class":
             rows2=[[InlineKeyboardButton(text=f"{i}-sinf",callback_data=f"kb_set_class:{i}") for i in range(j,j+4)] for j in range(1,12,4)]
             await call.message.answer("🏫 Sinfni tanlang:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         else:
             user_state[user_id] = f"kb_change_{field}"
             await call.message.answer(prompts[field])
-        return True
-
-    if call.data.startswith("kb_set_role:"):
-        rol = call.data[12:]; await call.answer()
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("UPDATE users SET role=%s WHERE user_id=%s",(rol,user_id))
-        try:
-            cur2.execute("UPDATE user_accounts SET role=%s WHERE telegram_id=%s AND is_active=TRUE",(rol,user_id))
-        except: pass
-        conn2.commit();cur2.close();conn2.close()
-        from keyboards import get_main_keyboard
-        await call.message.answer(f"✅ Rol o'zgartirildi: {rol}", reply_markup=get_main_keyboard(rol))
         return True
 
     if call.data.startswith("kb_set_class:"):
