@@ -5573,6 +5573,7 @@ def _mk_ts_kb(st2, cnt_total):
     timed = st2.get("ts_timed", "mix")   # True/False/"mix"
     write = st2.get("ts_write", False)   # True/False/"mix"
     img   = st2.get("ts_img", "mix")     # True/False/"mix"
+    ovoz  = st2.get("ts_ovoz", False)    # True = avto ovoz, False = tugma bilan
 
     # Son tugmalari — mavjuddan oshmasin
     son_qatori = []
@@ -5599,6 +5600,8 @@ def _mk_ts_kb(st2, cnt_total):
         [InlineKeyboardButton(text=f"{c(img==True)}🖼 Rasmli",       callback_data="ts_img_1"),
          InlineKeyboardButton(text=f"{c(img==False)}📝 Rasmsiz",     callback_data="ts_img_0"),
          InlineKeyboardButton(text=f"{c(img=='mix')}🔀 Aralash",     callback_data="ts_img_mix")],
+        [InlineKeyboardButton(text=f"{c(ovoz==False)}🔇 Ovozsiz",    callback_data="ts_ovoz_0"),
+         InlineKeyboardButton(text=f"{c(ovoz==True)}🔊 Avto ovoz",   callback_data="ts_ovoz_1")],
         [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
     ])
 
@@ -5748,11 +5751,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         call.data = f"ts_start:{tc_set}"
 
     if call.data.startswith("ts_mavzu:"):
-        mavzu_code = call.data[9:]
-        from storage import user_state as _us0
-        _sel = _us0.get(user_id) if isinstance(_us0.get(user_id), dict) else {}
-        gr_sel   = _sel.get("ts_grade")
-        subj_sel = _sel.get("ts_subject")
+        # Format: ts_mavzu:{mavzu_code}  yoki  ts_mavzu:{mavzu_code}|{grade}|{subject}
+        _payload = call.data[9:]
+        _p = _payload.split("|")
+        mavzu_code = _p[0]
+        gr_sel   = _p[1] if len(_p) > 1 and _p[1] else None
+        subj_sel = _p[2] if len(_p) > 2 and _p[2] else None
+
+        # Tugmada bo'lmasa — user_state dan olamiz
+        if not gr_sel or not subj_sel:
+            from storage import user_state as _us0
+            _sel = _us0.get(user_id) if isinstance(_us0.get(user_id), dict) else {}
+            gr_sel   = gr_sel   or _sel.get("ts_grade")
+            subj_sel = subj_sel or _sel.get("ts_subject")
 
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # mavzu_code sinflar bo'ylab TAKRORLANADI -> sinf/fan bilan cheklaymiz
@@ -5762,17 +5773,25 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             shart += " AND grade::TEXT=%s"; args.append(str(gr_sel))
         if subj_sel:
             shart += " AND subject_name=%s"; args.append(subj_sel)
+
         cur2.execute(f"SELECT DISTINCT topic_code FROM dts_tree WHERE {shart}", tuple(args))
         topic_codes = [r[0] for r in cur2.fetchall()]
+
+        # Hech narsa topilmasa — cheklovsiz (eski xatti-harakat)
         if not topic_codes:
-            topic_codes = [mavzu_code]
+            cur2.execute("SELECT DISTINCT topic_code FROM dts_tree WHERE mavzu_code=%s AND is_deleted=FALSE",
+                        (mavzu_code,))
+            topic_codes = [r[0] for r in cur2.fetchall()] or [mavzu_code]
+            print(f"[ts_mavzu] ⚠️ filtr bo'sh, cheklovsiz: {len(topic_codes)} topic")
+
         print(f"[ts_mavzu] {mavzu_code} gr={gr_sel} fan={subj_sel} -> {len(topic_codes)} topic")
 
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
                     (topic_codes,))
         cnt = cur2.fetchone()[0]
         cur2.execute(f"SELECT mavzu_name FROM dts_tree WHERE {shart} LIMIT 1", tuple(args))
-        mname = (cur2.fetchone() or [mavzu_code])[0]
+        _mn = cur2.fetchone()
+        mname = (_mn[0] if _mn else None) or mavzu_code
         cur2.close(); conn2.close()
         if cnt == 0:
             await call.message.answer(f"❌ '{mname}' mavzusi uchun test yo'q!"); return
@@ -5782,12 +5801,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             "ts_topic": topic_codes[0],
             "ts_topic_codes": topic_codes,
             "ts_mavzu_name": mname,
+            "ts_grade": gr_sel, "ts_subject": subj_sel,
             "ts_count": 20, "ts_diff": "all",
             "ts_timed": True, "ts_write": False, "ts_img": "mix",
+            "ts_ovoz": False,
             "_ts_cnt_total": cnt
         })
+        _sarlavha = f"🧪 {mname[:45]}"
+        if gr_sel:   _sarlavha += f"\n🎓 {gr_sel}-sinf"
+        if subj_sel: _sarlavha += f" · 📚 {subj_sel[:25]}"
         await call.message.answer(
-            f"🧪 Mavzu: {mname[:50]}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
+            f"{_sarlavha}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
             reply_markup=_mk_ts_kb(_us[user_id], cnt)
         )
         return
@@ -5809,6 +5833,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                               "ts_count": 20,
                               "ts_diff": "all", "ts_timed": True,
                               "ts_write": False, "ts_img": "mix",
+                              "ts_ovoz": False,
                               "_ts_cnt_total": cnt})
         await call.message.answer(
             f"🧪 Test: {topic_code}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
@@ -5818,7 +5843,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
     if (call.data.startswith("ts_cnt_") or call.data.startswith("ts_dif_")
             or call.data.startswith("ts_wr_") or call.data.startswith("ts_time_")
-            or call.data.startswith("ts_img_")):
+            or call.data.startswith("ts_img_") or call.data.startswith("ts_ovoz_")):
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
         st2 = _us[user_id]
@@ -5833,6 +5858,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         elif call.data == "ts_img_1":         st2["ts_img"]   = True
         elif call.data == "ts_img_0":         st2["ts_img"]   = False
         elif call.data == "ts_img_mix":       st2["ts_img"]   = "mix"
+        elif call.data == "ts_ovoz_1":        st2["ts_ovoz"]  = True
+        elif call.data == "ts_ovoz_0":        st2["ts_ovoz"]  = False
         await call.answer("✅")
         # Filtrga mos test sonini qayta hisoblaymiz
         cnt_total = st2.get("_ts_cnt_total", 999)
@@ -6102,10 +6129,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         except Exception: pass
         from test_engine import start_test
         timed_ = st2.get("ts_timed", True)
-        await start_test(user_id, tests, call.message, timed=timed_)
+        ovoz_  = st2.get("ts_ovoz", False)
+        # test_engine eski versiya bo'lsa avto_ovoz qabul qilmasligi mumkin
+        try:
+            await start_test(user_id, tests, call.message, timed=timed_, avto_ovoz=ovoz_)
+        except TypeError:
+            await start_test(user_id, tests, call.message, timed=timed_)
+        # Sozlamani sessiyaga yozamiz — test_engine o'qishi mumkin
         from storage import test_sessions as _ts
         if user_id in _ts:
             _ts[user_id]["topic_code"] = tc
+            _ts[user_id]["avto_ovoz"] = ovoz_
         return
 
     # ═══════════════════════
