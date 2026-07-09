@@ -30,22 +30,27 @@ async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
             "Produce ONE English image prompt.\n\n"
             "CRITICAL RULES:\n"
             "1. Preserve EXACT numbers. '3 ta olma' = 'three apples' (not 'some apples').\n"
-            "2. Preserve EXACT colors, sizes, positions, actions the user stated.\n"
-            "3. Do NOT add objects the user did not mention.\n"
-            "4. Add ONLY: lighting, camera angle, background, texture, mood.\n"
-            "5. Structure: [main subject with exact details], [action/pose], "
-            "[setting/background], [lighting], [style keywords].\n"
-            "6. Output ONLY the prompt. No quotes, no explanation, no 'Prompt:' prefix.\n"
-            "7. Max 320 characters.\n"
-            "8. IMPORTANT — If people appear: they must be Central Asian / Uzbek "
-            "(light-tan skin, dark hair, Central Asian facial features). "
-            "Write 'Uzbek children', 'Central Asian teacher', etc. "
+            "2. NEVER drop ANY item the user listed. If they list several colors or "
+            "counts, EVERY single one must appear in the prompt. Losing even one is a failure.\n"
+            "3. If the user's counts conflict (e.g. says '3 apples' then lists 6), "
+            "ignore the total and keep EVERY listed group. Then state the real total.\n"
+            "4. Preserve EXACT colors, sizes, positions, actions the user stated.\n"
+            "5. Do NOT add objects the user did not mention.\n"
+            "6. Add ONLY: lighting, camera angle, background, texture, mood.\n"
+            "7. Output ONLY the prompt. No quotes, no explanation, no 'Prompt:' prefix.\n"
+            "8. Length 150-320 characters. Never cut off mid-sentence.\n"
+            "9. If people appear: they must be Central Asian / Uzbek "
+            "(light-tan skin, dark hair). Write 'Uzbek children', 'Central Asian teacher'. "
             "NEVER produce Indian, African, or East Asian people unless the user asks.\n"
-            "9. Settings default to a modern Uzbek school/home unless stated otherwise.\n\n"
+            "10. Settings default to a modern Uzbek school/home unless stated otherwise.\n\n"
             "EXAMPLES:\n"
             "Uzbek: 3 ta qizil olma stolda\n"
             "Prompt: Three red apples arranged on a wooden table, soft natural window light "
             "from the left, shallow depth of field, warm tones, photorealistic, sharp focus\n\n"
+            "Uzbek: 3 ta olma 1 sariq 2 qizil 3 yashil\n"
+            "Prompt: Six apples on a plain white surface: one yellow apple, two red apples, "
+            "and three green apples, all clearly separated and countable, even soft lighting, "
+            "top-down view, bright colors, sharp focus\n\n"
             "Uzbek: maktabda dars, o'qituvchi doskada yozmoqda\n"
             "Prompt: An Uzbek teacher writing on a blackboard in a bright modern classroom, "
             "Central Asian children seated at desks facing forward, morning sunlight through "
@@ -61,15 +66,27 @@ async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
         async with aiohttp.ClientSession() as s:
             async with s.post(url, json={
                 "contents": [{"parts": [{"text": instruction}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 250},
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 500,
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
             }, timeout=aiohttp.ClientTimeout(total=25)) as r:
                 data = await r.json()
-                txt = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                # Tozalash: "Prompt:" prefiks, qo'shtirnoq, yangi qator
+                cand = (data.get("candidates") or [{}])[0]
+                # Token tugab qolganmi?
+                if cand.get("finishReason") == "MAX_TOKENS":
+                    print("[gemini] javob qirqildi (MAX_TOKENS)")
+                    return None
+                txt = cand["content"]["parts"][0]["text"].strip()
                 for pre in ("Prompt:", "prompt:", "PROMPT:"):
                     if txt.startswith(pre): txt = txt[len(pre):].strip()
                 txt = txt.strip('"').strip("'").replace("\n", " ").strip()
-                print(f"[gemini] OK -> {txt[:100]}")
+                # Juda qisqa yoki qirqilgan bo'lsa qabul qilmaymiz
+                if len(txt) < 40:
+                    print(f"[gemini] juda qisqa ({len(txt)}): {txt}")
+                    return None
+                print(f"[gemini] OK ({len(txt)}) -> {txt[:110]}")
                 return txt
     except Exception as e:
         print(f"[gemini] xato: {e}")
@@ -87,13 +104,15 @@ async def _openai_prompt(tavsif, mavzu="", grade="", style_desc=""):
                 headers={"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"},
                 json={"model": "gpt-4o-mini", "messages": [
                     {"role": "system", "content":
-                        "Convert Uzbek image description to precise English FLUX prompt. "
+                        "Convert Uzbek image description to a precise English FLUX prompt. "
+                        "NEVER drop any item the user listed — every color and count must appear. "
+                        "If counts conflict, keep all listed groups and state the real total. "
                         "Be EXACT about counts, colors, objects, positions. "
                         "If people appear, they MUST be Uzbek/Central Asian (light-tan skin, "
                         "dark hair). Never Indian, African, or East Asian unless asked. "
-                        f"Style: {style_desc}. Return ONLY prompt, max 320 chars."},
+                        f"Style: {style_desc}. Return ONLY the prompt, 150-320 chars."},
                     {"role": "user", "content": f"Uzbek: {tavsif}\nContext: {mavzu} {grade}"}],
-                    "max_tokens": 220, "temperature": 0.3},
+                    "max_tokens": 300, "temperature": 0.2},
                 timeout=aiohttp.ClientTimeout(total=25)
             ) as r:
                 data = await r.json()
