@@ -6,6 +6,12 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
 def _get_db_conn(): return psycopg2.connect(DATABASE_URL)
 
+def _mavzu_hash(nom):
+    """Mavzu nomining qisqa belgisi (Talim.py bilan bir xil)."""
+    import hashlib
+    return hashlib.md5((nom or "").strip().encode()).hexdigest()[:6]
+
+
 async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
     # ═══ O'QUVCHI TEST NAVIGATOR ═══
@@ -35,10 +41,8 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
 
         rows = []
         for mname, mcode, cnt in topics2:
-            # Sinf va fanni tugmaga yozamiz — mavzu_code sinflar bo'ylab takrorlanadi
-            cb = f"ts_mavzu:{mcode}|{grade2}|{subj2}"
-            if len(cb.encode()) > 60:          # Telegram limiti 64 bayt
-                cb = f"ts_mavzu:{mcode}|{grade2}|"
+            # Sinf + mavzu NOMI hash -> aynan shu mavzu tanlanadi
+            cb = f"ts_mavzu:{mcode}|{grade2}|{_mavzu_hash(mname)}"
             rows.append([InlineKeyboardButton(
                 text=f"📝 {(mname or mcode)[:40]} ({cnt} ta)",
                 callback_data=cb
