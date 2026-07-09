@@ -36,15 +36,20 @@ async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
             "5. Structure: [main subject with exact details], [action/pose], "
             "[setting/background], [lighting], [style keywords].\n"
             "6. Output ONLY the prompt. No quotes, no explanation, no 'Prompt:' prefix.\n"
-            "7. Max 320 characters.\n\n"
+            "7. Max 320 characters.\n"
+            "8. IMPORTANT — If people appear: they must be Central Asian / Uzbek "
+            "(light-tan skin, dark hair, Central Asian facial features). "
+            "Write 'Uzbek children', 'Central Asian teacher', etc. "
+            "NEVER produce Indian, African, or East Asian people unless the user asks.\n"
+            "9. Settings default to a modern Uzbek school/home unless stated otherwise.\n\n"
             "EXAMPLES:\n"
             "Uzbek: 3 ta qizil olma stolda\n"
             "Prompt: Three red apples arranged on a wooden table, soft natural window light "
             "from the left, shallow depth of field, warm tones, photorealistic, sharp focus\n\n"
             "Uzbek: maktabda dars, o'qituvchi doskada yozmoqda\n"
-            "Prompt: A teacher writing on a blackboard in a bright classroom, students seated "
-            "at desks facing forward, morning sunlight through windows, warm educational "
-            "atmosphere, detailed illustration\n\n"
+            "Prompt: An Uzbek teacher writing on a blackboard in a bright modern classroom, "
+            "Central Asian children seated at desks facing forward, morning sunlight through "
+            "windows, warm educational atmosphere, detailed illustration\n\n"
             "Uzbek: uchburchak va kvadrat\n"
             "Prompt: A clean geometric diagram showing one triangle and one square side by "
             "side, black outlines on white background, simple flat vector style, educational\n\n"
@@ -84,9 +89,11 @@ async def _openai_prompt(tavsif, mavzu="", grade="", style_desc=""):
                     {"role": "system", "content":
                         "Convert Uzbek image description to precise English FLUX prompt. "
                         "Be EXACT about counts, colors, objects, positions. "
-                        f"Style: {style_desc}. Return ONLY prompt, max 300 chars."},
+                        "If people appear, they MUST be Uzbek/Central Asian (light-tan skin, "
+                        "dark hair). Never Indian, African, or East Asian unless asked. "
+                        f"Style: {style_desc}. Return ONLY prompt, max 320 chars."},
                     {"role": "user", "content": f"Uzbek: {tavsif}\nContext: {mavzu} {grade}"}],
-                    "max_tokens": 200, "temperature": 0.5},
+                    "max_tokens": 220, "temperature": 0.3},
                 timeout=aiohttp.ClientTimeout(total=25)
             ) as r:
                 data = await r.json()
@@ -105,6 +112,14 @@ async def _tavsif_to_prompt(tavsif, mavzu="", grade="", style="realistik"):
         p = await _openai_prompt(tavsif, mavzu, grade, style_desc)
     if not p:
         p = f"{tavsif}. {style_desc}"
+
+    # Odam bor bo'lsa — markaziy osiyolik bo'lishini kafolatlaymiz
+    low = p.lower()
+    human_words = ("child", "children", "kid", "boy", "girl", "teacher", "student",
+                   "people", "person", "man", "woman", "pupil", "family")
+    if any(w in low for w in human_words):
+        if not any(w in low for w in ("uzbek", "central asian")):
+            p = p + ", Uzbek Central Asian people"
     return p
 
 
