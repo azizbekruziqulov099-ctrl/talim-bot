@@ -207,6 +207,35 @@ async def _generate_cf_flux_old(prompt, steps=4):
     return None
 
 
+async def generate_pollinations(prompt, width=1024, height=1024, model="flux"):
+    """Pollinations.ai — BEPUL, CHEKSIZ, kalitsiz. FLUX modeli."""
+    import random, urllib.parse
+    try:
+        enc = urllib.parse.quote(prompt[:1500], safe="")
+        url = (f"https://image.pollinations.ai/prompt/{enc}"
+               f"?width={width}&height={height}&model={model}"
+               f"&nologo=true&private=true&seed={random.randint(1,999999)}")
+        async with aiohttp.ClientSession() as s:
+            async with s.get(url, timeout=aiohttp.ClientTimeout(total=120)) as r:
+                ctype = (r.headers.get("content-type") or "").lower()
+                if r.status != 200:
+                    print(f"[pollinations] status {r.status}")
+                    return None
+                if "image" not in ctype:
+                    body = (await r.text())[:120]
+                    print(f"[pollinations] rasm emas ({ctype}): {body}")
+                    return None
+                data = await r.read()
+                if len(data) < 1000:
+                    print(f"[pollinations] juda kichik ({len(data)} bayt)")
+                    return None
+                print(f"[pollinations] OK {model} ({len(data)//1024} KB)")
+                return data
+    except Exception as e:
+        print(f"[pollinations] xato: {e}")
+        return None
+
+
 async def generate_together_flux(prompt, steps=4):
     """Together FLUX — zaxira (agar kalit bo'lsa)."""
     if not TOGETHER_KEY:
@@ -268,14 +297,30 @@ async def generate_flux(prompt, width=1024, height=1024, steps=4, model=None):
 
 
 async def generate_smart(tavsif, mavzu="", grade="", style="realistik", hd=False, is_admin=False):
-    """Rasm: Cloudflare FLUX (bepul) -> Together -> DALL-E.
-    is_admin=True -> 8 qadam (sifatli), aks holda 6."""
+    """Rasm yaratish — rolga qarab.
+    ADMIN  : ☁️ Cloudflare FLUX 8 qadam (eng sifatli) -> Pollinations -> DALL-E
+    BOSHQA : 🌻 Pollinations (bepul, cheksiz)         -> Cloudflare -> Together
+    Shunday qilib Cloudflare neuronlari admin uchun saqlanadi."""
     prompt = await _tavsif_to_prompt(tavsif, mavzu, grade, style)
-    steps = 8 if is_admin else 6
-    img = await generate_cf_flux(prompt, steps=steps)
-    if not img:
-        img = await generate_together_flux(prompt, steps=steps)
-    if not img and OPENAI_KEY:
-        print("[smart] FLUX ishlamadi -> DALL-E")
-        img = await generate_dalle(prompt)
+
+    if is_admin:
+        # Eng yuqori sifat
+        img, err = await generate_cf_flux_ex(prompt, steps=8)
+        if not img:
+            print("[smart] admin: CF ishlamadi -> Pollinations")
+            img = await generate_pollinations(prompt, width=1024, height=1024)
+        if not img:
+            img = await generate_together_flux(prompt, steps=8)
+        if not img and OPENAI_KEY:
+            print("[smart] admin: -> DALL-E HD")
+            img = await generate_dalle(prompt, quality="hd")
+    else:
+        # O'quvchi / o'qituvchi / ota-ona — cheksiz bepul
+        img = await generate_pollinations(prompt, width=1024, height=1024)
+        if not img:
+            print("[smart] user: Pollinations ishlamadi -> CF")
+            img, err = await generate_cf_flux_ex(prompt, steps=4)
+        if not img:
+            img = await generate_together_flux(prompt, steps=4)
+
     return (img, prompt)
