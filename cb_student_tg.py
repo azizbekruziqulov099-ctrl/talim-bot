@@ -6,6 +6,12 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 def _get_db_conn():
     import psycopg2 as _p; return _p.connect(DATABASE_URL)
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
+
+def _mavzu_hash(nom):
+    """Mavzu nomining qisqa belgisi (Talim.py bilan bir xil)."""
+    import hashlib
+    return hashlib.md5((nom or "").strip().encode()).hexdigest()[:6]
+
 def render_text(t):
     if not t: return ""
     import re as _r
@@ -489,23 +495,18 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT fan FROM togaraklar WHERE id=%s",(tgid,))
         tg_fan=(cur2.fetchone() or [None])[0]
-        # Test soni SHU fan doirasida hisoblanadi (mavzu_code fanlar bo'ylab takrorlanadi)
-        cur2.execute("""SELECT DISTINCT ON (d.mavzu_code) d.mavzu_code, d.mavzu_name,
-            (SELECT COUNT(*) FROM generated_tests WHERE topic_code IN
-                (SELECT topic_code FROM dts_tree
-                 WHERE mavzu_code=d.mavzu_code AND subject_name=d.subject_name
-                   AND grade=d.grade AND is_deleted=FALSE)) as cnt
-            FROM dts_tree d WHERE subject_name=%s
-            AND is_deleted=FALSE AND mavzu_code IS NOT NULL
-            ORDER BY d.mavzu_code OFFSET %s LIMIT 10""",(tg_fan,start))
+        cur2.execute("""SELECT d.mavzu_code, d.mavzu_name, d.grade, COUNT(g.id)
+            FROM dts_tree d LEFT JOIN generated_tests g ON g.topic_code=d.topic_code
+            WHERE d.subject_name=%s AND d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
+            GROUP BY d.mavzu_code, d.mavzu_name, d.grade
+            ORDER BY d.grade, d.mavzu_code OFFSET %s LIMIT 10""",(tg_fan,start))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
         albom_n=start//10+1
         rows2=[]
-        for m in mavzular:
-            cb=f"ts_mavzu:{m[0]}||{tg_fan or ''}"
-            if len(cb.encode())>60: cb=f"ts_mavzu:{m[0]}"
+        for mcode, mname, gr, cnt in mavzular:
+            cb=f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
             rows2.append([InlineKeyboardButton(
-                text=f"{'✅' if m[2]>0 else '📖'} {(m[1] or m[0])[:38]} ({m[2]})",
+                text=f"{'✅' if cnt>0 else '📖'} {(mname or mcode)[:36]} ({cnt})",
                 callback_data=cb
             )])
         rows2.append([InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"stg_albomlar:{tgid}")])
@@ -516,19 +517,15 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         parts2=call.data[15:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        # Sinf va fan bo'yicha ham guruhlaymiz — mavzu_code takrorlanadi
-        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, d.grade, d.subject_name,
-                   COUNT(g.id)
+        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, d.grade, COUNT(g.id)
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
-            GROUP BY d.mavzu_name, d.mavzu_code, d.grade, d.subject_name
+            GROUP BY d.mavzu_name, d.mavzu_code, d.grade
             ORDER BY d.grade, d.mavzu_code LIMIT 50""")
         mavzular=cur2.fetchall()[start:start+10]; cur2.close(); conn2.close()
         rows2=[]
-        for m in mavzular:
-            mname, mcode, gr, fan, cnt = m
-            cb=f"ts_mavzu:{mcode}|{gr}|{fan or ''}"
-            if len(cb.encode())>60: cb=f"ts_mavzu:{mcode}|{gr}|"
+        for mname, mcode, gr, cnt in mavzular:
+            cb=f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
             rows2.append([InlineKeyboardButton(
                 text=f"📖 {gr}-s · {(mname or mcode)[:32]} ({cnt})",
                 callback_data=cb
