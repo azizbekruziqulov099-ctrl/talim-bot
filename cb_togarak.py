@@ -6,6 +6,24 @@ DATABASE_URL = os.getenv("DATABASE_URL","")
 def _get_db_conn():
     import psycopg2 as _p; return _p.connect(DATABASE_URL)
 ADMINS = list(map(int, os.getenv("ADMINS","0").split(",")))
+
+def _chat_id(uid):
+    """Ichki uid dan haqiqiy telegram chat_id topadi.
+    Ko'p akkauntli tizimda uid != telegram_id bo'lishi mumkin —
+    Talim.py dagi _tg_id bilan bir xil mantiq."""
+    tg = uid // 1000 if uid > 10_000_000_000 else uid
+    try:
+        conn = _get_db_conn(); cur = conn.cursor()
+        cur.execute("""SELECT telegram_id FROM user_accounts WHERE uid=%s
+            ORDER BY is_active DESC LIMIT 1""", (uid,))
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        if r and r[0]:
+            tg = int(r[0])
+    except Exception as e:
+        print(f"[cb_togarak] chat_id({uid}): {e}")
+    return tg
+
 def render_text(t):
     if not t: return ""
     import re as _r
@@ -456,8 +474,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.close();conn2.close()
         # O'quvchiga xabar
         try:
-            await call.bot.send_message(uid2, f"✅ '{t2[1]}' to'garakka qabul qilindingiz!")
-        except: pass
+            await call.bot.send_message(_chat_id(uid2), f"✅ '{t2[1]}' to'garakka qabul qilindingiz!")
+        except Exception as e:
+            print(f"[tg_req_approve] xabar yuborilmadi uid={uid2}: {e}")
         await call.message.edit_text("✅ O'quvchi qabul qilindi!", reply_markup=None)
         return True
 
@@ -468,8 +487,9 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         cur2.execute("DELETE FROM togarak_requests WHERE togarak_id=%s AND user_id=%s",(tgid2,uid2))
         conn2.commit(); cur2.close(); conn2.close()
         try:
-            await call.bot.send_message(uid2, "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
-        except: pass
+            await call.bot.send_message(_chat_id(uid2), "❌ To'garakka qo'shilish so'rovingiz rad etildi.")
+        except Exception as e:
+            print(f"[tg_req_reject] xabar yuborilmadi uid={uid2}: {e}")
         await call.message.edit_text("❌ Rad etildi.", reply_markup=None)
         return True
 
