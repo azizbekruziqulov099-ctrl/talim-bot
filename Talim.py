@@ -122,6 +122,8 @@ def _mavzu_hash(nom):
 _RASM_TAVSIF = {}
 # Limit tugagan foydalanuvchilar (ertaga davom etish uchun)
 _IMG_PENDING = {}
+# O'chirish tasdig'i kutayotgan so'rovlar: {uid: (shart, args, izoh, soni)}
+_ochir_soqi = {}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -588,6 +590,8 @@ def init_db():
         language TEXT, life_level TEXT, age_group TEXT, time_limit INTEGER
     )
     """)
+    # Rasm file_id ustuni (eski DB uchun)
+    cur.execute("ALTER TABLE generated_tests ADD COLUMN IF NOT EXISTS image_file_id TEXT")
     # Kitob va bilim jadvallari
     for _tbl in [
         "CREATE TABLE IF NOT EXISTS books (id SERIAL PRIMARY KEY, title TEXT, fan TEXT, sinf TEXT, muallif TEXT, file_id TEXT, created_at TIMESTAMP DEFAULT NOW())",
@@ -1633,12 +1637,37 @@ async def import_tests_excel(target, path, user_id):
             _c = _get_db_conn(); _cr = _c.cursor()
             _cr.execute("""CREATE TABLE IF NOT EXISTS rasm_tavsif(
                 image_id TEXT PRIMARY KEY, description TEXT)""")
+
+            # Eski tavsiflarni olamiz — o'zgarganini aniqlash uchun
+            _cr.execute("SELECT image_id, description FROM rasm_tavsif")
+            _eski = {r[0]: (r[1] or "") for r in _cr.fetchall()}
+
+            _ozgargan = []
             for _k, _v in _RASM_TAVSIF.items():
+                if _k in _eski and _eski[_k].strip() != (_v or "").strip():
+                    _ozgargan.append(_k)
                 _cr.execute("""INSERT INTO rasm_tavsif(image_id,description) VALUES(%s,%s)
                     ON CONFLICT(image_id) DO UPDATE SET description=EXCLUDED.description""",
                     (_k, _v))
+
+            # Tavsif o'zgargan bo'lsa — ESKI RASM MOS EMAS, o'chiramiz
+            if _ozgargan:
+                _cr.execute("DELETE FROM images WHERE name = ANY(%s)", (_ozgargan,))
+                _cr.execute("""UPDATE generated_tests SET image_file_id=NULL
+                    WHERE image_url = ANY(%s)""", (_ozgargan,))
+                print(f"[rasm_tavsif] ⚠️ {len(_ozgargan)} ta tavsif o'zgardi -> rasm qayta chiziladi")
+                print(f"[rasm_tavsif] o'zgarganlar: {_ozgargan[:5]}")
+
             _c.commit(); _cr.close(); _c.close()
             print(f"[rasm_tavsif] DB ga {len(_RASM_TAVSIF)} ta saqlandi")
+
+            if _ozgargan:
+                try:
+                    await target.answer(
+                        f"🔄 {len(_ozgargan)} ta rasm tavsifi o'zgargan.\n"
+                        f"Eski rasmlar o'chirildi — qaytadan chiziladi."
+                    )
+                except Exception: pass
         except Exception as _e:
             print(f"[rasm_tavsif] DB xato: {_e}")
 
@@ -2102,6 +2131,295 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             if not (user_id in _tsx and user_state.get(user_id) == "text_answer"):
                 await start(message, state)
                 return
+
+    # ═══ 🎓 TO'GARAK TESTLARI (bosh menyu) ═══
+    if message.text and message.text.strip() in ("🎓 To'garak testlari", "🎓 Togarak testlari",
+                                                  "/togarak_test", "/tt"):
+        from togarak import get_student_togaraklar
+        tgs = get_student_togaraklar(user_id)
+        if not tgs:
+            await message.answer(
+                "📚 Siz hech qaysi to'garakka a'zo emassiz.\n\n"
+                "«📚 To'garaklar» bo'limidan qo'shiling.")
+            return
+        if len(tgs) == 1:
+            import togarak_test as _tt
+            tgid = tgs[0]["id"]
+            ro_yxat = _tt.mavzular(tgid)
+            if not ro_yxat:
+                await message.answer("❌ Bu to'garak fani bo'yicha test yo'q.")
+                return
+            temp_user[f"tt_sel:{user_id}:{tgid}"] = []
+            temp_user[f"tt_sah:{user_id}:{tgid}"] = 0
+            ochiq = sum(1 for m in ro_yxat if m[3])
+            yopiq = len(ro_yxat) - ochiq
+            s = f"🎓 {tgs[0]['nomi']}\n📚 {ochiq} mavzu ochiq"
+            if yopiq: s += f" · 🔒 {yopiq} yopiq"
+            s += "\n\nMavzularni belgilang:"
+            await message.answer(s, reply_markup=_tt.mavzu_kb(tgid, ro_yxat, set(), 0))
+            return
+        rows = [[InlineKeyboardButton(text=f"🎓 {t['nomi'][:32]}",
+                                      callback_data=f"tt_tg:{t['id']}")] for t in tgs]
+        await message.answer("🎓 To'garak tanlang:",
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    # ═══ 📊 IMTIHON (o'qituvchi) ═══
+    if message.text and message.text.strip() in ("📊 Imtihon", "/imtihon"):
+        from togarak import get_teacher_togaraklar
+        tgs = get_teacher_togaraklar(user_id)
+        if not tgs:
+            await message.answer("❌ Sizda to'garak yo'q.")
+            return
+        rows = [[InlineKeyboardButton(text=f"📚 {t['nomi'][:32]}",
+                                      callback_data=f"im_menu:{t['id']}")] for t in tgs]
+        await message.answer("📊 To'garak tanlang:",
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    # ═══ IMTIHON: nom yozildi ═══
+    if str(admin_state.get(user_id) or "").startswith("im_nom:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        tgid = int(_q[1]); turi = _q[2]
+        admin_state.pop(user_id, None)
+        nomi = message.text.strip()[:60]
+
+        import baholash as _bh
+        iid = _bh.imtihon_yarat(tgid, user_id, nomi, turi)
+        if not iid:
+            await message.answer("❌ Imtihon yaratilmadi."); return
+
+        if turi == "yozma":
+            await message.answer(
+                f"✅ <b>{nomi}</b> yaratildi\n\nEndi baho qo'ying:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✍️ Baho qo'yish", callback_data=f"im_bal:{iid}")]]))
+        else:
+            admin_state[user_id] = f"im_soni:{tgid}:{iid}"
+            await message.answer(
+                f"✅ <b>{nomi}</b> yaratildi\n\nNechta savol bo'lsin? (5–50)",
+                parse_mode="HTML")
+        return
+
+    # ═══ IMTIHON: savol soni ═══
+    if str(admin_state.get(user_id) or "").startswith("im_soni:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        tgid = int(_q[1]); iid = int(_q[2])
+        admin_state.pop(user_id, None)
+        try:
+            soni = max(5, min(50, int(message.text.strip())))
+        except Exception:
+            await message.answer("❌ Faqat raqam (5–50)")
+            admin_state[user_id] = f"im_soni:{tgid}:{iid}"
+            return
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("UPDATE togarak_imtihon SET savol_soni=%s WHERE id=%s", (soni, iid))
+        c.commit(); cr.close(); c.close()
+        await message.answer(
+            f"✅ {soni} ta savol\n\nSavollar qayerdan olinsin?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📗 Mavzu tanlayman",
+                                      callback_data=f"im_manba:{tgid}:{iid}:tanla")],
+                [InlineKeyboardButton(text="🎲 O'tilgan mavzulardan random",
+                                      callback_data=f"im_manba:{tgid}:{iid}:random")],
+            ]))
+        return
+
+    # ═══ IMTIHON: yozma foiz ═══
+    if str(admin_state.get(user_id) or "").startswith("im_foiz:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        iid = int(_q[1]); uid2 = int(_q[2])
+        admin_state.pop(user_id, None)
+        try:
+            foiz = float(message.text.strip().replace(",", "."))
+        except Exception:
+            await message.answer("❌ 1 dan 100 gacha raqam yozing")
+            admin_state[user_id] = f"im_foiz:{iid}:{uid2}"
+            return
+        if not (0 <= foiz <= 100):
+            await message.answer("❌ 1 dan 100 gacha bo'lsin")
+            admin_state[user_id] = f"im_foiz:{iid}:{uid2}"
+            return
+
+        import baholash as _bh
+        _bh.baho_qoy(iid, uid2, foiz, manba="teacher")
+        imt = _bh.imtihon_ol(iid)
+        d = _bh.daraja(foiz)
+
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("SELECT full_name FROM users WHERE user_id=%s", (uid2,))
+        ism = (cr.fetchone() or ["O'quvchi"])[0]
+        cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (uid2,))
+        otalar = [r[0] for r in cr.fetchall()]
+        cr.close(); c.close()
+
+        await message.answer(
+            f"✅ {ism} — <b>{foiz:.0f}%</b> {d}", parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✍️ Yana baho qo'yish", callback_data=f"im_bal:{iid}"),
+            ]]))
+
+        xabar = (f"📊 <b>Imtihon natijasi</b>\n\n"
+                 f"📝 {imt['nomi'] if imt else '—'}\n"
+                 f"🎯 Baho: <b>{foiz:.0f}%</b>\n🎖 {d}")
+        for kim in [uid2] + otalar:
+            try: await bot.send_message(_tg_id(kim), xabar, parse_mode="HTML")
+            except Exception: pass
+        return
+
+    # ═══ RASM HOLATI (admin) ═══
+    if message.text and message.text.strip() == "/rasmlar":
+        if not _is_admin(user_id):
+            return
+        c = _get_db_conn(); cr = c.cursor()
+        try:
+            cr.execute("""SELECT
+                COUNT(*) FILTER (WHERE image_url IS NOT NULL AND image_url<>''),
+                COUNT(*) FILTER (WHERE image_file_id IS NOT NULL AND image_file_id<>''),
+                COUNT(*) FROM generated_tests""")
+            kod, chizilgan, jami = cr.fetchone()
+            cr.execute("SELECT COUNT(*) FROM images")
+            saqlangan = (cr.fetchone() or [0])[0]
+            cr.execute("""SELECT topic_code, image_url FROM generated_tests
+                WHERE image_url IS NOT NULL AND image_url<>''
+                  AND (image_file_id IS NULL OR image_file_id='') LIMIT 5""")
+            kutayotgan = cr.fetchall()
+            cr.close(); c.close()
+
+            t = ["🖼 <b>Rasm holati</b>", ""]
+            t.append(f"📊 Jami test: {jami}")
+            t.append(f"🔖 Rasm kodi bor: {kod}")
+            t.append(f"✅ Rasm chizilgan: {chizilgan}")
+            t.append(f"⏳ Chizilmagan: {kod - chizilgan}")
+            t.append(f"💾 images jadvalida: {saqlangan}")
+            if kutayotgan:
+                t.append("\n<b>Chizilmaganlar:</b>")
+                for tc, iu in kutayotgan:
+                    t.append(f"   <code>{iu}</code>")
+                t.append("\n<i>Excel qayta yuklang — chiziladi.</i>")
+            elif kod == 0:
+                t.append("\n<i>Hech qaysi testda rasm kodi yo'q.</i>")
+            else:
+                t.append("\n✅ <i>Barcha rasmlar tayyor.</i>")
+            await message.answer("\n".join(t), parse_mode="HTML")
+        except Exception as e:
+            try: cr.close(); c.close()
+            except Exception: pass
+            await message.answer(f"❌ {e}")
+        return
+
+    # ═══ TESTLARNI O'CHIRISH (admin) ═══
+    if message.text and message.text.startswith("/ochir"):
+        if not _is_admin(user_id):
+            return
+        arg = message.text[6:].strip()
+        if not arg:
+            await message.answer(
+                "🗑 <b>Testlarni o'chirish</b>\n"
+                "<i>Faqat savollar o'chadi. Topic kodlar va mavzu tuzilmasi qoladi.</i>\n\n"
+                "<code>/ochir kod 5-01-1-01-01-01-001</code>\n"
+                "   shu koddagi testlar\n\n"
+                "<code>/ochir boshi 5-01-1</code>\n"
+                "   shu bilan boshlanadigan kodlardagi testlar\n\n"
+                "<code>/ochir sinf 5</code>\n"
+                "   5-sinfning barcha testlari\n\n"
+                "<code>/ochir sinf 5 MATEMATIKA</code>\n"
+                "   5-sinf matematika testlari\n\n"
+                "<code>/ochir rasm</code>\n"
+                "   barcha rasmlar (testlar qoladi)\n\n"
+                "<i>Avval nechta o'chishini ko'rsatadi, tasdiqlaysiz.</i>",
+                parse_mode="HTML")
+            return
+
+        q = arg.split()
+        rejim = q[0].lower()
+        c = _get_db_conn(); cr = c.cursor()
+        try:
+            if rejim == "kod" and len(q) > 1:
+                shart, args = "topic_code=%s", [q[1]]
+                izoh = f"kod: {q[1]}"
+            elif rejim == "boshi" and len(q) > 1:
+                shart, args = "topic_code LIKE %s", [q[1] + "%"]
+                izoh = f"'{q[1]}' bilan boshlanadigan"
+            elif rejim == "sinf" and len(q) > 1:
+                sub = " ".join(q[2:]) if len(q) > 2 else None
+                if sub:
+                    shart = """topic_code IN (SELECT topic_code FROM dts_tree
+                        WHERE grade::TEXT=%s AND subject_name ILIKE %s AND is_deleted=FALSE)"""
+                    args = [q[1], f"%{sub}%"]
+                    izoh = f"{q[1]}-sinf · {sub}"
+                else:
+                    shart = """topic_code IN (SELECT topic_code FROM dts_tree
+                        WHERE grade::TEXT=%s AND is_deleted=FALSE)"""
+                    args = [q[1]]
+                    izoh = f"{q[1]}-sinf (barcha fan)"
+            elif rejim == "rasm":
+                cr.execute("""SELECT COUNT(*) FROM generated_tests
+                    WHERE image_file_id IS NOT NULL AND image_file_id<>''""")
+                n = (cr.fetchone() or [0])[0]
+                cr.close(); c.close()
+                if n == 0:
+                    await message.answer("ℹ️ O'chiriladigan rasm yo'q."); return
+                await message.answer(
+                    f"🗑 <b>{n} ta rasm</b> o'chiriladi.\nTestlar qoladi.\n\nTasdiqlaysizmi?",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ Ha", callback_data="ochrasm_yes"),
+                        InlineKeyboardButton(text="❌ Yo'q", callback_data="ochrasm_no"),
+                    ]]))
+                return
+            else:
+                cr.close(); c.close()
+                await message.answer("❌ Noto'g'ri format. <code>/ochir</code> yozing.",
+                                     parse_mode="HTML")
+                return
+
+            cr.execute(f"SELECT COUNT(*) FROM generated_tests WHERE {shart}", tuple(args))
+            n = (cr.fetchone() or [0])[0]
+            cr.execute(f"SELECT DISTINCT topic_code FROM generated_tests WHERE {shart} LIMIT 5",
+                       tuple(args))
+            namuna = [r[0] for r in cr.fetchall()]
+            cr.close(); c.close()
+
+            if n == 0:
+                await message.answer(f"ℹ️ '{izoh}' bo'yicha test topilmadi."); return
+
+            # Bu testlarda nechta rasm bor?
+            c2 = _get_db_conn(); cr2 = c2.cursor()
+            cr2.execute(f"""SELECT COUNT(DISTINCT image_url) FROM generated_tests
+                WHERE {shart} AND image_url IS NOT NULL AND image_url<>''""", tuple(args))
+            rasm_soni = (cr2.fetchone() or [0])[0]
+            cr2.close(); c2.close()
+
+            _t = [f"🗑 <b>{n} ta test</b> o'chiriladi", f"📍 {izoh}", ""]
+            _t.append("Kodlar:")
+            for k in namuna:
+                _t.append(f"   <code>{k}</code>")
+            _t.append("")
+            _t.append("✅ Topic kodlar va mavzu tuzilmasi <b>qoladi</b>")
+            if rasm_soni:
+                _t.append(f"🖼 Bu testlarda <b>{rasm_soni} ta rasm</b> bor")
+                _t.append("   Rasmlar ham o'chsinmi?")
+            _t.append("⚠️ Qaytarib bo'lmaydi")
+
+            _ochir_soqi[user_id] = (shart, args, izoh, n)
+
+            tugmalar = [[
+                InlineKeyboardButton(text=f"✅ Faqat {n} ta test", callback_data="ochir_yes"),
+                InlineKeyboardButton(text="❌ Bekor", callback_data="ochir_no"),
+            ]]
+            if rasm_soni:
+                tugmalar.insert(0, [InlineKeyboardButton(
+                    text=f"🗑 Test + {rasm_soni} ta rasm", callback_data="ochir_yes_rasm")])
+
+            await message.answer("\n".join(_t), parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=tugmalar))
+        except Exception as e:
+            try: cr.close(); c.close()
+            except Exception: pass
+            await message.answer(f"❌ Xato: {e}")
+        return
 
     # ═══ MAVZU TASHXISI (admin) ═══
     if message.text and message.text.startswith("/mavzu"):
@@ -2801,23 +3119,60 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     if user_state.get(user_id) == "parent_link_id" and message.text:
         user_state.pop(user_id, None)
-        try: child_id = int(message.text.strip())
-        except:
-            await message.answer("❌ Faqat raqam (ID) yozing!"); return
-        # Farzand borligini tekshirish
-        conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("SELECT full_name,class FROM users WHERE user_id=%s",(child_id,))
-        child=cur2.fetchone()
-        if not child:
-            cur2.close(); conn2.close()
-            await message.answer("❌ Bu ID bilan foydalanuvchi topilmadi!"); return
+        import ota_ona as _oo
+        kod = message.text.strip()
+        if not (kod.isdigit() and len(kod) == 6):
+            await message.answer(
+                "❌ Kod 6 xonali raqam bo'lishi kerak.\n\n"
+                "Farzandingiz botda «👤 Kabinet → 🔗 Ota-onani ulash» dan kod oladi.")
+            return
+
+        child_id = _oo.kod_tekshir(kod)
+        if not child_id:
+            await message.answer(
+                "❌ Kod noto'g'ri yoki muddati o'tgan.\n\n"
+                "Farzandingizdan yangi kod so'rang (15 daqiqa amal qiladi).")
+            return
+
+        if child_id == user_id or _tg_id(child_id) == _tg_id(user_id):
+            await message.answer("❌ O'zingizni ulay olmaysiz.")
+            return
+
+        if _oo.bogliqmi(user_id, child_id):
+            await message.answer("ℹ️ Bu farzand allaqachon ulangan.")
+            _oo.kod_ochir(kod)
+            return
+
+        ism_c, _, sinf_c = _oo.kim(child_id)
+        ism_p, _, _ = _oo.kim(user_id)
+
+        # Farzandga tasdiq so'rovi
         try:
-            cur2.execute("INSERT INTO parent_child(parent_id,child_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
-                        (user_id,child_id))
-            conn2.commit()
-        except: pass
-        cur2.close(); conn2.close()
-        await message.answer(f"✅ {child[0]} ({child[1] or '-'}) sizning farzandingiz sifatida ulandi!")
+            await bot.send_message(
+                _tg_id(child_id),
+                f"🔔 <b>Ulanish so'rovi</b>\n\n"
+                f"👤 {ism_p or 'Foydalanuvchi'}\n"
+                f"sizni farzandi sifatida ulamoqchi.\n\n"
+                f"U sizning baholaringiz, davomatingiz va\n"
+                f"imtihon natijalaringizni ko'radi.\n\n"
+                f"Tasdiqlaysizmi?",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✅ Ha, bu mening ota-onam",
+                                         callback_data=f"fk_ok:{user_id}:{kod}"),
+                ], [
+                    InlineKeyboardButton(text="❌ Yo'q, men tanimayman",
+                                         callback_data=f"fk_no:{user_id}:{kod}"),
+                ]]))
+        except Exception as e:
+            print(f"[fk] farzandga yuborilmadi: {e}")
+            await message.answer("❌ Farzandingizga xabar yuborib bo'lmadi.")
+            return
+
+        await message.answer(
+            f"📨 So'rov yuborildi.\n\n"
+            f"👤 {ism_c or 'Farzand'} {sinf_c or ''}\n"
+            f"⏳ U tasdiqlashini kuting.")
         return
 
     if str(admin_state.get(user_id) or "").startswith("parent_send_msg:") and message.text:
@@ -2992,7 +3347,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     _c2 = _get_db_conn(); _cu2 = _c2.cursor()
                     _cu2.execute("""SELECT question,option_a,option_b,option_c,option_d,
                            correct_answer,explanation,question_type,is_latex,
-                           image_url,audio_text,language,time_limit
+                           COALESCE(NULLIF(image_file_id,''), image_url) AS image_url,audio_text,language,time_limit
                            FROM generated_tests WHERE topic_code=%s
                            ORDER BY RANDOM() LIMIT 20""",
                         (_res["topic"]["topic_code"],))
@@ -3301,6 +3656,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         rows2=[
             [InlineKeyboardButton(text="✏️ Ismni o'zgartirish",callback_data="kb_change_name"),
              InlineKeyboardButton(text="🎭 Rolni o'zgartirish",callback_data="kb_change_role")],
+        ]
+        _rol = str(rol or "").lower()
+        if "ota" in _rol or "ona" in _rol or "parent" in _rol:
+            rows2.append([InlineKeyboardButton(text="👨‍👩‍👧 Farzandlarim",
+                                               callback_data="fk_list")])
+            rows2.append([InlineKeyboardButton(text="➕ Farzand qo'shish",
+                                               callback_data="fk_add")])
+        else:
+            rows2.append([InlineKeyboardButton(text="🔗 Ota-onani ulash",
+                                               callback_data="fk_mine")])
+        rows2 += [
             [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
             [InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")],
         ]
@@ -5660,15 +6026,18 @@ def _mk_ts_kb(st2, cnt_total):
     write = st2.get("ts_write", False)   # True/False/"mix"
     img   = st2.get("ts_img", "mix")     # True/False/"mix"
 
-    # Son tugmalari — mavjuddan oshmasin
+    # Son tugmalari — mavjuddan oshmasin, maksimal 50 ta
+    MAX_SAVOL = 50
+    barcha = min(cnt_total, MAX_SAVOL)
     son_qatori = []
     for n in (10, 20, 40):
-        if n < cnt_total:
+        if n < barcha:
             son_qatori.append(InlineKeyboardButton(
                 text=f"{c(cnt==n)}{n} ta", callback_data=f"ts_cnt_{n}"))
+    _yorliq = f"Barchasi ({barcha})" if cnt_total <= MAX_SAVOL else f"Maks {barcha} ta"
     son_qatori.append(InlineKeyboardButton(
-        text=f"{c(cnt==cnt_total)}Barchasi ({cnt_total})",
-        callback_data=f"ts_cnt_{cnt_total}"))
+        text=f"{c(cnt==barcha)}{_yorliq}",
+        callback_data=f"ts_cnt_{barcha}"))
 
     return InlineKeyboardMarkup(inline_keyboard=[
         son_qatori,
@@ -6011,8 +6380,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 elif w2 is True: f2 = "AND question_type = 'write_answer'"
                 else: f2 = "AND question_type != 'write_answer'"
                 if i2 == "mix": f3 = ""
-                elif i2 is True: f3 = "AND image_url IS NOT NULL AND image_url != ''"
-                else: f3 = "AND (image_url IS NULL OR image_url = '')"
+                elif i2 is True: f3 = "AND image_file_id IS NOT NULL AND image_file_id <> ''"
+                else: f3 = "AND (image_file_id IS NULL OR image_file_id = '')"
                 c3 = _get_db_conn(); cr3 = c3.cursor()
                 cr3.execute(f"""SELECT COUNT(*) FROM generated_tests
                     WHERE topic_code=ANY(%s) {f1} {f2} {f3}""", (tcs,))
@@ -6021,8 +6390,9 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 cnt_total = mavjud
                 st2["_ts_mavjud"] = mavjud
                 # Tanlangan son mavjuddan ko'p bo'lsa — kamaytiramiz
-                if st2.get("ts_count", 20) > mavjud and mavjud > 0:
-                    st2["ts_count"] = mavjud
+                _chek = min(mavjud, 50)
+                if st2.get("ts_count", 20) > _chek and _chek > 0:
+                    st2["ts_count"] = _chek
         except Exception as e:
             print(f"[ts_filter] {e}")
 
@@ -6229,7 +6599,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         st2 = _us.get(user_id) if isinstance(_us.get(user_id), dict) else {}
         tc   = st2.get("ts_topic","")
         topic_codes = st2.get("ts_topic_codes") or ([tc] if tc else [])
-        cnt2 = st2.get("ts_count", 20)
+        cnt2 = min(st2.get("ts_count", 20), 50)   # maksimal 50 ta savol
         diff = st2.get("ts_diff", "all")
         write= st2.get("ts_write", False)
         if not topic_codes:
@@ -6242,11 +6612,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         elif write == True: type_f = "AND question_type = 'write_answer'"
         else: type_f = "AND question_type != 'write_answer'"
         img    = st2.get("ts_img", "mix")
-        img_f  = "" if img=="mix" else ("AND image_url IS NOT NULL AND image_url != ''" if img==True else "AND (image_url IS NULL OR image_url = '')")
+        # "Rasmli" = rasm CHIZILGAN (file_id bor). Faqat kod bo'lsa rasm ko'rinmaydi.
+        if img == "mix":
+            img_f = ""
+        elif img is True:
+            img_f = "AND image_file_id IS NOT NULL AND image_file_id <> ''"
+        else:
+            img_f = "AND (image_file_id IS NULL OR image_file_id = '')"
         cur2.execute(f"""
             SELECT question,option_a,option_b,option_c,option_d,
                    correct_answer,explanation,question_type,is_latex,
-                   image_url,audio_text,language,time_limit,topic_code
+                   COALESCE(NULLIF(image_file_id,''), image_url) AS image_url,audio_text,language,time_limit,topic_code
             FROM generated_tests WHERE topic_code=ANY(%s) {diff_f} {type_f} {img_f}
             ORDER BY RANDOM() LIMIT %s
         """, (topic_codes, cnt2))
@@ -6695,6 +7071,583 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             except Exception: pass
         return
 
+    # ═══════════════════════════════════════════
+    # 👨‍👩‍👧 OTA-ONA ↔ FARZAND (fk_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("fk_"):
+        import ota_ona as _oo
+        qism = call.data.split(":")
+        amal = qism[0]
+
+        # ── Ota-ona kod so'raydi ──
+        if amal == "fk_add":
+            user_state[user_id] = "parent_link_id"
+            await call.message.answer(
+                "➕ <b>Farzand qo'shish</b>\n\n"
+                "Farzandingiz botda:\n"
+                "«👤 Kabinet → 🔗 Ota-onani ulash»\n"
+                "dan 6 xonali kod oladi.\n\n"
+                "Shu kodni yozing:",
+                parse_mode="HTML")
+            return
+
+        # ── Farzand kod oladi ──
+        if amal == "fk_kod":
+            kod = _oo.kod_yarat(user_id)
+            if not kod:
+                await call.answer("❌ Kod yaratilmadi", show_alert=True); return
+            await call.message.answer(
+                f"🔗 <b>Ota-onani ulash</b>\n\n"
+                f"Kodingiz:\n\n<code>{kod}</code>\n\n"
+                f"⏳ {_oo.KOD_MUDDAT} daqiqa amal qiladi.\n\n"
+                f"Ota-onangiz botda «👨‍👩‍👧 Farzand qo'shish» dan\n"
+                f"shu kodni kiritsin. So'ng sizdan tasdiq so'raladi.",
+                parse_mode="HTML")
+            return
+
+        # ── Farzand tasdiqladi ──
+        if amal == "fk_ok":
+            parent_id = int(qism[1]); kod = qism[2]
+            tekshir = _oo.kod_tekshir(kod)
+            if tekshir != user_id:
+                await call.answer("⚠️ Kod muddati o'tgan", show_alert=True)
+                try: await call.message.edit_text("⏳ Kod muddati o'tgan. Yangi kod oling.")
+                except Exception: pass
+                return
+
+            ok = _oo.bogla(parent_id, user_id)
+            _oo.kod_ochir(kod)
+            ism_p, _, _ = _oo.kim(parent_id)
+            ism_c, _, sinf_c = _oo.kim(user_id)
+
+            await call.answer("✅ Ulandi")
+            try:
+                await call.message.edit_text(
+                    f"✅ <b>{ism_p or 'Ota-ona'}</b> ulandi.\n\n"
+                    f"Endi u natijalaringizni ko'radi.\n"
+                    f"Istalgan payt uzib qo'yishingiz mumkin:\n"
+                    f"«👤 Kabinet → 🔗 Ota-onani ulash»",
+                    parse_mode="HTML")
+            except Exception: pass
+
+            try:
+                await bot.send_message(
+                    _tg_id(parent_id),
+                    f"✅ <b>Bog'lanish tasdiqlandi</b>\n\n"
+                    f"👤 {ism_c or 'Farzand'} {sinf_c or ''}\n\n"
+                    f"Endi uning baholari, davomati va\n"
+                    f"imtihon natijalarini ko'rasiz.",
+                    parse_mode="HTML")
+            except Exception: pass
+            return
+
+        # ── Farzand rad etdi ──
+        if amal == "fk_no":
+            parent_id = int(qism[1]); kod = qism[2]
+            _oo.kod_ochir(kod)
+            await call.answer("❌ Rad etildi")
+            try:
+                await call.message.edit_text(
+                    "❌ So'rov rad etildi.\n\nHech qanday ma'lumot ulashilmadi.")
+            except Exception: pass
+            try:
+                await bot.send_message(_tg_id(parent_id),
+                    "❌ Farzandingiz ulanish so'rovini rad etdi.")
+            except Exception: pass
+            return
+
+        # ── Farzandlar ro'yxati (ota-ona) ──
+        if amal == "fk_list":
+            lst = _oo.farzandlar(user_id)
+            if not lst:
+                await call.message.answer(
+                    "👨‍👩‍👧 Hali farzand ulanmagan.\n\n"
+                    "Farzandingizdan kod so'rang.")
+                return
+            rows = [[InlineKeyboardButton(text=f"🔓 {ism[:26]} {sinf} — uzish",
+                     callback_data=f"fk_del:{cid}")] for cid, ism, sinf in lst]
+            await call.message.answer(
+                f"👨‍👩‍👧 <b>Farzandlarim ({len(lst)})</b>", parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Ota-onalar ro'yxati (farzand) ──
+        if amal == "fk_mine":
+            lst = _oo.otalar(user_id)
+            rows = [[InlineKeyboardButton(text="🔗 Yangi kod olish", callback_data="fk_kod")]]
+            if lst:
+                qatorlar = [f"👨‍👩‍👧 <b>Ulangan ota-onalar ({len(lst)})</b>", ""]
+                for pid, ism in lst:
+                    qatorlar.append(f"• {ism}")
+                    rows.append([InlineKeyboardButton(
+                        text=f"🔓 {ism[:28]} — uzish", callback_data=f"fk_cut:{pid}")])
+                t = "\n".join(qatorlar)
+            else:
+                t = ("👨‍👩‍👧 Hali ota-ona ulanmagan.\n\n"
+                     "Kod oling va ota-onangizga bering.")
+            await call.message.answer(t, parse_mode="HTML",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Uzish ──
+        if amal in ("fk_del", "fk_cut"):
+            bosh = int(qism[1])
+            if amal == "fk_del":   # ota-ona farzandni uzadi
+                ok = _oo.uzib_qoy(user_id, bosh); kim2 = bosh
+            else:                  # farzand ota-onani uzadi
+                ok = _oo.uzib_qoy(bosh, user_id); kim2 = bosh
+            await call.answer("✅ Uzildi" if ok else "⚠️ Topilmadi")
+            if ok:
+                try:
+                    await call.message.edit_text("🔓 Bog'lanish uzildi.")
+                except Exception: pass
+                try:
+                    await bot.send_message(_tg_id(kim2), "🔓 Bog'lanish uzildi.")
+                except Exception: pass
+            return
+        return
+
+    # ═══════════════════════════════════════════
+    # 🎓 TO'GARAK TESTLARI (tt_)
+    # ═══════════════════════════════════════════
+    if call.data == "tt_lock":
+        await call.answer("🔒 Bu mavzu hali o'tilmagan", show_alert=True)
+        return
+
+    if call.data.startswith(("tt_tg:", "tt_x:", "tt_all:", "tt_p:", "tt_go:")):
+        import togarak_test as _tt
+        qism = call.data.split(":")
+        amal = qism[0]
+        tgid = int(qism[1])
+
+        kalit = f"tt_sel:{user_id}:{tgid}"
+        sah_kalit = f"tt_sah:{user_id}:{tgid}"
+        ro_yxat = _tt.mavzular(tgid)
+        if not ro_yxat:
+            await call.answer("❌ Bu to'garak fani bo'yicha test yo'q", show_alert=True)
+            return
+
+        tanlangan = set(temp_user.get(kalit, []))
+        sahifa = int(temp_user.get(sah_kalit, 0))
+
+        if amal == "tt_tg":
+            tanlangan = set(); sahifa = 0
+        elif amal == "tt_x":
+            i = int(qism[2])
+            if i in tanlangan: tanlangan.discard(i)
+            else:              tanlangan.add(i)
+        elif amal == "tt_all":
+            ochiqlar = {i for i, m in enumerate(ro_yxat) if m[3]}
+            tanlangan = set() if tanlangan >= ochiqlar else ochiqlar
+        elif amal == "tt_p":
+            sahifa = int(qism[2])
+        elif amal == "tt_go":
+            if not tanlangan:
+                await call.answer("❌ Mavzu belgilanmagan", show_alert=True); return
+            kodlar = _tt.kodlar(ro_yxat, tanlangan)
+            nomlar = _tt.nomlar(ro_yxat, tanlangan)
+            jami = _tt.test_soni(kodlar)
+            if jami == 0:
+                await call.answer("❌ Test topilmadi", show_alert=True); return
+
+            fan, tg_nomi = _tt.togarak_fan(tgid)
+            nom = nomlar[0] if len(nomlar) == 1 else f"{len(nomlar)} ta mavzu"
+
+            import ts_cache
+            sid = ts_cache.saqla(kodlar, nom, "", fan, jami)
+            print(f"[tt_go] tgid={tgid} {len(kodlar)} topic, {jami} test -> ts_sel:{sid}")
+
+            temp_user.pop(kalit, None); temp_user.pop(sah_kalit, None)
+
+            chiqadi = min(jami, _tt.MAX_TEST)
+            from storage import user_state as _us
+            if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+            _us[user_id].update({
+                "ts_topic": kodlar[0], "ts_topic_codes": kodlar,
+                "ts_mavzu_name": nom, "ts_grade": "", "ts_subject": fan,
+                "ts_count": chiqadi, "ts_diff": "all",
+                "ts_timed": True, "ts_write": False, "ts_img": "mix",
+                "ts_ovoz": False, "_ts_cnt_total": jami,
+            })
+            await call.message.answer(
+                f"🎓 {tg_nomi}\n📚 {nom}\n"
+                f"📊 {jami} ta savol · {chiqadi} tasi chiqadi\n\n"
+                f"Sozlamalarni tanlang:",
+                reply_markup=_mk_ts_kb(_us[user_id], jami)
+            )
+            return
+
+        temp_user[kalit] = list(tanlangan)
+        temp_user[sah_kalit] = sahifa
+
+        ochiq = sum(1 for m in ro_yxat if m[3])
+        yopiq = len(ro_yxat) - ochiq
+        _, tg_nomi = _tt.togarak_fan(tgid)
+        sarlavha = f"🎓 {tg_nomi}\n📚 {ochiq} mavzu ochiq"
+        if yopiq: sarlavha += f" · 🔒 {yopiq} yopiq"
+        if tanlangan:
+            n = _tt.test_soni(_tt.kodlar(ro_yxat, tanlangan))
+            sarlavha += f"\n☑️ {len(tanlangan)} tanlandi · {n} ta savol"
+        sarlavha += "\n\nMavzularni belgilang:"
+
+        kb = _tt.mavzu_kb(tgid, ro_yxat, tanlangan, sahifa)
+        try:
+            await call.message.edit_text(sarlavha, reply_markup=kb)
+        except Exception:
+            await call.message.answer(sarlavha, reply_markup=kb)
+        return
+
+    # ═══════════════════════════════════════════
+    # 📊 IMTIHON — TEST YURITUVCHISI (imq / imstop)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("imstop:"):
+        import baholash as _bh
+        _bh.seans_tugat(user_id)
+        await call.answer("🛑 To'xtatildi")
+        try: await call.message.edit_text("🛑 Imtihon to'xtatildi.\nNatija saqlanmadi.")
+        except Exception: pass
+        return
+
+    if call.data.startswith("imq:"):
+        import baholash as _bh
+        _, iid, idx, javob = call.data.split(":")
+        iid = int(iid); idx = int(idx)
+
+        st = _bh.seans(user_id)
+        if not st or st["idx"] != idx:
+            await call.answer("⚠️ Bu savol allaqachon javoblangan", show_alert=True)
+            return
+
+        togri, tugadi, foiz = _bh.javob_tekshir(user_id, javob)
+        await call.answer("✅ To'g'ri" if togri else "❌ Noto'g'ri")
+
+        try: await call.message.delete()
+        except Exception: pass
+
+        if not tugadi:
+            s = st["savollar"][st["idx"]]
+            matn = _bh.savol_matni(s, st["idx"], len(st["savollar"]))
+            kb = _bh.savol_kb(iid, st["idx"])
+            if s[6]:
+                try:
+                    await call.message.answer_photo(s[6], caption=matn, reply_markup=kb)
+                    return
+                except Exception: pass
+            await call.message.answer(matn, reply_markup=kb)
+            return
+
+        # ── IMTIHON TUGADI ──
+        st = _bh.seans_tugat(user_id)
+        _bh.baho_qoy(iid, user_id, foiz, manba="test")
+        imt = _bh.imtihon_ol(iid)
+        d = _bh.daraja(foiz)
+
+        await call.message.answer(
+            f"🏁 <b>Imtihon tugadi</b>\n\n"
+            f"📝 {imt['nomi'] if imt else '—'}\n"
+            f"✅ To'g'ri: {st['togri']}/{len(st['savollar'])}\n"
+            f"📊 Natija: <b>{foiz}%</b>\n"
+            f"🎖 {d}\n\n"
+            f"<i>Natija o'qituvchi va ota-onangizga ko'rinadi.</i>",
+            parse_mode="HTML"
+        )
+
+        # O'qituvchi va ota-onaga xabar
+        if imt:
+            try:
+                c = _get_db_conn(); cr = c.cursor()
+                cr.execute("SELECT full_name FROM users WHERE user_id=%s", (user_id,))
+                ism = (cr.fetchone() or ["O'quvchi"])[0]
+                cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (user_id,))
+                otalar = [r[0] for r in cr.fetchall()]
+                cr.close(); c.close()
+            except Exception:
+                ism = "O'quvchi"; otalar = []
+
+            xabar = f"📊 {ism}\n📝 {imt['nomi']}\n🎯 Natija: {foiz}% · {d}"
+            for kim in [imt["teacher_id"]] + otalar:
+                if kim:
+                    try: await bot.send_message(_tg_id(kim), xabar)
+                    except Exception: pass
+        return
+
+    # ═══════════════════════════════════════════
+    # 👨‍🏫 IMTIHON BOSHQARUVI (im_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("im_"):
+        import baholash as _bh
+        _bh.jadval()
+        qism = call.data.split(":")
+        amal = qism[0]
+
+        # ── Imtihonlar ro'yxati ──
+        if amal == "im_menu":
+            tgid = int(qism[1])
+            lst = _bh.imtihonlar(tgid)
+            t = ["📊 <b>Imtihonlar</b>\n"]
+            rows = []
+            for iid, nomi, turi, sana, n in lst:
+                belgi = "✍️" if turi == "yozma" else "🧪"
+                t.append(f"{belgi} {nomi} — {n} ta baho")
+                rows.append([InlineKeyboardButton(
+                    text=f"{belgi} {nomi[:28]} ({n})", callback_data=f"im_ko:{iid}")])
+            if not lst:
+                t.append("<i>Hali imtihon yo'q.</i>")
+            rows.append([InlineKeyboardButton(text="➕ Yangi imtihon", callback_data=f"im_new:{tgid}")])
+            rows.append([InlineKeyboardButton(text="🏆 Reyting", callback_data=f"im_reyt:{tgid}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"tg_info:{tgid}")])
+            try:
+                await call.message.edit_text("\n".join(t), parse_mode="HTML",
+                                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            except Exception:
+                await call.message.answer("\n".join(t), parse_mode="HTML",
+                                          reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Yangi imtihon: turini tanlash ──
+        if amal == "im_new":
+            tgid = int(qism[1])
+            await call.message.answer(
+                "➕ <b>Yangi imtihon</b>\n\nTurini tanlang:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✍️ Yozma — o'zim baho qo'yaman",
+                                          callback_data=f"im_tur:{tgid}:yozma")],
+                    [InlineKeyboardButton(text="🧪 Test — bot baholaydi",
+                                          callback_data=f"im_tur:{tgid}:test")],
+                    [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_menu:{tgid}")],
+                ]))
+            return
+
+        if amal == "im_tur":
+            tgid = int(qism[1]); turi = qism[2]
+            admin_state[user_id] = f"im_nom:{tgid}:{turi}"
+            await call.message.answer(
+                f"{'✍️ Yozma' if turi=='yozma' else '🧪 Test'} imtihon\n\n"
+                f"Imtihon nomini yozing:\nMasalan: <code>1-chorak yakuniy</code>",
+                parse_mode="HTML")
+            return
+
+        # ── Test imtihoni uchun mavzu manbasi ──
+        if amal == "im_manba":
+            tgid = int(qism[1]); iid = int(qism[2]); manba = qism[3]
+            import togarak_test as _tt
+            ro_yxat = _tt.mavzular(tgid)
+            ochiq = [m for m in ro_yxat if m[3]]
+            if not ochiq:
+                await call.answer("❌ Ochiq mavzu yo'q", show_alert=True); return
+
+            if manba == "random":
+                kodlar = sorted({k for m in ochiq for k in m[1]})
+                c = _get_db_conn(); cr = c.cursor()
+                cr.execute("UPDATE togarak_imtihon SET topic_codes=%s WHERE id=%s",
+                           (kodlar, iid))
+                c.commit(); cr.close(); c.close()
+                await _im_elon(call, tgid, iid, bot)
+                return
+
+            # O'qituvchi tanlaydi — mavzu ro'yxati
+            rows = [[InlineKeyboardButton(text=f"📗 {m[0][:34]} ({m[2]})",
+                     callback_data=f"im_mv:{tgid}:{iid}:{i}")]
+                    for i, m in enumerate(ro_yxat) if m[3]]
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_menu:{tgid}")])
+            await call.message.answer("Qaysi mavzudan?",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "im_mv":
+            tgid = int(qism[1]); iid = int(qism[2]); i = int(qism[3])
+            import togarak_test as _tt
+            ro_yxat = _tt.mavzular(tgid)
+            if i >= len(ro_yxat):
+                await call.answer("❌ Topilmadi", show_alert=True); return
+            kodlar = ro_yxat[i][1]
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("UPDATE togarak_imtihon SET topic_codes=%s WHERE id=%s", (kodlar, iid))
+            c.commit(); cr.close(); c.close()
+            await _im_elon(call, tgid, iid, bot)
+            return
+
+        # ── Imtihonni ko'rish / baholash ──
+        if amal == "im_ko":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt:
+                await call.answer("❌ Topilmadi", show_alert=True); return
+            nat = _bh.natijalar(iid)
+            belgi = "✍️" if imt["turi"] == "yozma" else "🧪"
+            t = [f"{belgi} <b>{imt['nomi']}</b>\n"]
+            for i, (uid2, ism, foiz, manba) in enumerate(nat, 1):
+                t.append(f"{i}. {ism or uid2} — <b>{float(foiz):.0f}%</b> {_bh.daraja(float(foiz))}")
+            if not nat:
+                t.append("<i>Hali baho qo'yilmagan.</i>")
+
+            rows = []
+            if imt["turi"] == "yozma":
+                rows.append([InlineKeyboardButton(text="✍️ Baho qo'yish",
+                                                  callback_data=f"im_bal:{iid}")])
+            else:
+                rows.append([InlineKeyboardButton(text="📢 Qayta e'lon qilish",
+                                                  callback_data=f"im_elon:{iid}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga",
+                                              callback_data=f"im_menu:{imt['togarak_id']}")])
+            await call.message.answer("\n".join(t)[:3800], parse_mode="HTML",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Yozma: o'quvchi tanlash ──
+        if amal == "im_bal":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt: return
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("""SELECT a.user_id, COALESCE(u.full_name,'—')
+                FROM togarak_azolar a LEFT JOIN users u ON u.user_id=a.user_id
+                WHERE a.togarak_id=%s AND a.aktiv=TRUE""", (imt["togarak_id"],))
+            azolar = cr.fetchall(); cr.close(); c.close()
+            mavjud = {r[0]: float(r[2]) for r in _bh.natijalar(iid)}
+            rows = []
+            for uid2, ism in azolar:
+                b = f" — {mavjud[uid2]:.0f}%" if uid2 in mavjud else ""
+                rows.append([InlineKeyboardButton(text=f"👤 {ism[:30]}{b}",
+                                                  callback_data=f"im_u:{iid}:{uid2}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_ko:{iid}")])
+            await call.message.answer("O'quvchini tanlang:",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "im_u":
+            iid = int(qism[1]); uid2 = int(qism[2])
+            admin_state[user_id] = f"im_foiz:{iid}:{uid2}"
+            await call.message.answer(
+                "Foizni yozing (1–100):\nMasalan: <code>85</code>", parse_mode="HTML")
+            return
+
+        if amal == "im_elon":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if imt:
+                await _im_elon(call, imt["togarak_id"], iid, bot)
+            return
+
+        # ── Reyting ──
+        if amal == "im_reyt":
+            tgid = int(qism[1])
+            r = _bh.reyting(tgid)
+            if not r:
+                await call.answer("❌ A'zo yo'q", show_alert=True); return
+            medal = ["🥇", "🥈", "🥉"]
+            t = ["🏆 <b>To'garak reytingi</b>",
+                 "<i>imtihon 80% + vazifa 10% + test 10%</i>\n"]
+            for i, (uid2, ism, yak, imt, vaz, tst) in enumerate(r):
+                m = medal[i] if i < 3 else f"{i+1}."
+                t.append(f"{m} <b>{ism}</b> — {yak}%")
+                t.append(f"     🎓 {imt if imt is not None else '—'}"
+                         f" · 📝 {vaz}% · 🧪 {tst}%")
+            t.append(f"\n<i>Jami {len(r)} o'quvchi</i>")
+            await call.message.answer("\n".join(t)[:3800], parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_menu:{tgid}")]]))
+            return
+
+        # ── O'quvchi imtihonni boshlaydi ──
+        if amal == "im_start":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt or not imt["aktiv"]:
+                await call.answer("❌ Imtihon yopilgan", show_alert=True); return
+            nat = {r[0] for r in _bh.natijalar(iid)}
+            if user_id in nat:
+                await call.answer("✅ Siz allaqachon topshirgansiz", show_alert=True); return
+            savollar = _bh.savollar_ol(imt["topic_codes"], imt["savol_soni"])
+            if not savollar:
+                await call.answer("❌ Savol topilmadi", show_alert=True); return
+            _bh.seans_boshla(user_id, iid, savollar)
+            try: await call.message.edit_reply_markup(reply_markup=None)
+            except Exception: pass
+            s = savollar[0]
+            matn = _bh.savol_matni(s, 0, len(savollar))
+            kb = _bh.savol_kb(iid, 0)
+            if s[6]:
+                try:
+                    await call.message.answer_photo(s[6], caption=matn, reply_markup=kb); return
+                except Exception: pass
+            await call.message.answer(matn, reply_markup=kb)
+            return
+        return
+
+    # ═══ TEST O'CHIRISH TASDIG'I ═══
+    if call.data == "ochir_no":
+        _ochir_soqi.pop(user_id, None)
+        await call.answer("❌ Bekor qilindi")
+        try: await call.message.edit_text("❌ O'chirish bekor qilindi.")
+        except Exception: pass
+        return
+
+    if call.data in ("ochir_yes", "ochir_yes_rasm"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        so = _ochir_soqi.pop(user_id, None)
+        if not so:
+            await call.answer("⚠️ So'rov eskirgan, qaytadan yozing", show_alert=True); return
+        shart, args, izoh, kutilgan = so
+        rasm_ham = (call.data == "ochir_yes_rasm")
+        await call.answer("🗑 O'chirilmoqda...")
+        try:
+            c = _get_db_conn(); cr = c.cursor()
+
+            nrasm = 0
+            if rasm_ham:
+                # Avval rasm kodlarini yig'amiz (testlar o'chishidan oldin)
+                cr.execute(f"""SELECT DISTINCT image_url FROM generated_tests
+                    WHERE {shart} AND image_url IS NOT NULL AND image_url<>''""", tuple(args))
+                kodlar = [r[0] for r in cr.fetchall()]
+                if kodlar:
+                    cr.execute("DELETE FROM images WHERE name = ANY(%s)", (kodlar,))
+                    nrasm = cr.rowcount
+                    cr.execute("DELETE FROM rasm_tavsif WHERE image_id = ANY(%s)", (kodlar,))
+
+            cr.execute(f"DELETE FROM generated_tests WHERE {shart}", tuple(args))
+            n = cr.rowcount
+            c.commit(); cr.close(); c.close()
+            print(f"[ochir] {izoh} -> {n} test, {nrasm} rasm o'chirildi")
+
+            xabar = f"✅ <b>{n} ta test o'chirildi</b>\n📍 {izoh}\n"
+            if rasm_ham:
+                xabar += f"🖼 {nrasm} ta rasm ham o'chirildi\n"
+                xabar += "\n<i>Yangi Excel yuklasangiz rasmlar qaytadan chiziladi.</i>"
+            else:
+                xabar += "\n<i>Topic kodlar va rasmlar joyida.</i>"
+            await call.message.edit_text(xabar, parse_mode="HTML")
+        except Exception as e:
+            await call.message.edit_text(f"❌ Xato: {e}")
+        return
+
+    if call.data == "ochrasm_no":
+        await call.answer("❌ Bekor qilindi")
+        try: await call.message.edit_text("❌ Bekor qilindi.")
+        except Exception: pass
+        return
+
+    if call.data == "ochrasm_yes":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer("🗑 O'chirilmoqda...")
+        try:
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("""UPDATE generated_tests SET image_file_id=NULL
+                WHERE image_file_id IS NOT NULL AND image_file_id<>''""")
+            n = cr.rowcount
+            cr.execute("DELETE FROM images")
+            c.commit(); cr.close(); c.close()
+            await call.message.edit_text(
+                f"✅ <b>{n} ta rasm o'chirildi</b>\nTestlar joyida.\n\n"
+                f"<i>Excel qayta yuklasangiz rasmlar qayta chiziladi.</i>",
+                parse_mode="HTML")
+        except Exception as e:
+            await call.message.edit_text(f"❌ Xato: {e}")
+        return
+
     if call.data == "rsmlat":
         await call.answer("⏸ Keyinroq")
         try: await call.message.edit_text("⏸ Rasm chizish kechiktirildi.\nErtaga yana so'rayman.")
@@ -6738,6 +7691,39 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.delete()
         except: pass
         return
+
+
+async def _im_elon(call, tgid, iid, bot):
+    """Test imtihonini a'zolarga e'lon qiladi."""
+    import baholash as _bh
+    imt = _bh.imtihon_ol(iid)
+    if not imt:
+        return
+    try:
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("SELECT user_id FROM togarak_azolar WHERE togarak_id=%s AND aktiv=TRUE",
+                   (tgid,))
+        azolar = [r[0] for r in cr.fetchall()]
+        cr.close(); c.close()
+    except Exception as e:
+        print(f"[im_elon] {e}"); azolar = []
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="▶️ Imtihonni boshlash", callback_data=f"im_start:{iid}")]])
+    n = 0
+    for uid2 in azolar:
+        try:
+            await bot.send_message(
+                _tg_id(uid2),
+                f"📢 <b>Yangi imtihon</b>\n\n"
+                f"📝 {imt['nomi']}\n"
+                f"🧪 {imt['savol_soni']} ta savol\n\n"
+                f"Tayyor bo'lsangiz boshlang:",
+                parse_mode="HTML", reply_markup=kb)
+            n += 1
+        except Exception:
+            pass
+    await call.message.answer(f"📢 Imtihon {n} ta o'quvchiga yuborildi.")
 
 
 async def _health_server():
@@ -6784,7 +7770,7 @@ async def brain_handler(message: Message, state: FSMContext):
             cur2.execute("""
                 SELECT question,option_a,option_b,option_c,option_d,
                        correct_answer,explanation,question_type,is_latex,
-                       image_url,audio_text,language,time_limit
+                       COALESCE(NULLIF(image_file_id,''), image_url) AS image_url,audio_text,language,time_limit
                 FROM generated_tests WHERE topic_code=%s ORDER BY RANDOM() LIMIT 20
             """, (res["topic"]["topic_code"],))
             tests_ = cur2.fetchall(); cur2.close(); conn2.close()
@@ -6814,6 +7800,18 @@ async def main():
             if _n: print(f"[ts_cache] {_n} ta eski yozuv o'chirildi")
         except Exception as _e:
             print(f"[ts_cache] {_e}")
+        try:
+            import baholash
+            baholash.jadval()
+            print("[baholash] jadvallar tayyor")
+        except Exception as _e:
+            print(f"[baholash] {_e}")
+        try:
+            import ota_ona
+            ota_ona.jadval()
+            print("[ota_ona] jadvallar tayyor")
+        except Exception as _e:
+            print(f"[ota_ona] {_e}")
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
