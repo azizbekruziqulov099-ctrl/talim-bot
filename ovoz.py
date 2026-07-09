@@ -85,6 +85,11 @@ def _tozalash(m: str) -> str:
     m = re.sub(r"[*_`#]+", "", m)
     m = re.sub(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", " ", m)
     m = re.sub(r"https?://\S+", " havola ", m)
+    # Qator boshidagi sanoq: "1." "2)" — YANGI QATORDAN OLDIN olib tashlaymiz
+    m = re.sub(r"(?m)^\s*\d{1,2}[\.\)]\s+", "", m)
+    # Yangi qator -> nuqta (pauza)
+    m = re.sub(r"\n{2,}", ". ", m)
+    m = re.sub(r"\n", ". ", m)
     return m
 
 
@@ -119,19 +124,39 @@ def _sonlar(m: str) -> str:
 
 
 def _ritm(m: str) -> str:
-    """Tabiiy nafas va ohang."""
-    # Gap oxirida uzunroq pauza
-    m = re.sub(r"([.!?])\s+", r"\1 … ", m)
-    # Ikki nuqta — kutish ohangi
-    m = m.replace(":", ": …")
-    # Vergul — qisqa nafas (ovoz ba'zan o'tkazib yuboradi)
-    m = re.sub(r",\s*", ", ", m)
+    """Tinish belgilari — PAUZAGA aylantiriladi, ovoz ularni aytmaydi.
+
+    Faqat . ! ? , qoladi — ular tabiiy ohang beradi.
+    Qolgan belgilar (: ; ( ) « » / | - …) vergul yoki bo'shliqqa aylanadi.
+    """
+    # Ikki nuqta -> vergul (ovoz "ikki nuqta" demaydi)
+    m = m.replace(":", ",")
+    m = m.replace(";", ",")
+    # Qavslar -> vergul (ichidagi matn qoladi)
+    m = re.sub(r"\s*[\(\[\{]\s*", ", ", m)
+    m = re.sub(r"\s*[\)\]\}]\s*", ", ", m)
+    # Qo'shtirnoq va tirnoqlar -> olib tashlanadi
+    m = re.sub(r'["«»„“”]', " ", m)
+    # Tire, chiziq, slesh -> vergul
+    m = re.sub(r"\s*[–—/|]\s*", ", ", m)
     # Sanoq belgilari
-    m = re.sub(r"\s*[•▪–—]\s*", " … ", m)
-    # Qavs ichi — pasaytirilgan ohang uchun pauza
-    m = re.sub(r"\s*\(\s*", " … ", m)
-    m = re.sub(r"\s*\)\s*", " … ", m)
-    return re.sub(r"\s{2,}", " ", m).strip()
+    m = re.sub(r"\s*[•▪●○*]\s*", ", ", m)
+    # Ko'p nuqta -> bitta nuqta
+    m = re.sub(r"[…]+", ".", m)
+    m = re.sub(r"\.{2,}", ".", m)
+    # So'z boshidagi/oxiridagi tire (5-sinf allaqachon ochilgan)
+    m = re.sub(r"(?<=\w)-(?=\w)", " ", m)
+    # Ketma-ket vergullar
+    m = re.sub(r"(,\s*){2,}", ", ", m)
+    m = re.sub(r"\s+([.,!?])", r"\1", m)
+    # Vergul + nuqta, savol + nuqta kabi juftliklar
+    m = re.sub(r",\s*([.!?])", r"\1", m)
+    m = re.sub(r"([.!?])\s*[.,]+", r"\1", m)
+    m = re.sub(r"([.!?])\s*([.!?])", r"\1", m)
+    # Ortiqcha bo'shliq
+    m = re.sub(r"\s{2,}", " ", m).strip()
+    m = m.strip(" ,.")
+    return m
 
 
 def tayyorla(matn: str, kirillga=True) -> str:
@@ -196,6 +221,7 @@ _KIRILL_BIR = {
     "H": "Ҳ", "I": "И", "J": "Ж", "K": "К", "L": "Л", "M": "М",
     "N": "Н", "O": "О", "P": "П", "Q": "Қ", "R": "Р", "S": "С",
     "T": "Т", "U": "У", "V": "В", "X": "Х", "Y": "Й", "Z": "З",
+    "C": "С", "W": "В",
     "\u02bc": "ъ",   # tutuq belgisi
 }
 
@@ -364,3 +390,21 @@ async def sinov_ovozlari(matn, yosh=10):
             except Exception as e:
                 print(f"[sinov] {nom}: {e}")
     return variantlar
+
+
+# ═══════════════ TEST SAVOLI ═══════════════
+
+async def ovoz_savol(savol, a=None, b=None, c=None, d=None,
+                     jins="qiz", yosh=10, variantlar=True):
+    """Test savolini ovozga aylantiradi.
+
+    variantlar=True -> javob variantlari ham o'qiladi ("A. besh")
+    Harflar (A, B, C, D) o'qiladi, qavs va nuqta o'qilmaydi.
+    """
+    qismlar = [str(savol or "").strip()]
+    if variantlar:
+        for harf, matn in (("A", a), ("B", b), ("C", c), ("D", d)):
+            if matn and str(matn).strip():
+                qismlar.append(f"{harf}. {str(matn).strip()}")
+    to_liq = ". ".join(q for q in qismlar if q)
+    return await ovoz_yarat(to_liq, jins=jins, yosh=yosh)
