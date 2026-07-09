@@ -1931,7 +1931,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     fname = f"user_{user_id}_{int(__import__('time').time())}"
                     sent = await message.answer_photo(
                         BufferedInputFile(img, f"{fname}.png"),
-                        caption=f"🎨 {tavsif[:80]}"
+                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:250]}</i>",
+                        parse_mode="HTML"
                     )
                     fid = sent.photo[-1].file_id
                     try:
@@ -2908,7 +2909,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     from aiogram.types import BufferedInputFile
                     sent = await message.answer_photo(
                         BufferedInputFile(img, "rasm.png"),
-                        caption=f"🎨 {tavsif[:80]}"
+                        caption=f"🎨 {tavsif[:60]}\n\n📝 <i>{(prompt or '')[:250]}</i>",
+                        parse_mode="HTML"
                     )
                     await status_r.edit_text(
                         f"✅ Tayyor!\n\nDB ga saqlash uchun nom yozing:\n"
@@ -5220,7 +5222,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             call.data.startswith("reg_") or call.data.startswith("reg:") or
             call.data.startswith("rq_") or call.data.startswith("speak_") or
             call.data.startswith("restart_lesson:") or call.data.startswith("resume_lesson:") or
-            call.data.startswith("test_") or
             call.data in ("ai_stop","cancel_import","noop_timer","speak_all","speak_question",
                           "test_settings","test_skip","test_next_from_result",
                           "lesson_exit","lesson_finish_confirm","lesson_help","lesson_help_close",
@@ -5233,7 +5234,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             call.data in ("mustah_back","stnav_back_grade","kitob_qolda","kitob_upload")):
             from cb_kitob import handle_kitob
             if await handle_kitob(call,user_id,admin_state,user_state,temp_user,bot): return
-        if (call.data.startswith("ts_") or call.data.startswith("sin_") or
+        if (call.data.startswith("sin_") or
             call.data.startswith("menu_bilim_") or call.data.startswith("menu_kitob_") or
             call.data.startswith("menu_ai_") or call.data.startswith("mtt_") or
             call.data.startswith("mustah_") or call.data.startswith("sinash_") or
@@ -5639,6 +5640,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
             return
         await call.answer()
+        # Test paytida menyu klaviaturasini yashiramiz
+        try:
+            from aiogram.types import ReplyKeyboardRemove
+            _hid = await call.message.answer("🧪 Test boshlandi", reply_markup=ReplyKeyboardRemove())
+            try: await _hid.delete()
+            except: pass
+        except Exception: pass
         from test_engine import start_test
         timed_ = st2.get("ts_timed", True)
         await start_test(user_id, tests, call.message, timed=timed_)
@@ -6023,6 +6031,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.delete()
         except: pass
         await stop_test(call.from_user.id, call.message)
+        # Menyuni qaytaramiz
+        try:
+            conn9=_get_db_conn();cur9=conn9.cursor()
+            cur9.execute("SELECT role FROM users WHERE user_id=%s",(call.from_user.id,))
+            r9=cur9.fetchone();cur9.close();conn9.close()
+            await call.message.answer("🏠 Bosh menyu", reply_markup=get_main_keyboard(r9[0] if r9 else ""))
+        except Exception: pass
         return
 
     if call.data == "test_stop_no":
