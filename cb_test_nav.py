@@ -12,6 +12,12 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
     if call.data.startswith("sinash_subj:"):
         parts2 = call.data.split(":", 2)
         grade2 = parts2[1]; subj2 = parts2[2]
+        # Tanlovni saqlaymiz — ts_mavzu shu bilan cheklaydi
+        if not isinstance(user_state.get(user_id), dict):
+            user_state[user_id] = {}
+        user_state[user_id]["ts_grade"] = grade2
+        user_state[user_id]["ts_subject"] = subj2
+
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         # Mavzu darajasida DISTINCT — kichik mavzular ko'rinmaydi
         cur2.execute("""
@@ -19,11 +25,11 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
                    COUNT(g.id) as test_cnt
             FROM dts_tree d
             JOIN generated_tests g ON g.topic_code = d.topic_code
-            WHERE d.subject_name=%s AND d.is_deleted=FALSE
+            WHERE d.subject_name=%s AND d.grade::TEXT=%s AND d.is_deleted=FALSE
             AND d.mavzu_code IS NOT NULL
             GROUP BY d.mavzu_name, d.mavzu_code
             ORDER BY d.mavzu_code
-        """, (subj2,))
+        """, (subj2, str(grade2)))
         topics2 = cur2.fetchall()
         cur2.close(); conn2.close()
 
