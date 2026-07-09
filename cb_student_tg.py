@@ -495,16 +495,20 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         conn2=_get_db_conn();cur2=conn2.cursor()
         cur2.execute("SELECT fan FROM togaraklar WHERE id=%s",(tgid,))
         tg_fan=(cur2.fetchone() or [None])[0]
-        cur2.execute("""SELECT d.mavzu_code, d.mavzu_name, d.grade, COUNT(g.id)
+        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, d.grade,
+                   ARRAY_AGG(DISTINCT d.topic_code) AS kodlar,
+                   COUNT(g.id)
             FROM dts_tree d LEFT JOIN generated_tests g ON g.topic_code=d.topic_code
             WHERE d.subject_name=%s AND d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
-            GROUP BY d.mavzu_code, d.mavzu_name, d.grade
+            GROUP BY d.mavzu_name, d.mavzu_code, d.grade
             ORDER BY d.grade, d.mavzu_code OFFSET %s LIMIT 10""",(tg_fan,start))
         mavzular=cur2.fetchall(); cur2.close(); conn2.close()
         albom_n=start//10+1
+        import ts_cache
         rows2=[]
-        for mcode, mname, gr, cnt in mavzular:
-            cb=f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
+        for mname, mcode, gr, kodlar, cnt in mavzular:
+            sid = ts_cache.saqla(kodlar, mname, gr, tg_fan, cnt)
+            cb = f"ts_sel:{sid}" if sid else f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
             rows2.append([InlineKeyboardButton(
                 text=f"{'✅' if cnt>0 else '📖'} {(mname or mcode)[:36]} ({cnt})",
                 callback_data=cb
@@ -517,15 +521,19 @@ async def handle_stg(call, user_id, admin_state, user_state, temp_user, bot):
         parts2=call.data[15:].split(":"); tgid,start=int(parts2[0]),int(parts2[1])
         await call.answer()
         conn2=_get_db_conn();cur2=conn2.cursor()
-        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, d.grade, COUNT(g.id)
+        cur2.execute("""SELECT d.mavzu_name, d.mavzu_code, d.grade, d.subject_name,
+                   ARRAY_AGG(DISTINCT d.topic_code) AS kodlar,
+                   COUNT(g.id)
             FROM generated_tests g JOIN dts_tree d ON d.topic_code=g.topic_code
             WHERE d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
-            GROUP BY d.mavzu_name, d.mavzu_code, d.grade
+            GROUP BY d.mavzu_name, d.mavzu_code, d.grade, d.subject_name
             ORDER BY d.grade, d.mavzu_code LIMIT 50""")
         mavzular=cur2.fetchall()[start:start+10]; cur2.close(); conn2.close()
+        import ts_cache
         rows2=[]
-        for mname, mcode, gr, cnt in mavzular:
-            cb=f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
+        for mname, mcode, gr, fan, kodlar, cnt in mavzular:
+            sid = ts_cache.saqla(kodlar, mname, gr, fan, cnt)
+            cb = f"ts_sel:{sid}" if sid else f"ts_mavzu:{mcode}|{gr}|{_mavzu_hash(mname)}"
             rows2.append([InlineKeyboardButton(
                 text=f"📖 {gr}-s · {(mname or mcode)[:32]} ({cnt})",
                 callback_data=cb
