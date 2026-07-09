@@ -429,7 +429,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("reg_quick:"):
         await call.answer()
-        user_id2 = call.from_user.id
+        user_id2 = user_id
         temp_user[user_id2] = {"quick": True}
         # Rol tanlash
         await call.message.edit_text(
@@ -444,7 +444,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("rq_rol:"):
         rol = call.data[7:]; await call.answer()
-        user_id2 = call.from_user.id
+        user_id2 = user_id
         print(f"[rq_rol] user={user_id2} rol={rol}")
         if user_id2 not in temp_user or not isinstance(temp_user.get(user_id2),dict):
             temp_user[user_id2] = {}
@@ -462,7 +462,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.answer()
         # To'liq ro'yxat — avvalgi oqim
         from register import _ik, ROLES
-        user_id2 = call.from_user.id
+        user_id2 = user_id
         temp_user[user_id2] = {}
         user_state[user_id2] = "reg_wait_inline"
         await call.message.edit_text("📋 Ro'yxatdan o'tish\n\nRolni tanlang:", reply_markup=_ik(ROLES,"role",cols=1))
@@ -471,7 +471,7 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
     if call.data.startswith("rq_sinf:"):
         # Sinf tanlash — to'liq saqlash (mustaqil)
         sinf = call.data[8:]; await call.answer()
-        user_id2 = call.from_user.id
+        user_id2 = user_id
         data = temp_user.get(user_id2, {}) if isinstance(temp_user.get(user_id2),dict) else {}
         name = data.get("full_name","Foydalanuvchi")
         rol = data.get("role","student")
