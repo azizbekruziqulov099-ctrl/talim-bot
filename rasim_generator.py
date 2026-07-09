@@ -123,7 +123,62 @@ async def _tavsif_to_prompt(tavsif, mavzu="", grade="", style="realistik"):
     return p
 
 
+def _is_limit_error(txt: str) -> bool:
+    """Cloudflare neuron limiti tugaganini aniqlaydi."""
+    t = (txt or "").lower()
+    keys = ("quota", "exceeded", "limit", "credits", "capacity",
+            "3036", "10000", "neuron", "too many requests", "rate limit")
+    return any(k in t for k in keys)
+
+
+async def generate_cf_flux_ex(prompt, steps=4):
+    """Cloudflare FLUX. Qaytaradi (rasm_bytes, xato).
+    xato: None | 'limit' | 'no_key' | 'other'"""
+    if not (CF_ACCOUNT and CF_TOKEN):
+        return None, "no_key"
+    try:
+        url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/{CF_FLUX}"
+        import random
+        async with aiohttp.ClientSession() as s:
+            async with s.post(
+                url,
+                headers={"Authorization": f"Bearer {CF_TOKEN}", "Content-Type": "application/json"},
+                json={"prompt": prompt[:2000], "steps": min(steps, 8),
+                      "seed": random.randint(1, 999999)},
+                timeout=aiohttp.ClientTimeout(total=90)
+            ) as r:
+                raw = await r.text()
+                if r.status == 429:
+                    print("[cf] LIMIT (429)")
+                    return None, "limit"
+                try:
+                    data = await r.json(content_type=None)
+                except Exception:
+                    data = {}
+                if not data.get("success"):
+                    msg = str(data)[:300]
+                    if _is_limit_error(msg) or _is_limit_error(raw[:300]):
+                        print(f"[cf] LIMIT: {msg[:120]}")
+                        return None, "limit"
+                    print(f"[cf] xato: {msg[:150]}")
+                    return None, "other"
+                b64 = data["result"].get("image")
+                if b64:
+                    print("[cf] OK flux-1-schnell")
+                    return base64.b64decode(b64), None
+                return None, "other"
+    except Exception as e:
+        print(f"[cf] xato: {e}")
+        return None, "other"
+
+
 async def generate_cf_flux(prompt, steps=4):
+    """Cloudflare Workers AI FLUX — BEPUL (10k neuron/kun)."""
+    img, _ = await generate_cf_flux_ex(prompt, steps)
+    return img
+
+
+async def _generate_cf_flux_old(prompt, steps=4):
     """Cloudflare Workers AI FLUX — BEPUL (10k neuron/kun)."""
     if not (CF_ACCOUNT and CF_TOKEN):
         print("[cf] CF_ACCOUNT_ID yoki CF_API_TOKEN yo'q")
