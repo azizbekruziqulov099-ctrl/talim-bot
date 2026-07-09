@@ -196,17 +196,17 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                     keldi=sum(1 for a in azolar if a["holat"]=="keldi")
                     kech=sum(1 for a in azolar if a["holat"]=="kech")
                     yoq=sum(1 for a in azolar if a["holat"]=="kelmadi")
-                    txt=(f"📋 <b>Bugungi yo'qlama</b>\\n📅 {bugun}\\n"
-                         f"━━━━━━━━━━━━━━━\\n"
-                         f"✅ Keldi: {keldi}   🕐 Kech: {kech}   ❌ Yo'q: {yoq}\\n"
-                         f"👥 Jami: {len(azolar)}\\n"
-                         f"━━━━━━━━━━━━━━━\\n\\n")
+                    txt=(f"📋 <b>Bugungi yo'qlama</b>\n📅 {bugun}\n"
+                         f"━━━━━━━━━━━━━━━\n"
+                         f"✅ Keldi: {keldi}   🕐 Kech: {kech}   ❌ Yo'q: {yoq}\n"
+                         f"👥 Jami: {len(azolar)}\n"
+                         f"━━━━━━━━━━━━━━━\n\n")
                     for idx,a in enumerate(azolar):
                         h=a["holat"]
                         if h=="kelmadi": hs="❌ Kelmadi"
                         elif h=="kech": hs=f"🕐 {a.get('izoh') or 'kech'} kech"
                         else: hs="✅ Keldi"
-                        txt+=f"<b>{idx+1}. {a['ism'][:26]}</b>\\n      {hs}\\n\\n"
+                        txt+=f"<b>{idx+1}. {a['ism'][:26]}</b>\n      {hs}\n\n"
                     rows2=[
                         [InlineKeyboardButton(text="✏️ O'zgartirish",callback_data=f"tg_yoqlama:{tgid}:0")],
                         [InlineKeyboardButton(text="⬅️ Orqaga",callback_data=f"tg_info:{tgid}")],
