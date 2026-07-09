@@ -78,19 +78,34 @@ ADMINS = [401251407]
 _EFF_CACHE = {}   # {telegram_id: eff_uid}
 
 def _eff_uid(telegram_id):
-    """Aktiv akkauntning ichki ID sini qaytaradi (ma'lumot uchun).
-    users da qator bo'lmasa telegram_id ga qaytadi — qayta ro'yxat oldini oladi."""
+    """Aktiv akkauntning ichki ID si.
+    user_accounts.uid ustunidan o'qiladi — telefonga bog'liq emas.
+    Eski qatorlarda uid bo'lmasa eski qoida bilan hisoblanadi."""
     if telegram_id in _EFF_CACHE:
         return _EFF_CACHE[telegram_id]
     eff = telegram_id
     try:
         conn = _get_db_conn(); cur = conn.cursor()
-        cur.execute("SELECT account_index FROM user_accounts WHERE telegram_id=%s AND is_active=TRUE LIMIT 1",
-                    (telegram_id,))
-        r = cur.fetchone()
-        if r and r[0]:
-            nomzod = telegram_id * 1000 + int(r[0])
-            # Bu ID da users qatori bormi? Bo'lmasa asosiy ID da qolamiz
+        nomzod = None
+        try:
+            cur.execute("""SELECT uid, account_index FROM user_accounts
+                WHERE telegram_id=%s AND is_active=TRUE LIMIT 1""", (telegram_id,))
+            r = cur.fetchone()
+            if r:
+                _uid, _idx = r
+                if _uid:
+                    nomzod = int(_uid)
+                elif _idx:
+                    nomzod = telegram_id * 1000 + int(_idx)
+        except Exception:
+            conn.rollback()
+            cur.execute("""SELECT account_index FROM user_accounts
+                WHERE telegram_id=%s AND is_active=TRUE LIMIT 1""", (telegram_id,))
+            r = cur.fetchone()
+            if r and r[0]:
+                nomzod = telegram_id * 1000 + int(r[0])
+
+        if nomzod and nomzod != telegram_id:
             cur.execute("SELECT 1 FROM users WHERE user_id=%s LIMIT 1", (nomzod,))
             if cur.fetchone():
                 eff = nomzod
@@ -102,16 +117,46 @@ def _eff_uid(telegram_id):
     _EFF_CACHE[telegram_id] = eff
     return eff
 
+
+# uid -> telegram_id keshi (xabar yuborish uchun)
+_TG_CACHE = {}
+
 def _tg_id(uid):
-    """Ichki ID dan haqiqiy telegram ID (xabar yuborish uchun)."""
-    return uid // 1000 if uid > 10_000_000_000 else uid
+    """Ichki ID dan haqiqiy telegram ID.
+    Akkaunt ko'chirilgan bo'lishi mumkin — DB dan qidiramiz."""
+    if uid in _TG_CACHE:
+        return _TG_CACHE[uid]
+    tg = uid // 1000 if uid > 10_000_000_000 else uid
+    try:
+        conn = _get_db_conn(); cur = conn.cursor()
+        cur.execute("""SELECT telegram_id FROM user_accounts WHERE uid=%s
+            ORDER BY is_active DESC LIMIT 1""", (uid,))
+        r = cur.fetchone()
+        if r and r[0]:
+            tg = int(r[0])
+        cur.close(); conn.close()
+    except Exception:
+        pass
+    _TG_CACHE[uid] = tg
+    return tg
 
 def _eff_clear(telegram_id):
     """Akkaunt almashganda keshni tozalaymiz."""
     _EFF_CACHE.pop(telegram_id, None)
+    _TG_CACHE.clear()
 
 def _is_admin(uid):
     return _tg_id(uid) in ADMINS
+
+def _get_user_qisqa(uid):
+    """(ism, rol, sinf)"""
+    try:
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("SELECT full_name, role, class FROM users WHERE user_id=%s", (uid,))
+        r = cr.fetchone(); cr.close(); c.close()
+        return r if r else (None, None, None)
+    except Exception:
+        return (None, None, None)
 
 def _mavzu_hash(nom):
     """Mavzu nomining qisqa belgisi — callback_data ga sig'ishi uchun."""
@@ -2084,12 +2129,22 @@ async def _rq_save(source, user_id, name, rol, sinf):
         new_idx = 0 if max_idx is None else max_idx + 1
         print(f"[rq_save] max_idx={max_idx} new_idx={new_idx}")
         cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(tg,))
-        cur2.execute("""
-            INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
-            VALUES(%s,%s,%s,%s,%s,TRUE)
-            ON CONFLICT(telegram_id,account_index) DO UPDATE
-            SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
-        """, (tg, new_idx, name, rol_uz, sinf_txt))
+        try:
+            cur2.execute("""
+                INSERT INTO user_accounts(telegram_id,account_index,uid,full_name,role,class,is_active)
+                VALUES(%s,%s,%s,%s,%s,%s,TRUE)
+                ON CONFLICT(telegram_id,account_index) DO UPDATE
+                SET uid=EXCLUDED.uid,full_name=EXCLUDED.full_name,role=EXCLUDED.role,
+                    class=EXCLUDED.class,is_active=TRUE
+            """, (tg, new_idx, user_id, name, rol_uz, sinf_txt))
+        except Exception:
+            conn2.rollback()
+            cur2.execute("""
+                INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
+                VALUES(%s,%s,%s,%s,%s,TRUE)
+                ON CONFLICT(telegram_id,account_index) DO UPDATE
+                SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
+            """, (tg, new_idx, name, rol_uz, sinf_txt))
         conn2.commit()
         print(f"[rq_save] ✅ saqlandi index={new_idx}")
     except Exception as e:
@@ -2175,6 +2230,27 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                                       callback_data=f"im_menu:{t['id']}")] for t in tgs]
         await message.answer("📊 To'garak tanlang:",
                              reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    # ═══ AKKAUNT: ko'chirish kodi kiritildi ═══
+    if user_state.get(user_id) == "ak_kod_kirit" and message.text:
+        user_state.pop(user_id, None)
+        import akkaunt as _ak
+        kod = message.text.strip().upper()
+        if len(kod) != 8:
+            await message.answer("❌ Kod 8 belgi bo'lishi kerak.")
+            return
+        tg = message.from_user.id
+        ok, xabar = _ak.kochirish_bajar(kod, tg)
+        _eff_clear(tg)
+        if ok:
+            await message.answer(
+                f"{xabar}\n\n"
+                f"Akkaunt shu telefonga ulandi va aktiv qilindi.\n"
+                f"/start bosing.",
+                reply_markup=get_main_keyboard(""))
+        else:
+            await message.answer(xabar)
         return
 
     # ═══ IMTIHON: nom yozildi ═══
@@ -3134,8 +3210,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 "Farzandingizdan yangi kod so'rang (15 daqiqa amal qiladi).")
             return
 
-        if child_id == user_id or _tg_id(child_id) == _tg_id(user_id):
-            await message.answer("❌ O'zingizni ulay olmaysiz.")
+        if child_id == user_id:
+            await message.answer("❌ O'zingizni farzand qilib ulay olmaysiz.")
             return
 
         if _oo.bogliqmi(user_id, child_id):
@@ -3668,8 +3744,17 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                                                callback_data="fk_mine")])
         rows2 += [
             [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
-            [InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")],
+            [InlineKeyboardButton(text="📱 Akkauntlar / ko'chirish", callback_data="ak_menu")],
         ]
+        try:
+            import akkaunt as _ak0
+            if _ak0.joy_bormi(_tg_id(user_id)):
+                rows2.append([InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")])
+            else:
+                rows2.append([InlineKeyboardButton(
+                    text=f"🚫 Limit: {_ak0.MAX_AKKAUNT} ta akkaunt", callback_data="ak_menu")])
+        except Exception:
+            rows2.append([InlineKeyboardButton(text="➕ Yangi akkaunt",callback_data="kb_new_acc")])
         await message.answer(txt,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         return
 
@@ -7072,6 +7157,93 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ═══════════════════════════════════════════
+    # 📲 AKKAUNT KO'CHIRISH (ak_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("ak_"):
+        import akkaunt as _ak
+        _ak.jadval()
+        qism = call.data.split(":")
+        amal = qism[0]
+        tg = _tg_id(user_id)
+
+        # ── Menyu ──
+        if amal == "ak_menu":
+            lst = _ak.akkauntlar(tg)
+            t = [f"📱 <b>Akkauntlar ({len(lst)}/{_ak.MAX_AKKAUNT})</b>\n"]
+            for uid2, idx, ism, rol2, sinf2, aktiv in lst:
+                belgi = "🟢" if aktiv else "⚪"
+                t.append(f"{belgi} {ism or '—'} · {rol2 or '—'} {sinf2 or ''}")
+            rows = [
+                [InlineKeyboardButton(text="📤 Boshqa telefonga ko'chirish",
+                                      callback_data="ak_kod")],
+                [InlineKeyboardButton(text="📥 Boshqa telefondagi akkauntga kirish",
+                                      callback_data="ak_kirish")],
+            ]
+            if len(lst) > 1:
+                rows.append([InlineKeyboardButton(text="🔓 Shu telefondan uzish",
+                                                  callback_data="ak_uz")])
+            await call.message.answer("\n".join(t), parse_mode="HTML",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Ko'chirish kodi ──
+        if amal == "ak_kod":
+            kod = _ak.kochirish_kod(user_id, tg)
+            if not kod:
+                await call.answer("❌ Kod yaratilmadi", show_alert=True); return
+            ism, _, _ = (lambda r: r)(_get_user_qisqa(user_id))
+            await call.message.answer(
+                f"📤 <b>Boshqa telefonga ko'chirish</b>\n\n"
+                f"👤 {ism or 'Akkaunt'}\n\n"
+                f"Kod:\n\n<code>{kod}</code>\n\n"
+                f"⏳ {_ak.KOD_MUDDAT} daqiqa amal qiladi.\n\n"
+                f"Yangi telefonda botga kiring:\n"
+                f"«👤 Kabinet → 📱 Akkauntlar → 📥 Kirish»\n"
+                f"va shu kodni yozing.\n\n"
+                f"⚠️ Kodni hech kimga bermang — akkauntingizga kirib oladi.",
+                parse_mode="HTML")
+            return
+
+        # ── Kod bilan kirish ──
+        if amal == "ak_kirish":
+            if not _ak.joy_bormi(tg):
+                await call.answer(
+                    f"❌ Bu telefonda {_ak.MAX_AKKAUNT} ta akkaunt bor. Avval bittasini uzing.",
+                    show_alert=True)
+                return
+            user_state[user_id] = "ak_kod_kirit"
+            await call.message.answer(
+                "📥 <b>Akkauntga kirish</b>\n\n"
+                "Eski telefoningizda olingan\n"
+                "8 belgili kodni yozing:",
+                parse_mode="HTML")
+            return
+
+        # ── Uzish ──
+        if amal == "ak_uz":
+            lst = _ak.akkauntlar(tg)
+            rows = [[InlineKeyboardButton(
+                text=f"🔓 {(a[2] or '—')[:26]} {a[4] or ''}",
+                callback_data=f"ak_uzyes:{a[0]}")] for a in lst if a[0]]
+            await call.message.answer(
+                "🔓 Qaysi akkauntni shu telefondan uzamiz?\n\n"
+                "<i>Ma'lumot o'chmaydi — boshqa telefonda qoladi.</i>",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "ak_uzyes":
+            uid2 = int(qism[1])
+            ok, xabar = _ak.uzib_qoy(tg, uid2)
+            _eff_clear(tg)
+            await call.answer(xabar[:190], show_alert=not ok)
+            if ok:
+                try: await call.message.edit_text(xabar)
+                except Exception: pass
+            return
+        return
+
+    # ═══════════════════════════════════════════
     # 👨‍👩‍👧 OTA-ONA ↔ FARZAND (fk_)
     # ═══════════════════════════════════════════
     if call.data.startswith("fk_"):
@@ -7081,10 +7253,58 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         # ── Ota-ona kod so'raydi ──
         if amal == "fk_add":
+            import akkaunt as _ak
+            tg = _tg_id(user_id)
+            # Shu telefondagi boshqa akkauntlar (kod kerak emas — egasi o'zi)
+            boshqa = [a for a in _ak.akkauntlar(tg) if a[0] and int(a[0]) != user_id]
+
+            rows = []
+            for uid2, idx, ism, rol2, sinf2, aktiv in boshqa:
+                if _oo.bogliqmi(user_id, int(uid2)):
+                    continue
+                rows.append([InlineKeyboardButton(
+                    text=f"📱 {(ism or '—')[:24]} {sinf2 or ''}",
+                    callback_data=f"fk_shu:{uid2}")])
+
+            rows.append([InlineKeyboardButton(text="🔢 Kod bilan ulash",
+                                              callback_data="fk_kodla")])
+            matn = "➕ <b>Farzand qo'shish</b>\n\n"
+            if rows[:-1]:
+                matn += ("📱 Shu telefondagi akkauntlar — bir bosishda ulanadi:\n"
+                         "(tasdiq so'ralmaydi, chunki telefon sizniki)\n\n")
+            matn += "🔢 Boshqa telefondagi farzand — kod kerak."
+            await call.message.answer(matn, parse_mode="HTML",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Shu telefondagi akkauntni ulash ──
+        if amal == "fk_shu":
+            child = int(qism[1])
+            if child == user_id:
+                await call.answer("❌ O'zingizni ulay olmaysiz", show_alert=True); return
+            import akkaunt as _ak
+            tg = _tg_id(user_id)
+            # Haqiqatan shu telefondami?
+            egasi = {int(a[0]) for a in _ak.akkauntlar(tg) if a[0]}
+            if child not in egasi:
+                await call.answer("❌ Bu akkaunt shu telefonda emas", show_alert=True); return
+
+            _oo.bogla(user_id, child)
+            ism_c, _, sinf_c = _oo.kim(child)
+            await call.answer("✅ Ulandi")
+            await call.message.answer(
+                f"✅ <b>{ism_c or 'Farzand'}</b> {sinf_c or ''} ulandi.\n\n"
+                f"«👤 Kabinet → 👨‍👩‍👧 Farzandlarim» dan ko'rasiz.\n"
+                f"Akkauntga kirish uchun «🔄 Akkaunt almashtirish».",
+                parse_mode="HTML")
+            return
+
+        # ── Kod bilan ulash ──
+        if amal == "fk_kodla":
             user_state[user_id] = "parent_link_id"
             await call.message.answer(
-                "➕ <b>Farzand qo'shish</b>\n\n"
-                "Farzandingiz botda:\n"
+                "🔢 <b>Kod bilan ulash</b>\n\n"
+                "Farzandingiz o'z telefonida:\n"
                 "«👤 Kabinet → 🔗 Ota-onani ulash»\n"
                 "dan 6 xonali kod oladi.\n\n"
                 "Shu kodni yozing:",
@@ -7812,6 +8032,12 @@ async def main():
             print("[ota_ona] jadvallar tayyor")
         except Exception as _e:
             print(f"[ota_ona] {_e}")
+        try:
+            import akkaunt
+            akkaunt.jadval()      # uid ustuni + migratsiya
+            print("[akkaunt] jadvallar tayyor")
+        except Exception as _e:
+            print(f"[akkaunt] {_e}")
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
