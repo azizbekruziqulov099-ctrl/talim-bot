@@ -2103,6 +2103,53 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 await start(message, state)
                 return
 
+    # ═══ MAVZU TASHXISI (admin) ═══
+    if message.text and message.text.startswith("/mavzu"):
+        if not _is_admin(user_id):
+            return
+        arg = message.text[6:].strip()
+        if not arg:
+            await message.answer(
+                "🔍 <b>Mavzu tashxisi</b>\n\n"
+                "<code>/mavzu 5</code> — 5-sinf mavzulari\n"
+                "<code>/mavzu 5 01-01</code> — aniq mavzu",
+                parse_mode="HTML")
+            return
+        qism = arg.split()
+        gr = qism[0]
+        mc = qism[1] if len(qism) > 1 else None
+        c = _get_db_conn(); cr = c.cursor()
+        try:
+            if mc:
+                cr.execute("""SELECT topic_code, mavzu_name, subject_name,
+                       (SELECT COUNT(*) FROM generated_tests g WHERE g.topic_code=d.topic_code)
+                    FROM dts_tree d WHERE mavzu_code=%s AND grade::TEXT=%s AND is_deleted=FALSE
+                    ORDER BY topic_code LIMIT 30""", (mc, gr))
+                rows = cr.fetchall()
+                t = [f"🔍 <b>{gr}-sinf · {mc}</b>\n"]
+                for tc, mn, sn, n in rows:
+                    t.append(f"<code>{tc}</code>")
+                    t.append(f"   {mn} · {n} test")
+                t.append(f"\nJami: {len(rows)} topic, {sum(r[3] for r in rows)} test")
+            else:
+                cr.execute("""SELECT d.mavzu_code, d.mavzu_name, d.subject_name,
+                       COUNT(DISTINCT d.topic_code), COUNT(g.id)
+                    FROM dts_tree d LEFT JOIN generated_tests g ON g.topic_code=d.topic_code
+                    WHERE d.grade::TEXT=%s AND d.is_deleted=FALSE AND d.mavzu_code IS NOT NULL
+                    GROUP BY d.mavzu_code, d.mavzu_name, d.subject_name
+                    ORDER BY d.mavzu_code LIMIT 25""", (gr,))
+                rows = cr.fetchall()
+                t = [f"🔍 <b>{gr}-sinf mavzulari</b>\n"]
+                for mcode, mn, sn, ntopic, ntest in rows:
+                    t.append(f"<code>{mcode}</code> · {(mn or '—')[:28]}")
+                    t.append(f"   {ntopic} topic · {ntest} test · hash <code>{_mavzu_hash(mn or '')}</code>")
+            cr.close(); c.close()
+            await message.answer("\n".join(t)[:4000], parse_mode="HTML")
+        except Exception as e:
+            cr.close(); c.close()
+            await message.answer(f"❌ {e}")
+        return
+
     # ═══ OVOZ SINOVI (admin) ═══
     if message.text and message.text.startswith("/ovoz"):
         if not _is_admin(user_id):
@@ -5773,55 +5820,33 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         # ts_start handler ga pass qilamiz
         call.data = f"ts_start:{tc_set}"
 
-    if call.data.startswith("ts_mavzu:"):
-        # Format: ts_mavzu:{mavzu_code}|{grade}|{nom_hash}
-        # Bitta mavzu_code ostida bir nechta har xil NOMLI mavzu bo'lishi mumkin,
-        # shuning uchun nom hash i ham yuboriladi.
-        _payload = call.data[9:]
-        _p = _payload.split("|")
-        mavzu_code = _p[0]
-        gr_sel   = _p[1] if len(_p) > 1 and _p[1] else None
-        nom_hash = _p[2] if len(_p) > 2 and _p[2] else None
+    # ═══ MAVZU TANLANDI (aniq topic kodlar bilan) ═══
+    if call.data.startswith("ts_sel:"):
+        import ts_cache
+        sel = ts_cache.ol(call.data[7:])
+        if not sel or not sel["topic_codes"]:
+            await call.message.answer(
+                "⚠️ Bu ro'yxat eskirgan.\n\nMavzularni qaytadan oching."
+            )
+            return
 
-        if not gr_sel:
-            from storage import user_state as _us0
-            _sel = _us0.get(user_id) if isinstance(_us0.get(user_id), dict) else {}
-            gr_sel = _sel.get("ts_grade")
+        topic_codes = sel["topic_codes"]
+        mname   = sel["mavzu_name"] or "Mavzu"
+        gr_sel  = sel["grade"]
+        subj_sel = sel["subject"]
 
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
-        shart = "mavzu_code=%s AND is_deleted=FALSE"
-        args = [mavzu_code]
-        if gr_sel:
-            shart += " AND grade::TEXT=%s"; args.append(str(gr_sel))
-
-        cur2.execute(f"SELECT topic_code, mavzu_name, subject_name FROM dts_tree WHERE {shart}",
-                    tuple(args))
-        qatorlar = cur2.fetchall()
-
-        # Mavzu NOMI bo'yicha ajratamiz — aynan bosilgan mavzu
-        if nom_hash and qatorlar:
-            _mos = [r for r in qatorlar if _mavzu_hash(r[1] or "") == nom_hash]
-            if _mos:
-                qatorlar = _mos
-            else:
-                print(f"[ts_mavzu] ⚠️ nom_hash {nom_hash} mos kelmadi")
-
-        topic_codes = sorted({r[0] for r in qatorlar})
-        mname   = (qatorlar[0][1] if qatorlar else None) or mavzu_code
-        subj_sel = (qatorlar[0][2] if qatorlar else None)
-
-        if not topic_codes:
-            cur2.close(); conn2.close()
-            await call.message.answer(f"❌ '{mavzu_code}' mavzusi topilmadi!"); return
-
-        print(f"[ts_mavzu] {mavzu_code} gr={gr_sel} nom={mname[:25]} -> {len(topic_codes)} topic")
-
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
                     (topic_codes,))
         cnt = cur2.fetchone()[0]
         cur2.close(); conn2.close()
+
+        print(f"[ts_sel] '{mname[:30]}' sinf={gr_sel} -> "
+              f"{len(topic_codes)} topic, {cnt} test | {topic_codes[:3]}")
+
         if cnt == 0:
             await call.message.answer(f"❌ '{mname}' mavzusi uchun test yo'q!"); return
+
         from storage import user_state as _us
         if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
         _us[user_id].update({
@@ -5839,6 +5864,78 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if subj_sel: _sarlavha += f" · 📚 {subj_sel[:25]}"
         await call.message.answer(
             f"{_sarlavha}\n📊 Jami: {cnt} ta savol\n\nSozlamalarni tanlang:",
+            reply_markup=_mk_ts_kb(_us[user_id], cnt)
+        )
+        return
+
+    if call.data.startswith("ts_mavzu:"):
+        # Format: ts_mavzu:{mavzu_code}|{grade}|{nom_hash}
+        _p = call.data[9:].split("|")
+        mavzu_code = _p[0]
+        gr_sel   = _p[1] if len(_p) > 1 and _p[1] else None
+        nom_hash = _p[2] if len(_p) > 2 and _p[2] else None
+
+        # ESKI TUGMA (sinf yoki hash yo'q) — noto'g'ri testlar chiqadi
+        if not gr_sel or not nom_hash:
+            print(f"[ts_mavzu] ❌ eski tugma: {call.data}")
+            await call.message.answer(
+                "⚠️ Bu eski ro'yxat.\n\n"
+                "Mavzular ro'yxatini qaytadan oching:\n"
+                "🧪 Bilimni sinash → sinf → fan"
+            )
+            return
+
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
+        cur2.execute("""SELECT topic_code, mavzu_name, subject_name
+            FROM dts_tree
+            WHERE mavzu_code=%s AND grade::TEXT=%s AND is_deleted=FALSE""",
+            (mavzu_code, str(gr_sel)))
+        qatorlar = cur2.fetchall()
+
+        # Mavzu NOMI bo'yicha ajratamiz — AYNAN bosilgan mavzu
+        _mos = [r for r in qatorlar if _mavzu_hash(r[1] or "") == nom_hash]
+        if not _mos:
+            cur2.close(); conn2.close()
+            print(f"[ts_mavzu] ❌ nom_hash={nom_hash} mos kelmadi "
+                  f"(kod={mavzu_code} sinf={gr_sel}, {len(qatorlar)} qator)")
+            await call.message.answer(
+                "⚠️ Mavzu topilmadi.\n\nRo'yxatni qaytadan oching."
+            )
+            return
+        qatorlar = _mos
+
+        topic_codes = sorted({r[0] for r in qatorlar})
+        mname    = (qatorlar[0][1] or mavzu_code)
+        subj_sel = qatorlar[0][2]
+
+        cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
+                    (topic_codes,))
+        cnt = cur2.fetchone()[0]
+        cur2.close(); conn2.close()
+
+        print(f"[ts_mavzu] '{mname[:30]}' sinf={gr_sel} -> "
+              f"{len(topic_codes)} topic, {cnt} test | kodlar: {topic_codes[:3]}")
+
+        if cnt == 0:
+            await call.message.answer(f"❌ '{mname}' mavzusi uchun test yo'q!"); return
+        from storage import user_state as _us
+        if not isinstance(_us.get(user_id), dict): _us[user_id] = {}
+        _us[user_id].update({
+            "ts_topic": topic_codes[0],
+            "ts_topic_codes": topic_codes,
+            "ts_mavzu_name": mname,
+            "ts_grade": gr_sel, "ts_subject": subj_sel,
+            "ts_count": 20, "ts_diff": "all",
+            "ts_timed": True, "ts_write": False, "ts_img": "mix",
+            "ts_ovoz": False,
+            "_ts_cnt_total": cnt
+        })
+        _sarlavha = f"🧪 {mname[:45]}"
+        _sarlavha += f"\n🎓 {gr_sel}-sinf"
+        if subj_sel: _sarlavha += f" · 📚 {subj_sel[:25]}"
+        await call.message.answer(
+            f"{_sarlavha}\n📊 Jami: {cnt} ta savol ({len(topic_codes)} ta bo'lim)"
+            f"\n\nSozlamalarni tanlang:",
             reply_markup=_mk_ts_kb(_us[user_id], cnt)
         )
         return
@@ -6118,7 +6215,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         from storage import user_state as _us
         st2 = _us.get(user_id) if isinstance(_us.get(user_id), dict) else {}
         tc   = st2.get("ts_topic","")
-        topic_codes = st2.get("ts_topic_codes", [tc] if tc else [])
+        topic_codes = st2.get("ts_topic_codes") or ([tc] if tc else [])
         cnt2 = st2.get("ts_count", 20)
         diff = st2.get("ts_diff", "all")
         write= st2.get("ts_write", False)
@@ -6672,6 +6769,12 @@ async def main():
     try:
         asyncio.create_task(_health_server())
         asyncio.create_task(_daily_image_resume())
+        try:
+            import ts_cache
+            _n = ts_cache.tozala(7)
+            if _n: print(f"[ts_cache] {_n} ta eski yozuv o'chirildi")
+        except Exception as _e:
+            print(f"[ts_cache] {_e}")
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
