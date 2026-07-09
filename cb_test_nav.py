@@ -35,9 +35,13 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
 
         rows = []
         for mname, mcode, cnt in topics2:
+            # Sinf va fanni tugmaga yozamiz — mavzu_code sinflar bo'ylab takrorlanadi
+            cb = f"ts_mavzu:{mcode}|{grade2}|{subj2}"
+            if len(cb.encode()) > 60:          # Telegram limiti 64 bayt
+                cb = f"ts_mavzu:{mcode}|{grade2}|"
             rows.append([InlineKeyboardButton(
                 text=f"📝 {(mname or mcode)[:40]} ({cnt} ta)",
-                callback_data=f"ts_mavzu:{mcode}"
+                callback_data=cb
             )])
         rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="sinash_back")])
         await call.message.edit_text(
