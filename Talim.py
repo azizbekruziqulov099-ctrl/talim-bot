@@ -2076,6 +2076,59 @@ async def _save_quick_user(call, user_id):
 
 async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
+
+    # ═══ OVOZ SINOVI (admin) ═══
+    if message.text and message.text.startswith("/ovoz"):
+        if not _is_admin(user_id):
+            return
+        matn = message.text[5:].strip()
+        if not matn:
+            await message.answer(
+                "🎧 <b>Ovoz sinovi</b>\n\n"
+                "Matn yozing:\n<code>/ovoz To'g'ri javob: to'qqiz. San'at va a'zo.</code>\n\n"
+                "4 variant yuboriladi — qaysi biri yaxshi eshitilsa ayting.",
+                parse_mode="HTML")
+            return
+        try:
+            import ovoz as _ov
+        except Exception as e:
+            await message.answer(f"❌ ovoz.py topilmadi: {e}")
+            return
+
+        kut = await message.answer("🎧 Tayyorlanmoqda...")
+        try:
+            await message.answer(
+                f"📝 <b>Xom matn:</b>\n<code>{matn[:300]}</code>\n\n"
+                f"🇺🇿 <b>Kirill:</b>\n<code>{_ov.tayyorla(matn)[:300]}</code>\n\n"
+                f"🔤 <b>Lotin:</b>\n<code>{_ov.tayyorla(matn, kirillga=False)[:300]}</code>",
+                parse_mode="HTML")
+        except Exception as e:
+            await message.answer(f"⚠️ Matn tayyorlash: {e}")
+
+        from aiogram.types import BufferedInputFile
+        n = 0
+        JINS_NOM = {"qiz": "👧 Qiz", "ogil": "👦 O'g'il"}
+        for jins in ("qiz", "ogil"):
+            for kir in (True, False):
+                alifbo = "Kirill" if kir else "Lotin"
+                nom = JINS_NOM[jins] + " · " + alifbo
+                try:
+                    audio = await _ov.ovoz_yarat(matn, jins=jins, yosh=10, kirillga=kir)
+                    if audio:
+                        n += 1
+                        await message.answer_voice(
+                            BufferedInputFile(audio, f"ovoz_{n}.mp3"),
+                            caption=f"{n}. {nom}")
+                except Exception as e:
+                    await message.answer(f"❌ {nom}: {e}")
+        try: await kut.delete()
+        except Exception: pass
+        if n == 0:
+            await message.answer("❌ Hech qanday ovoz yaratilmadi. Log ni tekshiring.")
+        else:
+            await message.answer(f"✅ {n} ta variant. Qaysi biri yaxshi?")
+        return
+
     # Test paytida yozilgan xabarni o'chirish
     from test_engine import test_sessions
     if user_id in test_sessions:
