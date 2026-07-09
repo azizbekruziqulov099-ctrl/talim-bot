@@ -78,7 +78,8 @@ ADMINS = [401251407]
 _EFF_CACHE = {}   # {telegram_id: eff_uid}
 
 def _eff_uid(telegram_id):
-    """Aktiv akkauntning ichki ID sini qaytaradi (ma'lumot uchun)."""
+    """Aktiv akkauntning ichki ID sini qaytaradi (ma'lumot uchun).
+    users da qator bo'lmasa telegram_id ga qaytadi — qayta ro'yxat oldini oladi."""
     if telegram_id in _EFF_CACHE:
         return _EFF_CACHE[telegram_id]
     eff = telegram_id
@@ -86,9 +87,16 @@ def _eff_uid(telegram_id):
         conn = _get_db_conn(); cur = conn.cursor()
         cur.execute("SELECT account_index FROM user_accounts WHERE telegram_id=%s AND is_active=TRUE LIMIT 1",
                     (telegram_id,))
-        r = cur.fetchone(); cur.close(); conn.close()
+        r = cur.fetchone()
         if r and r[0]:
-            eff = telegram_id * 1000 + int(r[0])
+            nomzod = telegram_id * 1000 + int(r[0])
+            # Bu ID da users qatori bormi? Bo'lmasa asosiy ID da qolamiz
+            cur.execute("SELECT 1 FROM users WHERE user_id=%s LIMIT 1", (nomzod,))
+            if cur.fetchone():
+                eff = nomzod
+            else:
+                print(f"[eff_uid] {nomzod} da users yo'q -> {telegram_id}")
+        cur.close(); conn.close()
     except Exception as e:
         print(f"[eff_uid] {e}")
     _EFF_CACHE[telegram_id] = eff
@@ -2026,6 +2034,7 @@ async def handle_all(
 
 async def _rq_save(source, user_id, name, rol, sinf):
     """Tez kirish — foydalanuvchini saqlash (multi-account)."""
+    tg = _tg_id(user_id)          # haqiqiy telegram ID (user_accounts uchun)
     conn2=_get_db_conn(); cur2=conn2.cursor()
     rol_uz = {"student":"O'quvchi","teacher":"O'qituvchi","parent":"Ota-ona"}.get(rol,rol)
     sinf_txt = f"{sinf}-sinf" if sinf else ""
@@ -2036,17 +2045,17 @@ async def _rq_save(source, user_id, name, rol, sinf):
         if cur2.rowcount==0:
             cur2.execute("INSERT INTO users(user_id,full_name,role,class) VALUES(%s,%s,%s,%s)",
                         (user_id,name,rol_uz,sinf_txt))
-        cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(user_id,))
+        cur2.execute("SELECT MAX(account_index) FROM user_accounts WHERE telegram_id=%s",(tg,))
         max_idx=(cur2.fetchone() or [None])[0]
         new_idx = 0 if max_idx is None else max_idx + 1
         print(f"[rq_save] max_idx={max_idx} new_idx={new_idx}")
-        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(user_id,))
+        cur2.execute("UPDATE user_accounts SET is_active=FALSE WHERE telegram_id=%s",(tg,))
         cur2.execute("""
             INSERT INTO user_accounts(telegram_id,account_index,full_name,role,class,is_active)
             VALUES(%s,%s,%s,%s,%s,TRUE)
             ON CONFLICT(telegram_id,account_index) DO UPDATE
             SET full_name=EXCLUDED.full_name,role=EXCLUDED.role,class=EXCLUDED.class,is_active=TRUE
-        """, (user_id, new_idx, name, rol_uz, sinf_txt))
+        """, (tg, new_idx, name, rol_uz, sinf_txt))
         conn2.commit()
         print(f"[rq_save] ✅ saqlandi index={new_idx}")
     except Exception as e:
@@ -2054,6 +2063,7 @@ async def _rq_save(source, user_id, name, rol, sinf):
         print(f"[rq_save] ❌ XATO: {e}")
         conn2.rollback()
     cur2.close(); conn2.close()
+    _eff_clear(tg)                 # kesh yangilansin
     user_state.pop(user_id, None)
     temp_user.pop(user_id, None)
     kb = get_main_keyboard(rol_uz)
