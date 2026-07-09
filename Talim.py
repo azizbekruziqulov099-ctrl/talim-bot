@@ -113,6 +113,11 @@ def _eff_clear(telegram_id):
 def _is_admin(uid):
     return _tg_id(uid) in ADMINS
 
+def _mavzu_hash(nom):
+    """Mavzu nomining qisqa belgisi — callback_data ga sig'ishi uchun."""
+    import hashlib
+    return hashlib.md5((nom or "").strip().encode()).hexdigest()[:6]
+
 # Excel dan o'qilgan rasm tavsiflari: {image_id: description_en}
 _RASM_TAVSIF = {}
 # Limit tugagan foydalanuvchilar (ertaga davom etish uchun)
@@ -5573,7 +5578,6 @@ def _mk_ts_kb(st2, cnt_total):
     timed = st2.get("ts_timed", "mix")   # True/False/"mix"
     write = st2.get("ts_write", False)   # True/False/"mix"
     img   = st2.get("ts_img", "mix")     # True/False/"mix"
-    ovoz  = st2.get("ts_ovoz", False)    # True = avto ovoz, False = tugma bilan
 
     # Son tugmalari — mavjuddan oshmasin
     son_qatori = []
@@ -5600,8 +5604,6 @@ def _mk_ts_kb(st2, cnt_total):
         [InlineKeyboardButton(text=f"{c(img==True)}🖼 Rasmli",       callback_data="ts_img_1"),
          InlineKeyboardButton(text=f"{c(img==False)}📝 Rasmsiz",     callback_data="ts_img_0"),
          InlineKeyboardButton(text=f"{c(img=='mix')}🔀 Aralash",     callback_data="ts_img_mix")],
-        [InlineKeyboardButton(text=f"{c(ovoz==False)}🔇 Ovozsiz",    callback_data="ts_ovoz_0"),
-         InlineKeyboardButton(text=f"{c(ovoz==True)}🔊 Avto ovoz",   callback_data="ts_ovoz_1")],
         [InlineKeyboardButton(text="▶️ Boshlash", callback_data="ts_go")],
     ])
 
@@ -5751,47 +5753,51 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         call.data = f"ts_start:{tc_set}"
 
     if call.data.startswith("ts_mavzu:"):
-        # Format: ts_mavzu:{mavzu_code}  yoki  ts_mavzu:{mavzu_code}|{grade}|{subject}
+        # Format: ts_mavzu:{mavzu_code}|{grade}|{nom_hash}
+        # Bitta mavzu_code ostida bir nechta har xil NOMLI mavzu bo'lishi mumkin,
+        # shuning uchun nom hash i ham yuboriladi.
         _payload = call.data[9:]
         _p = _payload.split("|")
         mavzu_code = _p[0]
         gr_sel   = _p[1] if len(_p) > 1 and _p[1] else None
-        subj_sel = _p[2] if len(_p) > 2 and _p[2] else None
+        nom_hash = _p[2] if len(_p) > 2 and _p[2] else None
 
-        # Tugmada bo'lmasa — user_state dan olamiz
-        if not gr_sel or not subj_sel:
+        if not gr_sel:
             from storage import user_state as _us0
             _sel = _us0.get(user_id) if isinstance(_us0.get(user_id), dict) else {}
-            gr_sel   = gr_sel   or _sel.get("ts_grade")
-            subj_sel = subj_sel or _sel.get("ts_subject")
+            gr_sel = _sel.get("ts_grade")
 
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
-        # mavzu_code sinflar bo'ylab TAKRORLANADI -> sinf/fan bilan cheklaymiz
         shart = "mavzu_code=%s AND is_deleted=FALSE"
         args = [mavzu_code]
         if gr_sel:
             shart += " AND grade::TEXT=%s"; args.append(str(gr_sel))
-        if subj_sel:
-            shart += " AND subject_name=%s"; args.append(subj_sel)
 
-        cur2.execute(f"SELECT DISTINCT topic_code FROM dts_tree WHERE {shart}", tuple(args))
-        topic_codes = [r[0] for r in cur2.fetchall()]
+        cur2.execute(f"SELECT topic_code, mavzu_name, subject_name FROM dts_tree WHERE {shart}",
+                    tuple(args))
+        qatorlar = cur2.fetchall()
 
-        # Hech narsa topilmasa — cheklovsiz (eski xatti-harakat)
+        # Mavzu NOMI bo'yicha ajratamiz — aynan bosilgan mavzu
+        if nom_hash and qatorlar:
+            _mos = [r for r in qatorlar if _mavzu_hash(r[1] or "") == nom_hash]
+            if _mos:
+                qatorlar = _mos
+            else:
+                print(f"[ts_mavzu] ⚠️ nom_hash {nom_hash} mos kelmadi")
+
+        topic_codes = sorted({r[0] for r in qatorlar})
+        mname   = (qatorlar[0][1] if qatorlar else None) or mavzu_code
+        subj_sel = (qatorlar[0][2] if qatorlar else None)
+
         if not topic_codes:
-            cur2.execute("SELECT DISTINCT topic_code FROM dts_tree WHERE mavzu_code=%s AND is_deleted=FALSE",
-                        (mavzu_code,))
-            topic_codes = [r[0] for r in cur2.fetchall()] or [mavzu_code]
-            print(f"[ts_mavzu] ⚠️ filtr bo'sh, cheklovsiz: {len(topic_codes)} topic")
+            cur2.close(); conn2.close()
+            await call.message.answer(f"❌ '{mavzu_code}' mavzusi topilmadi!"); return
 
-        print(f"[ts_mavzu] {mavzu_code} gr={gr_sel} fan={subj_sel} -> {len(topic_codes)} topic")
+        print(f"[ts_mavzu] {mavzu_code} gr={gr_sel} nom={mname[:25]} -> {len(topic_codes)} topic")
 
         cur2.execute("SELECT COUNT(*) FROM generated_tests WHERE topic_code = ANY(%s)",
                     (topic_codes,))
         cnt = cur2.fetchone()[0]
-        cur2.execute(f"SELECT mavzu_name FROM dts_tree WHERE {shart} LIMIT 1", tuple(args))
-        _mn = cur2.fetchone()
-        mname = (_mn[0] if _mn else None) or mavzu_code
         cur2.close(); conn2.close()
         if cnt == 0:
             await call.message.answer(f"❌ '{mname}' mavzusi uchun test yo'q!"); return
@@ -6129,7 +6135,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         except Exception: pass
         from test_engine import start_test
         timed_ = st2.get("ts_timed", True)
-        ovoz_  = st2.get("ts_ovoz", False)
+        ovoz_  = False   # ovoz FAQAT tugma bosilganda — hech qachon avtomatik
         # test_engine eski versiya bo'lsa avto_ovoz qabul qilmasligi mumkin
         try:
             await start_test(user_id, tests, call.message, timed=timed_, avto_ovoz=ovoz_)
