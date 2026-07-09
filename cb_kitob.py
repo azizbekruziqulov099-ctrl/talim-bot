@@ -265,10 +265,14 @@ async def handle_kitob(call, user_id, admin_state, user_state, temp_user, bot):
         total = len(mavzular)
         page_items = mavzular[page*PAGE:(page+1)*PAGE]
 
-        rows2=[[InlineKeyboardButton(
-            text=f"📝 {(m[0] or m[1])[:38]} ({m[2]})",
-            callback_data=f"ts_mavzu:{m[1]}"
-        )] for m in page_items]
+        rows2=[]
+        for m in page_items:
+            cb=f"ts_mavzu:{m[1]}|{gr}|{fan2}"
+            if len(cb.encode())>60: cb=f"ts_mavzu:{m[1]}|{gr}|"
+            rows2.append([InlineKeyboardButton(
+                text=f"📝 {(m[0] or m[1])[:38]} ({m[2]})",
+                callback_data=cb
+            )])
 
         nav = []
         if page > 0:
