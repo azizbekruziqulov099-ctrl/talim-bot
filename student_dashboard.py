@@ -1,609 +1,464 @@
-"""
-student_dashboard.py — Bosh ekran moduli
-Vaqtga, yoshga, jinsga mos dinamik bosh ekran
-"""
-import os
-import psycopg2
+"""student_dashboard.py — O'quvchi bosh ekrani (mustaqil, xatoga chidamli)"""
+import os, random
 from datetime import datetime, date, timedelta
-from aiogram import F
-from aiogram.types import (
-    Message, CallbackQuery,
-    InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton
-)
-from loader import dp, bot
-from storage import user_state
-from keyboards import get_main_keyboard
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
-def db():
+def _db():
+    import psycopg2
     return psycopg2.connect(DATABASE_URL)
 
 
-# ─────────────────────────────────────────
-# VAQT ANIQLASH
-# ─────────────────────────────────────────
-
-def get_time_greeting(hour: int, group: str, gender: str, name: str) -> str:
-    """Vaqt va yoshga mos salomlashish"""
-
-    is_girl = "Ayol" in str(gender)
-
-    if group == "junior":
-        # 1-4 sinf
-        if 6 <= hour < 12:
-            emoji = "☀️"
-            msg = f"Xayrli tong, {'qizaloq' if is_girl else 'botir'} {name}! Bugun ham o'rganamizmi? 🌸" if is_girl else f"Xayrli tong, {name}! Bugun ham o'rganamizmi? 💪"
-        elif 12 <= hour < 14:
-            emoji = "🌤"
-            msg = f"Salom, {name}! Tushlikdan keyin biroz o'rganamizmi? 📚"
-        elif 14 <= hour < 17:
-            emoji = "🌤"
-            msg = f"Salom, {name}! Kunduzi bir dars o'tib olamizmi? 🎯"
-        elif 17 <= hour < 21:
-            emoji = "🌙"
-            msg = f"Kechki dars vaqti, {name}! Bir mavzu o'rganamizmi? ⭐"
-        elif 21 <= hour < 23:
-            emoji = "🌙"
-            msg = f"Kech bo'ldi, {name}! Tez bir mavzu o'rganib yotamizmi? 😴"
-        else:
-            emoji = "🌙"
-            msg = f"Salom, {name}! Kech bo'lsa ham o'rganish yaxshi! 📖"
-
-    elif group == "middle":
-        # 5-8 sinf
-        if 6 <= hour < 12:
-            emoji = "⚔️"
-            msg = f"Xayrli tong, {'Malika' if is_girl else 'Qahramon'} {name}! Bugun ham g'alaba qozonamiz!"
-        elif 12 <= hour < 17:
-            emoji = "🎯"
-            msg = f"Salom, {name}! Missiya davom etmoqda!"
-        elif 17 <= hour < 21:
-            emoji = "🔥"
-            msg = f"Kechki mashg'ulot, {name}! Streak uzilmasin!"
-        else:
-            emoji = "💤"
-            msg = f"Dam olish vaqti, {name}! Ertaga yangi rekord! 🏆"
-
-    else:
-        # 9-11 sinf
-        if 6 <= hour < 12:
-            emoji = "📊"
-            msg = f"Xayrli tong, {name}! Imtihonga tayyorlanish davom etmoqda."
-        elif 12 <= hour < 17:
-            emoji = "📚"
-            msg = f"Salom, {name}! Bilim — kelajak kaliti."
-        elif 17 <= hour < 21:
-            emoji = "🧠"
-            msg = f"Kechki tayyorgarlik, {name}. Maqsadga yana bir qadam!"
-        else:
-            emoji = "🌙"
-            msg = f"Kech bo'ldi, {name}. Yaxshi dam oling — erta tetik bo'lasiz."
-
-    return f"{emoji} {msg}"
-
-
-def get_time_warning(hour: int, group: str) -> str | None:
-    """Vaqt bo'yicha ogohlantirish"""
-    if group == "junior" and hour >= 21:
-        return "😴 Uxlash vaqti! Sog'liq — birinchi o'rinda."
-    if group == "middle" and hour >= 23:
-        return "💤 Kech bo'ldi! Erta yotish — yaxshi natija."
-    if group == "senior" and hour >= 0 and hour < 5:
-        return "⚠️ Tun yarimidan oshdi. Dam oling!"
-    return None
-
-
-# ─────────────────────────────────────────
-# PROGRESS BLOKLARI
-# ─────────────────────────────────────────
-
-def get_progress_block(user_id: int, grade: str, group: str) -> str:
-    """Yoshga mos progress ko'rsatish"""
-    conn = db(); cur = conn.cursor()
-
+def _safe(fn, default=None):
+    """Har qanday xatoni yutadi — dashboard hech qachon buzilmaydi."""
     try:
-        # XP va streak
-        cur.execute("""
-            SELECT xp, streak FROM user_progress
-            WHERE user_id = %s
-        """, (user_id,))
-        prog = cur.fetchone()
-        xp     = prog[0] if prog else 0
-        streak = prog[1] if prog else 0
-
-        # O'rganilgan mavzular
-        cur.execute("""
-            SELECT COUNT(*) FROM learned_topics
-            WHERE user_id = %s
-        """, (user_id,))
-        learned = cur.fetchone()[0]
-
-        # Bugungi darslar
-        cur.execute("""
-            SELECT COUNT(*) FROM lesson_history
-            WHERE user_id = %s AND DATE(learned_at) = %s
-        """, (user_id, date.today()))
-        today_lessons = cur.fetchone()[0]
-
-        if group == "junior":
-            stars = xp // 10
-            plant = "🌱" if xp < 50 else "🌿" if xp < 200 else "🌳"
-            bar   = "█" * min(10, xp // 20) + "░" * (10 - min(10, xp // 20))
-            lines = [
-                f"{plant} O'simlik: {bar}",
-                f"⭐ Yulduzlar: {stars}",
-                f"📖 O'rganildi: {learned} mavzu",
-            ]
-            if streak > 1:
-                lines.append(f"🔥 {streak} kun ketma-ket!")
-            if today_lessons > 0:
-                lines.append(f"✅ Bugun: {today_lessons} ta dars")
-
-        elif group == "middle":
-            from progress import get_level
-            level = get_level(xp)
-            bar   = "█" * min(10, xp // 100) + "░" * (10 - min(10, xp // 100))
-            lines = [
-                f"{level['icon']} {level['name']} — {xp} XP",
-                f"📈 {bar}",
-                f"📖 {learned} mavzu o'rganildi",
-            ]
-            if streak > 1:
-                lines.append(f"🔥 Streak: {streak} kun")
-            if today_lessons > 0:
-                lines.append(f"✅ Bugun: {today_lessons} ta dars")
-
-        else:
-            # 9-11 sinf — foiz va tahlil
-            cur.execute("""
-                SELECT COUNT(*) FROM dts_tree
-                WHERE grade = %s AND is_deleted = FALSE
-            """, (grade,))
-            total = cur.fetchone()[0] or 1
-            pct   = min(100, int(learned * 100 / total))
-            bar   = "█" * (pct // 10) + "░" * (10 - pct // 10)
-            lines = [
-                f"📈 Bilim darajasi: {bar} {pct}%",
-                f"📖 {learned}/{total} mavzu",
-            ]
-            if streak > 1:
-                lines.append(f"🔥 {streak} kun faol")
-            if today_lessons > 0:
-                lines.append(f"✅ Bugun: {today_lessons} ta dars")
-
-        return "\n".join(lines)
-
-    finally:
-        cur.close(); conn.close()
-
-
-# ─────────────────────────────────────────
-# BUGUNGI REJA
-# ─────────────────────────────────────────
-
-def get_daily_plan(user_id: int, grade: str) -> str:
-    """Bugungi reja"""
-    conn = db(); cur = conn.cursor()
-
-    try:
-        from progress import get_next_topic, get_repeat_topics
-        next_topic = get_next_topic(user_id, grade)
-        repeats    = get_repeat_topics(user_id)
-
-        lines = ["🎯 Bugungi reja:"]
-
-        if repeats:
-            lines.append(f"🔁 Takrorlash: {len(repeats)} ta mavzu")
-
-        if next_topic:
-            lines.append(f"📘 Yangi: {next_topic[1]}")
-        else:
-            lines.append("🎉 Barcha mavzular o'rganildi!")
-
-        # Kutilayotgan imtihon
-        from progress import get_upcoming_exams
-        upcoming = get_upcoming_exams(user_id)
-        if upcoming:
-            days = (upcoming[0][1] - date.today()).days
-            if days <= 3:
-                lines.append(f"⚠️ {days} kunda imtihon: {upcoming[0][0]}")
-
-        return "\n".join(lines)
-
-    finally:
-        cur.close(); conn.close()
-
-
-# ─────────────────────────────────────────
-# TUG'ILGAN KUN
-# ─────────────────────────────────────────
-
-def check_birthday(user_id: int) -> str | None:
-    """Tug'ilgan kunni tekshiradi"""
-    conn = db(); cur = conn.cursor()
-    try:
-        cur.execute("""
-            SELECT birth_date FROM users WHERE user_id = %s
-        """, (user_id,))
-        row = cur.fetchone()
-        if not row or not row[0]:
-            return None
-
-        bdate = row[0]
-        today = date.today()
-
-        if hasattr(bdate, 'month'):
-            if bdate.month == today.month and bdate.day == today.day:
-                age = today.year - bdate.year
-                return f"🎂 Bugun sening tug'ilgan kunin! {age} yoshga to'lding! 🎉🎁"
-        return None
-    except Exception:
-        return None
-    finally:
-        cur.close(); conn.close()
-
-
-# ─────────────────────────────────────────
-# MAKTAB VAQT REJIMI
-# ─────────────────────────────────────────
-
-SCHOOL_SCHEDULE = {
-    "1": {"start": 8, "end": 13},
-    "2": {"start": 8, "end": 13},
-    "3": {"start": 8, "end": 14},
-    "4": {"start": 8, "end": 14},
-    "5": {"start": 8, "end": 15},
-    "6": {"start": 8, "end": 15},
-    "7": {"start": 8, "end": 15},
-    "8": {"start": 8, "end": 16},
-    "9": {"start": 8, "end": 16},
-    "10": {"start": 8, "end": 16},
-    "11": {"start": 8, "end": 16},
-}
-
-def get_school_status(grade: str, hour: int, weekday: int) -> str | None:
-    """Maktab vaqt holati"""
-    # Shanba/Yakshanba
-    if weekday >= 5:
-        return "🏖 Bugun dam olish kuni!"
-
-    schedule = SCHOOL_SCHEDULE.get(str(grade).replace("-sinf", ""), {})
-    if not schedule:
-        return None
-
-    start = schedule["start"]
-    end   = schedule["end"]
-
-    if start <= hour < end:
-        return f"🏫 Hozir maktab vaqti ({start}:00-{end}:00)"
-    elif hour < start:
-        mins = (start - hour) * 60
-        return f"⏰ Maktabga {mins} daqiqa qoldi"
-    else:
-        return f"🏠 Maktab tugadi. Uyda o'rganish vaqti!"
-
-
-# ─────────────────────────────────────────
-# ASOSIY DASHBOARD QURISH
-# ─────────────────────────────────────────
-
-async def build_dashboard(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
-    """To'liq dashboard — vaqtga qarab to'g'ri ko'rsatadi"""
-    conn = db(); cur = conn.cursor()
-    try:
-        cur.execute("""
-            SELECT full_name, class, gender, birth_date, region, district
-            FROM users WHERE user_id = %s
-        """, (user_id,))
-        row = cur.fetchone()
-        if not row:
-            return "❌ Foydalanuvchi topilmadi", InlineKeyboardMarkup(inline_keyboard=[])
-
-        full_name = row[0] or "O'quvchi"
-        grade     = str(row[1] or "5")
-        gender    = row[2] or ""
-        region    = row[4] or ""
-        district  = row[5] or ""
-        name      = full_name.split()[0]
-
-        try:
-            g = int(grade.replace("-sinf", "").strip())
-            group = "junior" if g <= 4 else "middle" if g <= 8 else "senior"
-        except Exception:
-            group = "middle"
-
-        now     = datetime.now()
-        hour    = now.hour
-        weekday = now.weekday()
-        is_night   = hour >= 22 or hour < 6
-        is_weekend = weekday >= 5  # 5=Shanba, 6=Yakshanba
-
-        lines = []
-
-        # Tug'ilgan kun
-        bday = check_birthday(user_id)
-        if bday:
-            lines.append(bday)
-
-        # Salomlashish
-        if is_night:
-            lines.append(f"🌙 Kech bo'ldi, {name}! Yaxshi dam oling 🌙")
-        elif is_weekend:
-            lines.append(
-                f"🏖 Xayrli dam olish kuni, {name}!\n"
-                f"Bugun dam olish kuni — lekin bilim hech qachon dam olmaydi 😊\n"
-                f"Ishlaysizmi? Test yoki mavzu o'rganishni tanlang 👇"
-            )
-        else:
-            greeting = get_time_greeting(hour, group, gender, name)
-            lines.append(greeting)
-
-        lines.append("━━━━━━━━━━━━━━")
-
-        # Progress
-        try:
-            lines.append(get_progress_block(user_id, grade, group))
-        except Exception:
-            pass
-
-        lines.append("━━━━━━━━━━━━━━")
-
-        # Bugungi reja
-        try:
-            lines.append(get_daily_plan(user_id, grade))
-        except Exception:
-            pass
-
-        if region:
-            lines.append("━━━━━━━━━━━━━━")
-            lines.append(f"📍 {region}, {district}")
-
-        text = "\n".join(lines)
-
-        # Tugmalar — vaqtga qarab
-        if is_night:
-            # Tun — dars/test bloklangan, faqat statistika
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📊 Statistika", callback_data="dashboard_stats"),
-                 InlineKeyboardButton(text="🔄 Yangilash",  callback_data="dashboard_refresh")],
-            ])
-        elif is_weekend:
-            # Dam olish — dars/test bor, lekin ogohlantirish bilan
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
-                 InlineKeyboardButton(text="🧪 Test ishlash",    callback_data="tset_start_quick")],
-                [InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
-                 InlineKeyboardButton(text="🔄 Yangilash",   callback_data="dashboard_refresh")],
-            ])
-        else:
-            # Oddiy vaqt
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
-                 InlineKeyboardButton(text="🔄 Yangilash",       callback_data="dashboard_refresh")],
-                [InlineKeyboardButton(text="📊 Statistika",  callback_data="dashboard_stats"),
-                 InlineKeyboardButton(text="📅 Reja",        callback_data="dashboard_plan")],
-                [InlineKeyboardButton(text="🧪 Test ishlash", callback_data="tset_start_quick")],
-            ])
-
-        return text, keyboard
-
-    finally:
-        cur.close(); conn.close()
-
-
-
-async def build_dashboard_full(user_id: int):
-    """Kechki/dam olish filtrsiz to'liq dashboard"""
-    conn = db(); cur = conn.cursor()
-    try:
-        cur.execute("""
-            SELECT full_name, class, gender, birth_date, region, district
-            FROM users WHERE user_id = %s
-        """, (user_id,))
-        row = cur.fetchone()
-        if not row:
-            return "❌ Topilmadi", InlineKeyboardMarkup(inline_keyboard=[])
-
-        full_name = row[0] or "O'quvchi"
-        grade     = str(row[1] or "5")
-        gender    = row[2] or ""
-        region    = row[4] or ""
-        district  = row[5] or ""
-        name      = full_name.split()[0]
-
-        try:
-            g = int(grade.replace("-sinf", "").strip())
-            group = "junior" if g <= 4 else "middle" if g <= 8 else "senior"
-        except Exception:
-            group = "middle"
-
-        now     = datetime.now()
-        hour    = now.hour
-        weekday = now.weekday()
-
-        lines = []
-        greeting = get_time_greeting(hour, group, gender, name)
-        lines.append(greeting)
-        lines.append("━━━━━━━━━━━━━━")
-
-        try:
-            lines.append(get_progress_block(user_id, grade, group))
-        except Exception:
-            pass
-
-        lines.append("━━━━━━━━━━━━━━")
-
-        try:
-            lines.append(get_daily_plan(user_id, grade))
-        except Exception:
-            pass
-
-        if region:
-            lines.append("━━━━━━━━━━━━━━")
-            lines.append(f"📍 {region}, {district}")
-
-        text = "\n".join(lines)
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="▶️ Darsni boshlash", callback_data="lesson_continue"),
-                InlineKeyboardButton(text="🔄 Yangilash", callback_data="dashboard_refresh")
-            ],
-            [
-                InlineKeyboardButton(text="📊 Statistika", callback_data="dashboard_stats"),
-                InlineKeyboardButton(text="📅 Reja", callback_data="dashboard_plan")
-            ]
-        ])
-        return text, keyboard
-    finally:
-        cur.close(); conn.close()
-
-
-# ─────────────────────────────────────────
-# HANDLERS
-# ─────────────────────────────────────────
-
-@dp.callback_query(F.data == "dashboard_refresh")
-async def dashboard_refresh(call: CallbackQuery):
-    await call.answer("🔄 Yangilanmoqda...")
-    try:
-        text, keyboard = await build_dashboard(call.from_user.id)
-        try:
-            await call.message.edit_text(text, reply_markup=keyboard)
-        except Exception:
-            await call.message.answer(text, reply_markup=keyboard)
-        # Reply keyboard qaytarish
-        conn2 = psycopg2.connect(DATABASE_URL)
-        cur2  = conn2.cursor()
-        cur2.execute("SELECT role FROM users WHERE user_id=%s", (call.from_user.id,))
-        row = cur2.fetchone()
-        cur2.close(); conn2.close()
-        if row:
-            from keyboards import get_main_keyboard
-            await call.message.answer(
-                "🏠 Asosiy menyu",
-                reply_markup=get_main_keyboard(row[0])
-            )
+        return fn()
     except Exception as e:
-        await call.answer(f"❌ {e}", show_alert=True)
+        print(f"[dashboard] {fn.__name__ if hasattr(fn,'__name__') else '?'}: {e}")
+        return default
 
 
-@dp.callback_query(F.data == "dashboard_stats")
-async def dashboard_stats(call: CallbackQuery):
-    """Statistika"""
-    await call.answer()
-    conn = db(); cur = conn.cursor()
+# ═══════════════════ KUN REJIMI ═══════════════════
 
+def _kun_rejimi():
+    """Soatga qarab salomlashuv va rejim."""
+    h = datetime.now().hour
+    if 5 <= h < 11:
+        return "🌅", "Xayrli tong", "Ertalabki mashg'ulot vaqti — miya eng tiniq payt"
+    if 11 <= h < 17:
+        return "☀️", "Xayrli kun", "Kunduzgi vaqt — mustahkamlash uchun qulay"
+    if 17 <= h < 21:
+        return "🌆", "Xayrli kech", "Kechki takrorlash — bugun o'rganganni mustahkamlang"
+    return "🌙", "Xayrli tun", "Kech bo'ldi — dam olish ham o'qish kabi muhim"
+
+
+KUNLAR = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+
+MASLAHATLAR = [
+    "Kuniga 25 daqiqa diqqat bilan o'qish — 2 soat chalg'igan o'qishdan foydali.",
+    "Yangi mavzuni o'qigach, kitobni yopib o'zingizga aytib bering.",
+    "Xato qilgan savolni belgilab qo'ying — ertaga qayta yeching.",
+    "Ertalab qiyin mavzuni, kechqurun takrorlashni oling.",
+    "Har 45 daqiqada 5 daqiqa tanaffus qiling — miya tiklanadi.",
+    "O'rganganingizni do'stingizga tushuntiring — eng kuchli usul.",
+    "Uxlashdan oldin 10 daqiqa takrorlash — xotirada uzoq qoladi.",
+    "Bir kunda ko'p emas, har kuni oz — natija shundan chiqadi.",
+    "Savolni tushunmasangiz, uni bo'laklarga bo'ling.",
+    "Telefon yoningizda bo'lmasa, diqqat 2 barobar oshadi.",
+    "Yozib o'rganish — o'qib o'rganishdan mustahkamroq.",
+    "Har kuni bir yangi so'z — yilda 365 ta so'z.",
+]
+
+
+def _kunlik_maslahat(user_id):
+    """Har kuni bir xil maslahat (kun bo'yicha barqaror)."""
+    idx = (date.today().toordinal() + int(user_id) % 7) % len(MASLAHATLAR)
+    return MASLAHATLAR[idx]
+
+
+# ═══════════════════ MA'LUMOTLAR ═══════════════════
+
+def _user_info(uid):
+    conn = _db(); cur = conn.cursor()
+    cur.execute("SELECT full_name, class, school FROM users WHERE user_id=%s", (uid,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    if not r:
+        return {"ism": "O'quvchi", "sinf": "", "maktab": ""}
+    return {"ism": r[0] or "O'quvchi", "sinf": r[1] or "", "maktab": r[2] or ""}
+
+
+def _bugungi_darslar(uid):
+    """Bugun o'qituvchi belgilagan mavzular (to'garaklardan)."""
+    conn = _db(); cur = conn.cursor()
     try:
-        user_id = call.from_user.id
-
-        cur.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-        row   = cur.fetchone()
-        grade = str(row[0] if row else "5")
-
-        cur.execute("SELECT COUNT(*) FROM learned_topics WHERE user_id=%s", (user_id,))
-        learned = cur.fetchone()[0]
-
         cur.execute("""
-            SELECT COUNT(*) FROM lesson_history
-            WHERE user_id=%s AND DATE(learned_at)=%s
-        """, (user_id, date.today()))
-        today = cur.fetchone()[0]
-
-        cur.execute("""
-            SELECT COUNT(*) FROM lesson_history
-            WHERE user_id=%s AND learned_at >= %s
-        """, (user_id, date.today() - timedelta(days=7)))
-        week = cur.fetchone()[0]
-
-        cur.execute("""
-            SELECT COUNT(*) FROM lesson_history
-            WHERE user_id=%s AND learned_at >= %s
-        """, (user_id, date.today() - timedelta(days=30)))
-        month = cur.fetchone()[0]
-
-        cur.execute("SELECT xp, streak FROM user_progress WHERE user_id=%s", (user_id,))
-        prog   = cur.fetchone()
-        xp     = prog[0] if prog else 0
-        streak = prog[1] if prog else 0
-
-        cur.execute("""
-            SELECT COUNT(*) FROM dts_tree
-            WHERE grade=%s AND is_deleted=FALSE
-        """, (grade,))
-        total = cur.fetchone()[0] or 1
-        pct   = min(100, int(learned * 100 / total))
-
-        text = (
-            f"📊 STATISTIKA\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"📈 Bilim darajasi: {pct}%\n"
-            f"📖 O'rganildi: {learned}/{total}\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"✅ Bugun: {today} dars\n"
-            f"📅 Bu hafta: {week} dars\n"
-            f"🗓 Bu oy: {month} dars\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"⭐ XP: {xp}\n"
-            f"🔥 Streak: {streak} kun"
-        )
-
-        await call.message.answer(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="⬅️ Ortga", callback_data="dashboard_refresh")
-            ]])
-        )
-
-    finally:
-        cur.close(); conn.close()
+            SELECT t.nomi, r.izoh, r.dars_vaqt
+            FROM togarak_azolar a
+            JOIN togaraklar t ON t.id = a.togarak_id
+            JOIN togarak_reja r ON r.togarak_id = t.id
+            WHERE a.user_id=%s AND a.aktiv=TRUE
+              AND r.dars_sana = CURRENT_DATE
+            ORDER BY r.dars_vaqt NULLS LAST
+            LIMIT 5
+        """, (uid,))
+        rows = cur.fetchall()
+    except Exception as e:
+        conn.rollback(); rows = []
+        print(f"[dashboard] bugungi: {e}")
+    cur.close(); conn.close()
+    return [{"togarak": r[0], "mavzu": r[1] or "—", "vaqt": r[2] or ""} for r in rows]
 
 
-@dp.callback_query(F.data == "dashboard_plan")
-async def dashboard_plan(call: CallbackQuery):
-    """Haftalik reja"""
-    await call.answer()
-    conn = db(); cur = conn.cursor()
-
+def _otilgan_mavzular(uid, kun=7):
+    """Oxirgi N kunda o'qituvchi o'tib bo'lgan mavzular."""
+    conn = _db(); cur = conn.cursor()
     try:
-        user_id = call.from_user.id
-        cur.execute("SELECT class FROM users WHERE user_id=%s", (user_id,))
-        row   = cur.fetchone()
-        grade = str(row[0] if row else "5")
+        cur.execute("""
+            SELECT t.nomi, r.izoh, r.dars_sana
+            FROM togarak_azolar a
+            JOIN togaraklar t ON t.id = a.togarak_id
+            JOIN togarak_reja r ON r.togarak_id = t.id
+            WHERE a.user_id=%s AND a.aktiv=TRUE
+              AND r.completed = TRUE
+              AND r.dars_sana >= CURRENT_DATE - (%s || ' days')::INTERVAL
+            ORDER BY r.dars_sana DESC
+            LIMIT 5
+        """, (uid, kun))
+        rows = cur.fetchall()
+    except Exception as e:
+        conn.rollback(); rows = []
+        print(f"[dashboard] otilgan: {e}")
+    cur.close(); conn.close()
+    return [{"togarak": r[0], "mavzu": r[1] or "—",
+             "sana": r[2].strftime("%d.%m") if r[2] else ""} for r in rows]
 
-        from progress import get_next_topic, get_repeat_topics, get_upcoming_exams
-        next_topic = get_next_topic(user_id, grade)
-        repeats    = get_repeat_topics(user_id)
-        upcoming   = get_upcoming_exams(user_id)
 
-        lines = ["📅 HAFTALIK REJA\n━━━━━━━━━━━━━━"]
+def _vazifalar(uid):
+    """Bajarilmagan uy vazifalari. Ustun nomlari har xil bo'lishi mumkin."""
+    conn = _db(); cur = conn.cursor()
+    rows = []
+    # 1-urinish: homework_javoblar orqali
+    try:
+        cur.execute("""
+            SELECT h.id, t.nomi, h.mavzu, h.deadline
+            FROM togarak_azolar a
+            JOIN togaraklar t ON t.id = a.togarak_id
+            JOIN homework h ON h.togarak_id = t.id
+            WHERE a.user_id=%s AND a.aktiv=TRUE
+              AND NOT EXISTS (
+                  SELECT 1 FROM homework_javoblar j
+                  WHERE j.homework_id = h.id AND j.user_id = %s
+              )
+            ORDER BY h.deadline NULLS LAST
+            LIMIT 5
+        """, (uid, uid))
+        rows = cur.fetchall()
+    except Exception:
+        conn.rollback()
+        # 2-urinish: javoblar jadvalisiz
+        try:
+            cur.execute("""
+                SELECT h.id, t.nomi, h.mavzu, h.deadline
+                FROM togarak_azolar a
+                JOIN togaraklar t ON t.id = a.togarak_id
+                JOIN homework h ON h.togarak_id = t.id
+                WHERE a.user_id=%s AND a.aktiv=TRUE
+                ORDER BY h.deadline NULLS LAST
+                LIMIT 5
+            """, (uid,))
+            rows = cur.fetchall()
+        except Exception as e:
+            conn.rollback()
+            print(f"[dashboard] vazifa: {e}")
+    cur.close(); conn.close()
 
-        if repeats:
-            lines.append(f"🔁 Takrorlash ({len(repeats)} ta):")
-            for r in repeats[:3]:
-                lines.append(f"  • {r[1]}")
+    out = []
+    for r in rows:
+        muddat = ""
+        d = r[3]
+        if d:
+            try:
+                dd = d.date() if hasattr(d, "date") else d
+                qolgan = (dd - date.today()).days
+                if qolgan == 0: muddat = "bugun!"
+                elif qolgan > 0: muddat = f"{qolgan} kun"
+                else: muddat = "kechikdi"
+            except Exception:
+                muddat = ""
+        out.append({"togarak": r[1], "mavzu": r[2] or "—", "muddat": muddat})
+    return out
 
-        if next_topic:
-            lines.append(f"\n📘 Keyingi dars:\n  {next_topic[1]}")
 
-        if upcoming:
-            lines.append("\n📅 Kelayotgan imtihonlar:")
-            for ex in upcoming:
-                days = (ex[1] - date.today()).days
-                icon = "🚨" if ex[2] else "🔔"
-                lines.append(f"  {icon} {ex[0]} — {days} kun")
+def _test_statistika(uid):
+    """Test natijalari — o'zlashtirish."""
+    conn = _db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*), COALESCE(SUM(score),0), COALESCE(SUM(total),0)
+        FROM results WHERE user_id=%s
+    """, (uid,))
+    r = cur.fetchone() or (0, 0, 0)
+    cur.close(); conn.close()
+    soni, ball, jami = (r[0] or 0), (r[1] or 0), (r[2] or 0)
+    foiz = round(ball * 100 / jami) if jami else 0
+    return {"testlar": soni, "foiz": foiz}
 
-        if not repeats and not next_topic and not upcoming:
-            lines.append("🎉 Hamma narsa joyida!")
 
-        await call.message.answer(
-            "\n".join(lines),
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="⬅️ Ortga", callback_data="dashboard_refresh")
-            ]])
-        )
+def _streak(uid):
+    """Ketma-ket kunlar (user_progress)."""
+    conn = _db(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT streak FROM user_progress WHERE user_id=%s", (uid,))
+        r = cur.fetchone()
+    except Exception:
+        conn.rollback(); r = None
+    cur.close(); conn.close()
+    return (r[0] if r else 0) or 0
 
-    finally:
+
+def _togarak_soni(uid):
+    conn = _db(); cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM togarak_azolar WHERE user_id=%s AND aktiv=TRUE", (uid,))
+    r = cur.fetchone(); cur.close(); conn.close()
+    return (r[0] if r else 0) or 0
+
+
+# ═══════════════════ BOSH EKRAN ═══════════════════
+
+async def build_dashboard(uid):
+    """O'quvchi bosh ekrani — IXCHAM. Tafsilot tugmalarda."""
+    u = _safe(lambda: _user_info(uid), {"ism": "O'quvchi", "sinf": "", "maktab": ""})
+    emoji, salom, _ = _kun_rejimi()
+    bugun = datetime.now()
+    kun_nomi = KUNLAR[bugun.weekday()]
+    ism = (u["ism"] or "O'quvchi").split()[0]
+
+    darslar = _safe(lambda: _bugungi_darslar(uid), [])
+    vz = _safe(lambda: _vazifalar(uid), [])
+    st = _safe(lambda: _test_statistika(uid), {"testlar": 0, "foiz": 0})
+    sk = _safe(lambda: _streak(uid), 0)
+
+    t = [f"{emoji} <b>{salom}, {ism}!</b>"]
+    sinf = f" · 🎓 {u['sinf']}" if u["sinf"] else ""
+    t.append(f"📅 {bugun.strftime('%d.%m')} · {kun_nomi}{sinf}")
+    t.append("━━━━━━━━━━━━━━")
+
+    # Bugungi dars — 1 qator
+    if darslar:
+        d = darslar[0]
+        vaqt = f" · {d['vaqt']}" if d["vaqt"] else ""
+        qosh = f" (+{len(darslar)-1})" if len(darslar) > 1 else ""
+        t.append(f"📌 <b>Bugun:</b> {d['mavzu'][:32]}{vaqt}{qosh}")
+    else:
+        t.append("📌 <b>Bugun:</b> dars belgilanmagan")
+
+    # Vazifa — 1 qator
+    if vz:
+        shoshilinch = sum(1 for v in vz if v["muddat"] in ("bugun!", "kechikdi"))
+        ogoh = f"  ⚠️ {shoshilinch} shoshilinch" if shoshilinch else ""
+        t.append(f"📝 <b>Vazifa:</b> {len(vz)} ta{ogoh}")
+    else:
+        t.append("📝 <b>Vazifa:</b> yo'q ✅")
+
+    # Statistika — 1 qator
+    stat = f"🎯 {st['foiz']}%   🧪 {st['testlar']} ta"
+    if sk > 0:
+        stat += f"   🔥 {sk} kun"
+    t.append(stat)
+
+    t.append("")
+    t.append(f"💡 <i>{_kunlik_maslahat(uid)}</i>")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📌 Bugungi dars", callback_data="dash_bugun"),
+         InlineKeyboardButton(text="📝 Vazifalar", callback_data="dash_vazifa")],
+        [InlineKeyboardButton(text="📚 To'garaklarim", callback_data="dash_togarak"),
+         InlineKeyboardButton(text="🏫 Maktab", callback_data="dash_maktab")],
+        [InlineKeyboardButton(text="🔄 Yangilash", callback_data="dash_refresh")],
+    ])
+    return "\n".join(t), kb
+
+
+async def build_bugungi(uid):
+    """Bugungi darslar + yaqinda o'tilgan mavzular."""
+    darslar = _safe(lambda: _bugungi_darslar(uid), [])
+    otil = _safe(lambda: _otilgan_mavzular(uid), [])
+    _, _, rejim = _kun_rejimi()
+
+    t = ["📌 <b>Bugungi dars</b>", ""]
+    if darslar:
+        for d in darslar:
+            vaqt = f"  ⏰ {d['vaqt']}" if d["vaqt"] else ""
+            t.append(f"<b>{d['mavzu']}</b>")
+            t.append(f"   👥 {d['togarak']}{vaqt}")
+            t.append("")
+    else:
+        t.append("Bugun dars belgilanmagan.")
+        t.append("")
+
+    if otil:
+        t.append("📗 <b>Yaqinda o'tilgan</b>")
+        for o in otil:
+            t.append(f"   • {o['mavzu'][:38]} <i>({o['sana']})</i>")
+        t.append("")
+
+    t.append(f"<i>{rejim}</i>")
+    return "\n".join(t), _orqaga_kb()
+
+
+# ═══════════════════ TO'GARAK STATISTIKASI ═══════════════════
+
+async def build_togarak_stat(uid):
+    """To'garaklar bo'yicha alohida statistika."""
+    try:
+        conn = _db(); cur = conn.cursor()
+        cur.execute("""
+            SELECT t.id, t.nomi, t.fan
+            FROM togarak_azolar a
+            JOIN togaraklar t ON t.id = a.togarak_id
+            WHERE a.user_id=%s AND a.aktiv=TRUE AND t.aktiv=TRUE
+            ORDER BY t.nomi
+        """, (uid,))
+        tgs = cur.fetchall()
+    except Exception as e:
+        print(f"[dashboard] togarak_stat: {e}")
+        return "📚 <b>To'garaklarim</b>\n\n⚠️ Ma'lumot yuklanmadi.", _orqaga_kb()
+
+    if not tgs:
         cur.close(); conn.close()
+        return ("📚 <b>To'garaklarim</b>\n\nSiz hali to'garakka a'zo emassiz.\n"
+                "«📚 To'garaklar» menyusidan qo'shiling."), _orqaga_kb()
+
+    t = ["📚 <b>To'garaklarim</b>", ""]
+    for tid, nomi, fan in tgs:
+        # Davomat
+        try:
+            cur.execute("""
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE holat IN ('keldi','kech'))
+                FROM togarak_yoqlama WHERE togarak_id=%s AND user_id=%s
+            """, (tid, uid))
+            y = cur.fetchone() or (0, 0)
+        except Exception:
+            conn.rollback(); y = (0, 0)
+        dav = round((y[1] or 0) * 100 / y[0]) if y[0] else 100
+
+        # Baholar
+        try:
+            cur.execute("""
+                SELECT COUNT(*), COALESCE(AVG(baho),0)
+                FROM togarak_baholar WHERE togarak_id=%s AND user_id=%s
+            """, (tid, uid))
+            b = cur.fetchone() or (0, 0)
+        except Exception:
+            conn.rollback(); b = (0, 0)
+
+        # O'tilgan mavzular
+        try:
+            cur.execute("""
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE completed=TRUE)
+                FROM togarak_reja WHERE togarak_id=%s
+            """, (tid,))
+            r = cur.fetchone() or (0, 0)
+        except Exception:
+            conn.rollback(); r = (0, 0)
+        prog = round((r[1] or 0) * 100 / r[0]) if r[0] else 0
+
+        t.append(f"<b>{nomi}</b> <i>({fan or '—'})</i>")
+        t.append(f"   📈 Davomat: {dav}%")
+        if b[0]:
+            t.append(f"   ⭐ O'rtacha baho: {round(float(b[1]),1)} ({b[0]} ta)")
+        t.append(f"   📗 Dastur: {prog}% ({r[1]}/{r[0]} mavzu)")
+        t.append("")
+
+    cur.close(); conn.close()
+    return "\n".join(t), _orqaga_kb()
+
+
+# ═══════════════════ MAKTAB STATISTIKASI ═══════════════════
+
+async def build_maktab_stat(uid):
+    """Maktab / test natijalari bo'yicha alohida statistika."""
+    try:
+        conn = _db(); cur = conn.cursor()
+        cur.execute("SELECT class, school FROM users WHERE user_id=%s", (uid,))
+        u = cur.fetchone() or ("", "")
+        sinf, maktab = (u[0] or ""), (u[1] or "")
+
+        cur.execute("""
+            SELECT COUNT(*), COALESCE(SUM(score),0), COALESCE(SUM(total),0)
+            FROM results WHERE user_id=%s
+        """, (uid,))
+        r = cur.fetchone() or (0, 0, 0)
+    except Exception as e:
+        print(f"[dashboard] maktab_stat: {e}")
+        return "🏫 <b>Maktab statistikasi</b>\n\n⚠️ Ma'lumot yuklanmadi.", _orqaga_kb()
+
+    soni, ball, jami = r[0] or 0, r[1] or 0, r[2] or 0
+    foiz = round(ball * 100 / jami) if jami else 0
+
+    t = ["🏫 <b>Maktab statistikasi</b>", ""]
+    if maktab: t.append(f"🏫 {maktab}")
+    if sinf: t.append(f"🎓 {sinf}")
+    t.append("")
+
+    if soni == 0:
+        t.append("Hali test yechmagansiz.")
+        t.append("«🧪 Bilimni sinash» dan boshlang!")
+        cur.close(); conn.close()
+        return "\n".join(t), _orqaga_kb()
+
+    t.append("📊 <b>Umumiy o'zlashtirish</b>")
+    t.append(f"   🎯 Foiz: {foiz}%")
+    t.append(f"   ✅ To'g'ri: {ball} / {jami}")
+    t.append(f"   🧪 Testlar: {soni} ta")
+    t.append("")
+
+    if foiz >= 86: baho, izoh = "5 (a'lo)", "Ajoyib natija!"
+    elif foiz >= 71: baho, izoh = "4 (yaxshi)", "Yaxshi, biroz mehnat kerak"
+    elif foiz >= 56: baho, izoh = "3 (qoniqarli)", "Takrorlash foydali bo'ladi"
+    else: baho, izoh = "2", "Mavzularni qaytadan o'rganing"
+    t.append(f"📋 <b>Baho: {baho}</b>")
+    t.append(f"<i>{izoh}</i>")
+    t.append("")
+
+    # Fanlar bo'yicha
+    try:
+        cur.execute("""
+            SELECT subject, COALESCE(SUM(score),0), COALESCE(SUM(total),0)
+            FROM results WHERE user_id=%s AND subject IS NOT NULL
+            GROUP BY subject ORDER BY 3 DESC LIMIT 6
+        """, (uid,))
+        fanlar = cur.fetchall()
+    except Exception:
+        conn.rollback(); fanlar = []
+    if fanlar:
+        t.append("📚 <b>Fanlar bo'yicha</b>")
+        for f, b2, j2 in fanlar:
+            p = round((b2 or 0) * 100 / j2) if j2 else 0
+            bar = "█" * (p // 10) + "░" * (10 - p // 10)
+            t.append(f"   {f}")
+            t.append(f"   {bar} {p}%")
+        t.append("")
+
+    # Sinfdoshlar orasida o'rin
+    if sinf:
+        try:
+            cur.execute("""
+                SELECT user_id, SUM(score)*100.0/NULLIF(SUM(total),0) AS f
+                FROM results
+                WHERE user_id IN (SELECT user_id FROM users WHERE class=%s)
+                GROUP BY user_id HAVING SUM(total)>0
+                ORDER BY f DESC
+            """, (sinf,))
+            reyting = cur.fetchall()
+            orin = next((i + 1 for i, x in enumerate(reyting) if x[0] == uid), None)
+            if orin:
+                t.append(f"🏆 <b>{sinf} da o'rningiz: {orin} / {len(reyting)}</b>")
+        except Exception:
+            conn.rollback()
+
+    cur.close(); conn.close()
+    return "\n".join(t), _orqaga_kb()
+
+
+# ═══════════════════ VAZIFALAR ═══════════════════
+
+async def build_vazifalar(uid):
+    vz = _safe(lambda: _vazifalar(uid), [])
+    if not vz:
+        return "📝 <b>Vazifalar</b>\n\n✅ Bajarilmagan vazifa yo'q!", _orqaga_kb()
+    t = [f"📝 <b>Vazifalar</b> ({len(vz)} ta)", ""]
+    for i, v in enumerate(vz, 1):
+        t.append(f"<b>{i}. {v['mavzu']}</b>")
+        t.append(f"   👥 {v['togarak']}")
+        if v["muddat"]:
+            t.append(f"   ⏰ {v['muddat']}")
+        t.append("")
+    return "\n".join(t), _orqaga_kb()
+
+
+def _orqaga_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Bosh ekran", callback_data="dash_refresh")
+    ]])
