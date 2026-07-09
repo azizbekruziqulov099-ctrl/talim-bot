@@ -2121,16 +2121,29 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         c = _get_db_conn(); cr = c.cursor()
         try:
             if mc:
-                cr.execute("""SELECT topic_code, mavzu_name, subject_name,
+                # Aniq mavzu: topic kodlar + kichik mavzular + savollar
+                cr.execute("""SELECT topic_code, mavzu_name, kichik_name, subject_name,
                        (SELECT COUNT(*) FROM generated_tests g WHERE g.topic_code=d.topic_code)
                     FROM dts_tree d WHERE mavzu_code=%s AND grade::TEXT=%s AND is_deleted=FALSE
                     ORDER BY topic_code LIMIT 30""", (mc, gr))
                 rows = cr.fetchall()
                 t = [f"🔍 <b>{gr}-sinf · {mc}</b>\n"]
-                for tc, mn, sn, n in rows:
-                    t.append(f"<code>{tc}</code>")
-                    t.append(f"   {mn} · {n} test")
-                t.append(f"\nJami: {len(rows)} topic, {sum(r[3] for r in rows)} test")
+                for tc, mn, kn, sn, n in rows:
+                    t.append(f"<code>{tc}</code> · {n} test")
+                    t.append(f"   📗 {mn}")
+                    if kn: t.append(f"   └ {kn}")
+                jami = sum(r[4] for r in rows)
+                t.append(f"\n<b>Jami: {len(rows)} topic, {jami} test</b>")
+
+                # Haqiqiy savollar — mos keladimi?
+                kodlar = [r[0] for r in rows]
+                if kodlar:
+                    cr.execute("""SELECT topic_code, LEFT(question,50)
+                        FROM generated_tests WHERE topic_code=ANY(%s) LIMIT 5""", (kodlar,))
+                    t.append("\n📝 <b>Savollar:</b>")
+                    for tc, q in cr.fetchall():
+                        t.append(f"<code>{tc}</code>")
+                        t.append(f"   {q}")
             else:
                 cr.execute("""SELECT d.mavzu_code, d.mavzu_name, d.subject_name,
                        COUNT(DISTINCT d.topic_code), COUNT(g.id)
@@ -2142,7 +2155,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 t = [f"🔍 <b>{gr}-sinf mavzulari</b>\n"]
                 for mcode, mn, sn, ntopic, ntest in rows:
                     t.append(f"<code>{mcode}</code> · {(mn or '—')[:28]}")
-                    t.append(f"   {ntopic} topic · {ntest} test · hash <code>{_mavzu_hash(mn or '')}</code>")
+                    t.append(f"   {ntopic} topic · {ntest} test")
             cr.close(); c.close()
             await message.answer("\n".join(t)[:4000], parse_mode="HTML")
         except Exception as e:
@@ -6233,13 +6246,39 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         cur2.execute(f"""
             SELECT question,option_a,option_b,option_c,option_d,
                    correct_answer,explanation,question_type,is_latex,
-                   image_url,audio_text,language,time_limit
+                   image_url,audio_text,language,time_limit,topic_code
             FROM generated_tests WHERE topic_code=ANY(%s) {diff_f} {type_f} {img_f}
             ORDER BY RANDOM() LIMIT %s
         """, (topic_codes, cnt2))
-        tests = cur2.fetchall(); cur2.close(); conn2.close()
+        _xom = cur2.fetchall(); cur2.close(); conn2.close()
+
+        # Nazorat: har savol tanlangan kodlardan ekanini tekshiramiz
+        _kod_set = set(topic_codes)
+        _begona = [r[13] for r in _xom if r[13] not in _kod_set]
+        if _begona:
+            print(f"[ts_go] ⚠️ BEGONA KODLAR: {set(_begona)}")
+        tests = [r[:13] for r in _xom if r[13] in _kod_set]
         print(f"[ts_go] topics={len(topic_codes)} soralgan={cnt2} topildi={len(tests)} "
               f"img={img} write={write} diff={diff}")
+
+        # ADMIN uchun tashxis — qaysi kod, qaysi savol
+        if _is_admin(user_id):
+            try:
+                _d = [f"🔍 <b>Tashxis</b>", ""]
+                _d.append(f"📚 Mavzu: {st2.get('ts_mavzu_name','?')}")
+                _d.append(f"🎓 Sinf: {st2.get('ts_grade','?')}")
+                _d.append(f"🔢 Topic kodlar ({len(topic_codes)}):")
+                for _k in topic_codes[:6]:
+                    _d.append(f"   <code>{_k}</code>")
+                if len(topic_codes) > 6:
+                    _d.append(f"   ... yana {len(topic_codes)-6} ta")
+                _d.append(f"\n📝 Olingan savollar ({len(tests)}):")
+                for _r in _xom[:4]:
+                    _d.append(f"   <code>{_r[13]}</code>")
+                    _d.append(f"   • {str(_r[0])[:50]}")
+                await call.message.answer("\n".join(_d)[:3800], parse_mode="HTML")
+            except Exception as _de:
+                print(f"[ts_go] tashxis: {_de}")
         if not tests:
             await call.answer("❌ Bu filtr bo'yicha test topilmadi!", show_alert=True)
             return
