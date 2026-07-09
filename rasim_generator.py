@@ -26,19 +26,45 @@ async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
         url = ("https://generativelanguage.googleapis.com/v1beta/models/"
                f"gemini-2.5-flash:generateContent?key={GEMINI_KEY}")
         instruction = (
-            "Convert this Uzbek image description into a precise English prompt for FLUX image model.\n"
-            "Rules: be EXACT about counts, colors, objects, positions mentioned. "
-            "Add composition, lighting, texture. Return ONLY the prompt, no quotes, max 300 chars.\n"
-            f"Style: {style_desc}\n\nUzbek: {tavsif}\nContext: {mavzu} {grade}"
+            "You are an expert FLUX image-prompt writer. The user writes in Uzbek. "
+            "Produce ONE English image prompt.\n\n"
+            "CRITICAL RULES:\n"
+            "1. Preserve EXACT numbers. '3 ta olma' = 'three apples' (not 'some apples').\n"
+            "2. Preserve EXACT colors, sizes, positions, actions the user stated.\n"
+            "3. Do NOT add objects the user did not mention.\n"
+            "4. Add ONLY: lighting, camera angle, background, texture, mood.\n"
+            "5. Structure: [main subject with exact details], [action/pose], "
+            "[setting/background], [lighting], [style keywords].\n"
+            "6. Output ONLY the prompt. No quotes, no explanation, no 'Prompt:' prefix.\n"
+            "7. Max 320 characters.\n\n"
+            "EXAMPLES:\n"
+            "Uzbek: 3 ta qizil olma stolda\n"
+            "Prompt: Three red apples arranged on a wooden table, soft natural window light "
+            "from the left, shallow depth of field, warm tones, photorealistic, sharp focus\n\n"
+            "Uzbek: maktabda dars, o'qituvchi doskada yozmoqda\n"
+            "Prompt: A teacher writing on a blackboard in a bright classroom, students seated "
+            "at desks facing forward, morning sunlight through windows, warm educational "
+            "atmosphere, detailed illustration\n\n"
+            "Uzbek: uchburchak va kvadrat\n"
+            "Prompt: A clean geometric diagram showing one triangle and one square side by "
+            "side, black outlines on white background, simple flat vector style, educational\n\n"
+            f"STYLE TO APPLY: {style_desc}\n\n"
+            f"Uzbek: {tavsif}\n"
+            f"Context: {mavzu} {grade}\n"
+            "Prompt:"
         )
         async with aiohttp.ClientSession() as s:
             async with s.post(url, json={
                 "contents": [{"parts": [{"text": instruction}]}],
-                "generationConfig": {"temperature": 0.5, "maxOutputTokens": 200},
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 250},
             }, timeout=aiohttp.ClientTimeout(total=25)) as r:
                 data = await r.json()
                 txt = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                print("[gemini] OK")
+                # Tozalash: "Prompt:" prefiks, qo'shtirnoq, yangi qator
+                for pre in ("Prompt:", "prompt:", "PROMPT:"):
+                    if txt.startswith(pre): txt = txt[len(pre):].strip()
+                txt = txt.strip('"').strip("'").replace("\n", " ").strip()
+                print(f"[gemini] OK -> {txt[:100]}")
                 return txt
     except Exception as e:
         print(f"[gemini] xato: {e}")
@@ -173,9 +199,9 @@ async def generate_flux(prompt, width=1024, height=1024, steps=4, model=None):
 
 async def generate_smart(tavsif, mavzu="", grade="", style="realistik", hd=False, is_admin=False):
     """Rasm: Cloudflare FLUX (bepul) -> Together -> DALL-E.
-    is_admin=True -> 8 qadam (sifatli), aks holda 4 (tez)."""
+    is_admin=True -> 8 qadam (sifatli), aks holda 6."""
     prompt = await _tavsif_to_prompt(tavsif, mavzu, grade, style)
-    steps = 8 if is_admin else 4
+    steps = 8 if is_admin else 6
     img = await generate_cf_flux(prompt, steps=steps)
     if not img:
         img = await generate_together_flux(prompt, steps=steps)
