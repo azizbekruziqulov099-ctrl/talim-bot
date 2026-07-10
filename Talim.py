@@ -2482,6 +2482,66 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             except Exception: pass
         return
 
+    # ═══ IMTIHON: GURUHGA bir xil foiz ═══
+    if str(admin_state.get(user_id) or "").startswith("im_gfoiz:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        iid = int(_q[1])
+        try:
+            foiz = float(message.text.strip().replace(",", "."))
+        except Exception:
+            await message.answer("❌ 1 dan 100 gacha raqam yozing")
+            return
+        if not (0 <= foiz <= 100):
+            await message.answer("❌ 1 dan 100 gacha bo'lsin")
+            return
+        admin_state.pop(user_id, None)
+
+        kalit = f"im_gsel:{user_id}:{iid}"
+        tanlangan_idx = temp_user.pop(kalit, [])
+        if not tanlangan_idx:
+            await message.answer("❌ Guruh tanlovi eskirgan, qaytadan boshlang."); return
+
+        _bh = _modul('baholash')
+        if not _bh:
+            await message.answer('⚠️ baholash.py yuklanmagan'); return
+        imt = _bh.imtihon_ol(iid)
+        if not imt:
+            await message.answer("❌ Imtihon topilmadi."); return
+        d = _bh.daraja(foiz)
+
+        c = _get_db_conn(); cr = c.cursor()
+        cr.execute("""SELECT a.user_id, COALESCE(u.full_name,'—')
+            FROM togarak_azolar a LEFT JOIN users u ON u.user_id=a.user_id
+            WHERE a.togarak_id=%s AND a.aktiv=TRUE ORDER BY u.full_name""",
+            (imt["togarak_id"],))
+        azolar = cr.fetchall()
+
+        ismlar = []
+        for i in sorted(tanlangan_idx):
+            if not (0 <= i < len(azolar)):
+                continue
+            uid2, ism = azolar[i]
+            _bh.baho_qoy(iid, uid2, foiz, manba="teacher")
+            ismlar.append(ism)
+
+            cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (uid2,))
+            otalar = [r[0] for r in cr.fetchall()]
+            xabar = (f"📊 <b>Imtihon natijasi</b>\n\n"
+                     f"📝 {imt['nomi']}\n🎯 Baho: <b>{foiz:.0f}%</b>\n🎖 {d}")
+            for kim in [uid2] + otalar:
+                try: await bot.send_message(_tg_id(kim), xabar, parse_mode="HTML")
+                except Exception: pass
+        cr.close(); c.close()
+
+        royxat = "\n".join(f"  • {n}" for n in ismlar)
+        await message.answer(
+            f"✅ <b>{len(ismlar)} ta o'quvchiga {foiz:.0f}% qo'yildi</b> {d}\n\n{royxat}",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="👥 Yana guruhga baho", callback_data=f"im_bal:{iid}"),
+            ]]))
+        return
+
     # ═══ ADMIN AKKAUNTLAR ═══
     if message.text and message.text.strip() in ("/admin", "/adminlar"):
         if not _is_admin(user_id):
@@ -7976,10 +8036,24 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             iid = int(qism[1])
             imt = _bh.imtihon_ol(iid)
             if not imt: return
+            await call.message.answer(
+                "Qanday baholaymiz?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 Bittalab", callback_data=f"im_bbir:{iid}")],
+                    [InlineKeyboardButton(text="👥 Guruh — bir xil baho", callback_data=f"im_bgrp:{iid}")],
+                    [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_ko:{iid}")],
+                ]))
+            return
+
+        if amal == "im_bbir":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt: return
             c = _get_db_conn(); cr = c.cursor()
             cr.execute("""SELECT a.user_id, COALESCE(u.full_name,'—')
                 FROM togarak_azolar a LEFT JOIN users u ON u.user_id=a.user_id
-                WHERE a.togarak_id=%s AND a.aktiv=TRUE""", (imt["togarak_id"],))
+                WHERE a.togarak_id=%s AND a.aktiv=TRUE ORDER BY u.full_name""",
+                (imt["togarak_id"],))
             azolar = cr.fetchall(); cr.close(); c.close()
             mavjud = {r[0]: float(r[2]) for r in _bh.natijalar(iid)}
             rows = []
@@ -7987,9 +8061,72 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 b = f" — {mavjud[uid2]:.0f}%" if uid2 in mavjud else ""
                 rows.append([InlineKeyboardButton(text=f"👤 {ism[:30]}{b}",
                                                   callback_data=f"im_u:{iid}:{uid2}")])
-            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_ko:{iid}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_bal:{iid}")])
             await call.message.answer("O'quvchini tanlang:",
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Guruh: bir necha o'quvchiga BIR XIL baho ──
+        if amal in ("im_bgrp", "im_gx", "im_gall"):
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt: return
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("""SELECT a.user_id, COALESCE(u.full_name,'—')
+                FROM togarak_azolar a LEFT JOIN users u ON u.user_id=a.user_id
+                WHERE a.togarak_id=%s AND a.aktiv=TRUE ORDER BY u.full_name""",
+                (imt["togarak_id"],))
+            azolar = cr.fetchall(); cr.close(); c.close()
+            if not azolar:
+                await call.answer("❌ A'zo yo'q", show_alert=True); return
+
+            kalit = f"im_gsel:{user_id}:{iid}"
+            tanlangan = set(temp_user.get(kalit, []))
+
+            if amal == "im_bgrp":
+                tanlangan = set()
+            elif amal == "im_gx":
+                i = int(qism[2])
+                if i in tanlangan: tanlangan.discard(i)
+                else: tanlangan.add(i)
+            elif amal == "im_gall":
+                barcha = set(range(len(azolar)))
+                tanlangan = set() if tanlangan >= barcha else barcha
+
+            temp_user[kalit] = list(tanlangan)
+
+            rows = []
+            for i, (uid2, ism) in enumerate(azolar):
+                belgi = "☑️" if i in tanlangan else "⬜"
+                rows.append([InlineKeyboardButton(text=f"{belgi} {ism[:32]}",
+                                                  callback_data=f"im_gx:{iid}:{i}")])
+            rows.append([InlineKeyboardButton(
+                text=("❎ Bekor qil" if len(tanlangan) >= len(azolar) else "✅ Barchasi"),
+                callback_data=f"im_gall:{iid}")])
+            if tanlangan:
+                rows.append([InlineKeyboardButton(
+                    text=f"▶️ {len(tanlangan)} ta o'quvchiga baho qo'yish",
+                    callback_data=f"im_ggo:{iid}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_bal:{iid}")])
+
+            sarlavha = f"👥 Guruhni belgilang ({len(tanlangan)} tanlandi):"
+            try:
+                await call.message.edit_text(sarlavha, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            except Exception:
+                await call.message.answer(sarlavha, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "im_ggo":
+            iid = int(qism[1])
+            kalit = f"im_gsel:{user_id}:{iid}"
+            tanlangan = temp_user.get(kalit, [])
+            if not tanlangan:
+                await call.answer("❌ Hech kim belgilanmagan", show_alert=True); return
+            admin_state[user_id] = f"im_gfoiz:{iid}"
+            await call.message.answer(
+                f"👥 {len(tanlangan)} ta o'quvchiga BIR XIL foiz qo'yiladi.\n\n"
+                f"Foizni yozing (1–100):\nMasalan: <code>85</code>",
+                parse_mode="HTML")
             return
 
         if amal == "im_u":
