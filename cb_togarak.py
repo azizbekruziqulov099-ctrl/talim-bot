@@ -24,6 +24,23 @@ def _chat_id(uid):
         print(f"[cb_togarak] chat_id({uid}): {e}")
     return tg
 
+def _mavzu_nomi_kod(code):
+    """topic_code bo'lsa dts_tree'dan nom topadi, aks holda o'zini qaytaradi
+    (togarak_reja.topic_code ba'zan haqiqiy kod, ba'zan mavzu nomi matni)."""
+    if not code:
+        return None
+    code = str(code)
+    if "-" in code and any(ch.isdigit() for ch in code):
+        try:
+            conn = _get_db_conn(); cur = conn.cursor()
+            cur.execute("SELECT mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1", (code,))
+            r = cur.fetchone(); cur.close(); conn.close()
+            if r and r[0]:
+                return r[0]
+        except Exception:
+            pass
+    return code
+
 def render_text(t):
     if not t: return ""
     import re as _r
@@ -48,7 +65,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
 
     if call.data.startswith("tg_info:"):
         tgid=int(call.data[8:]); await call.answer()
-        from togarak import get_togarak_azolar, get_teacher_togaraklar
+        from togarak import get_togarak_azolar, get_teacher_togaraklar, get_togarak_progress
         tgs = {t["id"]:t for t in get_teacher_togaraklar(user_id)}
         t = tgs.get(tgid)
         if not t: await call.message.answer("❌ Topilmadi"); return True
@@ -59,6 +76,24 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
                f"👥 A'zolar: {len(azolar)}/{t['max'] or 25}\n"
                f"💰 Oylik: {t['oylik_summa'] or 0:,} so'm\n"
                f"📅 To'lov sanasi: har oyning {t['oylik_sana'] or 1}-kuni")
+
+        # Dastur + loyiha qisqa xulosasi
+        try:
+            prog = get_togarak_progress(tgid)
+            txt += f"\n\n📗 Dastur: {prog['pct']}% ({prog['done']}/{prog['total']} mavzu)"
+        except Exception as _e:
+            print(f"[tg_info] progress: {_e}")
+        try:
+            conn4=_get_db_conn(); cur4=conn4.cursor()
+            cur4.execute("""SELECT COUNT(*) FROM togarak_imtihon
+                WHERE togarak_id=%s AND turi='loyiha'""", (tgid,))
+            loy_soni=(cur4.fetchone() or [0])[0]
+            cur4.close(); conn4.close()
+            if loy_soni:
+                txt += f" · 🎨 {loy_soni} ta loyiha"
+        except Exception as _e:
+            print(f"[tg_info] loyiha: {_e}")
+
         conn3=_get_db_conn();cur3=conn3.cursor()
         cur3.execute("SELECT COUNT(*) FROM togarak_requests r JOIN togaraklar t ON t.id=r.togarak_id WHERE r.togarak_id=%s AND r.status='pending' AND t.teacher_id=%s",(tgid,user_id))
         pend_cnt=(cur3.fetchone() or [0])[0]; cur3.close(); conn3.close()
@@ -67,12 +102,13 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
             [InlineKeyboardButton(text="📅 Dars jadvali",callback_data=f"tg_reja:{tgid}:0")],
             [InlineKeyboardButton(text="👥 A'zolar",callback_data=f"tg_azolar:{tgid}"),
              InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"tg_yoqlama:{tgid}")],
-            [InlineKeyboardButton(text="📊 Statistika",callback_data=f"tg_stat:{tgid}"),
-             InlineKeyboardButton(text=pend_txt,callback_data=f"tg_pending:{tgid}")],
-            [InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0"),
-             InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}")],
-            [InlineKeyboardButton(text="⚙️ Sozlamalar",callback_data=f"tg_sozla:{tgid}"),
-             InlineKeyboardButton(text="⬅️ Orqaga",callback_data="tg_back")],
+            [InlineKeyboardButton(text="📈 Guruh holati",callback_data=f"tg_guruh:{tgid}"),
+             InlineKeyboardButton(text="📊 Davomat",callback_data=f"tg_stat:{tgid}")],
+            [InlineKeyboardButton(text=pend_txt,callback_data=f"tg_pending:{tgid}"),
+             InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0")],
+            [InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}"),
+             InlineKeyboardButton(text="⚙️ Sozlamalar",callback_data=f"tg_sozla:{tgid}")],
+            [InlineKeyboardButton(text="⬅️ Orqaga",callback_data="tg_back")],
         ])
         try: await call.message.edit_text(txt, reply_markup=kb2)
         except: await call.message.answer(txt, reply_markup=kb2)
@@ -298,6 +334,73 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         ]
         try: await call.message.edit_text(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
         except: await call.message.answer(txt[:3800],parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows2))
+        return True
+
+    if call.data.startswith("tg_guruh:"):
+        tgid=int(call.data[9:]); await call.answer()
+        from togarak import get_togarak_azolar, get_togarak_progress
+        azolar = get_togarak_azolar(tgid)
+        if not azolar:
+            await call.message.answer("👥 Hali a'zo yo'q!",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="⬅️", callback_data=f"tg_info:{tgid}")]]))
+            return True
+
+        conn5=_get_db_conn(); cur5=conn5.cursor()
+
+        # O'rtacha davomat (butun guruh bo'yicha)
+        try:
+            cur5.execute("""SELECT COUNT(*), COUNT(*) FILTER (WHERE holat IN ('keldi','kech'))
+                FROM togarak_yoqlama WHERE togarak_id=%s""", (tgid,))
+            y = cur5.fetchone() or (0, 0)
+            dav_umum = round((y[1] or 0) * 100 / y[0]) if y[0] else 0
+        except Exception:
+            conn5.rollback(); dav_umum = 0
+
+        # O'rtacha baho
+        try:
+            cur5.execute("""SELECT COALESCE(AVG(baho),0), COUNT(*)
+                FROM togarak_baholar WHERE togarak_id=%s""", (tgid,))
+            bb = cur5.fetchone() or (0, 0)
+        except Exception:
+            conn5.rollback(); bb = (0, 0)
+
+        # Loyiha: nechta berilgan, o'rtacha bajarilish foizi
+        try:
+            cur5.execute("""SELECT COUNT(*) FROM togarak_imtihon
+                WHERE togarak_id=%s AND turi='loyiha'""", (tgid,))
+            loy_berilgan = (cur5.fetchone() or [0])[0]
+            cur5.execute("""SELECT COUNT(*), COALESCE(AVG(n.foiz),0) FROM imtihon_natija n
+                JOIN togarak_imtihon i ON i.id=n.imtihon_id
+                WHERE i.togarak_id=%s AND i.turi='loyiha'""", (tgid,))
+            loy_bajar = cur5.fetchone() or (0, 0)
+        except Exception:
+            conn5.rollback(); loy_berilgan = 0; loy_bajar = (0, 0)
+
+        cur5.close(); conn5.close()
+
+        prog = get_togarak_progress(tgid)
+        nomzod_kod = prog.get("next")
+        keyingi_nom = _mavzu_nomi_kod(nomzod_kod) if nomzod_kod else None
+
+        txt = [f"📈 <b>Guruh umumiy holati</b>", f"👥 {len(azolar)} a'zo\n"]
+        txt.append(f"📗 Dastur: <b>{prog['pct']}%</b> ({prog['done']}/{prog['total']} mavzu)")
+        if keyingi_nom:
+            txt.append(f"   ⏭ Keyingi: {keyingi_nom[:40]}")
+        txt.append(f"📋 O'rtacha davomat: <b>{dav_umum}%</b>")
+        if bb[1]:
+            txt.append(f"⭐ O'rtacha baho: <b>{round(float(bb[0]),1)}</b> ({int(bb[1])} ta baho)")
+        if loy_berilgan:
+            bajarildi = loy_bajar[0] or 0
+            txt.append(f"🎨 Loyiha: {loy_berilgan} ta berilgan, "
+                       f"{bajarildi} ta bajarilgan"
+                       + (f", o'rtacha {round(float(loy_bajar[1]),1)}%" if bajarildi else ""))
+
+        await call.message.answer("\n".join(txt), parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🏆 Reyting", callback_data=f"im_reyt:{tgid}"),
+                InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"tg_info:{tgid}"),
+            ]]))
         return True
 
     if call.data.startswith("tg_stat:"):
