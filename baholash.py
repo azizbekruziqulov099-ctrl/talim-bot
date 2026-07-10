@@ -259,16 +259,18 @@ def reyting(togarak_id):
 # ═══════════════ TEST IMTIHONI (o'z yurituvchisi) ═══════════════
 
 def savollar_ol(topic_codes, soni):
-    """Imtihon savollarini oladi."""
+    """Imtihon savollarini oladi — test va yozma javobli ARALASH.
+    Har savol o'z turida ko'rsatiladi (question_type orqali)."""
     if not topic_codes:
         return []
     try:
         c = _db(); cr = c.cursor()
         cr.execute("""SELECT question, option_a, option_b, option_c, option_d,
                    correct_answer,
-                   COALESCE(NULLIF(image_file_id,''), NULL) AS rasm
+                   COALESCE(NULLIF(image_file_id,''), NULL) AS rasm,
+                   COALESCE(question_type, 'multiple_choice') AS turi
             FROM generated_tests
-            WHERE topic_code=ANY(%s) AND question_type <> 'write_answer'
+            WHERE topic_code=ANY(%s)
             ORDER BY RANDOM() LIMIT %s""", (list(topic_codes), int(soni)))
         r = cr.fetchall(); cr.close(); c.close()
         return r
@@ -291,7 +293,17 @@ def seans_tugat(user_id):
     return _SEANS.pop(user_id, None)
 
 
-def savol_kb(imtihon_id, idx):
+def savol_yozmami(s):
+    """Savol yozma javobli turdami?"""
+    turi = s[7] if len(s) > 7 else "multiple_choice"
+    return turi == "write_answer"
+
+
+def savol_kb(imtihon_id, idx, yozma=False):
+    if yozma:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛑 To'xtatish", callback_data=f"imstop:{imtihon_id}")],
+        ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="A", callback_data=f"imq:{imtihon_id}:{idx}:A"),
          InlineKeyboardButton(text="B", callback_data=f"imq:{imtihon_id}:{idx}:B"),
@@ -302,22 +314,57 @@ def savol_kb(imtihon_id, idx):
 
 
 def savol_matni(s, idx, jami):
-    q, a, b, cc, d = s[0], s[1], s[2], s[3], s[4]
+    q = s[0]
+    if savol_yozmami(s):
+        return (f"📝 Savol {idx+1}/{jami}\n\n{q}\n\n"
+                f"✍️ Javobingizni yozib yuboring:")
+    a, b, cc, d = s[1], s[2], s[3], s[4]
     return (f"📝 Savol {idx+1}/{jami}\n\n{q}\n\n"
             f"A) {a}\nB) {b}\nC) {cc}\nD) {d}")
 
 
-def javob_tekshir(user_id, javob):
-    """(togri_mi, tugadi_mi, foiz)"""
+def _normalash(matn):
+    """Yozma javobni solishtirish uchun soddalashtiradi:
+    kichik harf, vergul->nuqta (o'nlik kasr), boshqa tinish belgilari bo'sh joyga,
+    so'z ichidagi/o'rtasidagi nuqta (o'nlik kasr) saqlanadi, bosh/oxiridagi olinadi."""
+    import re
+    t = str(matn or "").strip().lower()
+    t = t.replace(",", ".")
+    t = re.sub(r"[^\w\s.\-]", " ", t, flags=re.UNICODE)
+    t = re.sub(r"(?<!\d)\.(?!\d)", " ", t)      # raqamlar orasida bo'lmagan nuqta -> bo'sh joy
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _keyingi(user_id, togri):
+    """Javobdan keyingi umumiy hisob — harf yoki matn javobidan qat'iy nazar."""
     st = _SEANS.get(user_id)
     if not st:
-        return (False, True, 0.0)
-    s = st["savollar"][st["idx"]]
-    togri_harf = str(s[5] or "").strip().upper()[:1]
-    togri = (javob.upper() == togri_harf)
+        return (togri, True, 0.0)
     if togri:
         st["togri"] += 1
     st["idx"] += 1
     tugadi = st["idx"] >= len(st["savollar"])
     foiz = round(st["togri"] * 100.0 / max(1, len(st["savollar"])), 1)
     return (togri, tugadi, foiz)
+
+
+def javob_tekshir(user_id, javob):
+    """A/B/C/D javob uchun. (togri_mi, tugadi_mi, foiz)"""
+    st = _SEANS.get(user_id)
+    if not st:
+        return (False, True, 0.0)
+    s = st["savollar"][st["idx"]]
+    togri_harf = str(s[5] or "").strip().upper()[:1]
+    togri = (javob.upper() == togri_harf)
+    return _keyingi(user_id, togri)
+
+
+def javob_tekshir_matn(user_id, matn):
+    """Yozma javob uchun — soddalashtirib solishtiradi. (togri_mi, tugadi_mi, foiz)"""
+    st = _SEANS.get(user_id)
+    if not st:
+        return (False, True, 0.0)
+    s = st["savollar"][st["idx"]]
+    togri = (_normalash(matn) == _normalash(s[5]))
+    return _keyingi(user_id, togri)
