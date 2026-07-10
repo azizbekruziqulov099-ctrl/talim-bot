@@ -227,6 +227,40 @@ def _modul(nom):
         print(f"[modul] '{nom}' yuklanmadi: {e}")
         return None
 
+def _ota_ai_router(matn):
+    """Ota-onaning ozod matnida bot imkoniyatiga mos kalit so'z qidiradi.
+    Topilsa ('bolim', child_kerak) qaytaradi, topilmasa None -> Gemini ga o'tadi.
+    Aniqroq iboralar avval tekshiriladi (masalan 'test yubor' 'imtihon'dan oldin)."""
+    mt = matn.lower()
+
+    # ── Nazorat testi yuborish (eng aniq, birinchi tekshiriladi) ──
+    if any(k in mt for k in ("test yubor", "sinov yubor", "test ber", "sinov ber",
+                             "test tuz", "nazorat test", "farzandimga test",
+                             "bolamga test", "farzandimga sinov", "test jo'nat")):
+        return "nz_start"
+    if any(k in mt for k in ("nazorat tarix", "qanchalik tez", "tezlik qanday",
+                             "qanchalik yaxshilan", "oldingisiga nisbatan", "taraqqiyot")):
+        return "nz_tarix"
+
+    # ── Mavjud ekranlar ──
+    if any(k in mt for k in ("qanday o'qi", "nima o'rgan", "qaysi mavzu", "mavzuni")):
+        return "mavzu"
+    if any(k in mt for k in ("davomat", "yo'qlama", "kelmadi", "kelgan", "qatnash")):
+        return "yoqlama"
+    if any(k in mt for k in ("uy vazifa", "vazifa qildi", "vazifa topshir")):
+        return "vazifa"
+    if "loyiha" in mt:
+        return "asosiy"
+    if any(k in mt for k in ("imtihon natija", "imtihon qanday", "test natija")):
+        return "imtihon"
+    if any(k in mt for k in ("baho", "necha foiz", "necha ball")) and "qo'y" not in mt:
+        return "baho"
+    if any(k in mt for k in ("qanday ket", "umumiy holat", "farzandim qalay",
+                             "farzandim qanday", "holati qanday")):
+        return "asosiy"
+    return None
+
+
 def _get_user_qisqa(uid):
     """(ism, rol, sinf)"""
     try:
@@ -2366,28 +2400,34 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     # ═══════════════════════════════════════════
     if message.text and not message.text.startswith("/"):
         _mt = message.text.strip().lower()
+        _rol0 = (_get_user_qisqa(user_id)[1] or "").lower()
+        _ota_mi0 = ("ota" in _rol0 or "ona" in _rol0 or "parent" in _rol0)
+
         _ota_tugma = None
-        if "farzand" in _mt and "qo'sh" not in _mt and "qosh" not in _mt:
-            _ota_tugma = "asosiy"
-        elif "yo'qlama" in _mt or "yoqlama" in _mt or "davomat" in _mt:
-            _ota_tugma = "yoqlama"
-        elif "uy vazifa" in _mt or _mt in ("📝 uy", "uy"):
-            _ota_tugma = "vazifa"
-        elif "imtihon" in _mt and not _mt.startswith("/"):
-            _ota_tugma = "imtihon"
-        elif "nazorat" in _mt:
-            _ota_tugma = "nazorat"
-        elif "baho" in _mt and "qo'y" not in _mt:
-            _ota_tugma = "baho"
+        _ota_maxsus = None    # "nz_start" | "nz_tarix" — alohida ishlov talab qiladi
 
-        if _ota_tugma:
-            _rol = (_get_user_qisqa(user_id)[1] or "").lower()
-            _ota_mi = ("ota" in _rol or "ona" in _rol or "parent" in _rol)
-            # Ota-ona paneli FAQAT ota-onaga. Boshqalar o'z handlerlariga o'tadi.
-            if not _ota_mi:
-                _ota_tugma = None
+        if _ota_mi0:
+            _natija0 = _ota_ai_router(_mt)
+            if _natija0 in ("nz_start", "nz_tarix"):
+                _ota_maxsus = _natija0
+            elif _natija0:
+                _ota_tugma = _natija0
+            else:
+                # Router mos kelmadi -> aniq tugma matnlarini tekshiramiz
+                if "farzand" in _mt and "qo'sh" not in _mt and "qosh" not in _mt:
+                    _ota_tugma = "asosiy"
+                elif "yo'qlama" in _mt or "yoqlama" in _mt or "davomat" in _mt:
+                    _ota_tugma = "yoqlama"
+                elif "uy vazifa" in _mt or _mt in ("📝 uy", "uy"):
+                    _ota_tugma = "vazifa"
+                elif "imtihon" in _mt:
+                    _ota_tugma = "imtihon"
+                elif "nazorat" in _mt:
+                    _ota_tugma = "nazorat"
+                elif "baho" in _mt and "qo'y" not in _mt:
+                    _ota_tugma = "baho"
 
-        if _ota_tugma:
+        if _ota_maxsus or _ota_tugma:
             _oo = _modul('ota_ona')
             if not _oo:
                 await message.answer('⚠️ ota_ona.py yuklanmagan'); return
@@ -2400,6 +2440,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="➕ Farzand qo'shish", callback_data="fk_add")]]))
                 return
+
+            if _ota_maxsus:
+                if len(lst) == 1:
+                    matn2 = ("🎯 Tushundim — nazorat testi yuboramiz:" if _ota_maxsus == "nz_start"
+                             else "📈 Tushundim — nazorat testlari tarixini ko'rsataman:")
+                    await message.answer(matn2, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="▶️ Davom etish",
+                                             callback_data=f"{_ota_maxsus}:{lst[0][0]}")]]))
+                else:
+                    rows = [[InlineKeyboardButton(text=f"👤 {ism[:24]}",
+                             callback_data=f"{_ota_maxsus}:{cid}")] for cid, ism, _ in lst]
+                    await message.answer("Qaysi farzandga?",
+                                         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+                return
+
             if len(lst) == 1:
                 await _ota_ekran(message, user_id, lst[0][0], _ota_tugma)
                 return
@@ -3889,6 +3944,16 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                    "• Mavzuni tushuntirish\n"
                    "• To'garak rejalash\n\n"
                    "Savolingizni yozing 👇")
+        elif "ota" in role2.lower() or "ona" in role2.lower():
+            txt = ("🤖 Ota-ona Yordamchi\n\n"
+                   "Yozib ko'ring, masalan:\n"
+                   "• «Farzandimga test yubor»\n"
+                   "• «Farzandim qanday o'qiyapti?»\n"
+                   "• «Davomati qanday?»\n"
+                   "• «Baholari qanday?»\n"
+                   "• «Nazorat tarixi»\n\n"
+                   "Mos amal topilsa — tugma bilan tez ko'rsataman.\n"
+                   "Boshqa savolingiz bo'lsa ham yozavering 👇")
         else:
             txt = ("🤖 O'quvchi AI Yordamchi\n\n"
                    "Nima qila olaman:\n"
