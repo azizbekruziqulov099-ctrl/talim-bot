@@ -4064,28 +4064,46 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                    "Savolingizni yozing 👇")
         elif "ota" in role2.lower() or "ona" in role2.lower():
             txt = ("🤖 Ota-ona Yordamchi\n\n"
-                   "Yozib ko'ring, masalan:\n"
-                   "• «Farzandimga test yubor»\n"
-                   "• «Farzandim qanday o'qiyapti?»\n"
-                   "• «Davomati qanday?»\n"
-                   "• «Baholari qanday?»\n"
-                   "• «Nazorat tarixi»\n\n"
-                   "Mos amal topilsa — tugma bilan tez ko'rsataman.\n"
-                   "Boshqa savolingiz bo'lsa ham yozavering 👇")
+                   "Pastdagi tugmalardan birini bosing,\n"
+                   "yoki savolingizni yozing 👇")
         else:
             txt = ("🤖 O'quvchi Yordamchi\n\n"
-                   "Yozib ko'ring, masalan:\n"
-                   "• «Bugungi darsim nima?»\n"
-                   "• «Vazifalarim bormi?»\n"
-                   "• «To'garak dasturim qanday?»\n"
-                   "• «Statistikam qanday?»\n\n"
-                   "Mos amal topilsa — tez ko'rsataman.\n"
-                   "Boshqa savolingiz bo'lsa ham yozavering 👇")
+                   "Pastdagi tugmalardan birini bosing,\n"
+                   "yoki savolingizni yozing 👇")
+
+        # ── Rolga mos HAQIQIY tugmalar (faqat matn emas) ──
+        _ai_rows = []
+        if "ota" in role2.lower() or "ona" in role2.lower():
+            _oo_ai = _modul('ota_ona')
+            _bolalar = _oo_ai.farzandlar(user_id) if _oo_ai else []
+            if not _bolalar:
+                _ai_rows.append([InlineKeyboardButton(
+                    text="➕ Farzand qo'shish", callback_data="fk_add")])
+            elif len(_bolalar) == 1:
+                _cid_ai = _bolalar[0][0]
+                _ai_rows = [
+                    [InlineKeyboardButton(text="🎯 Farzandimga test",
+                                          callback_data=f"nz_start:{_cid_ai}")],
+                    [InlineKeyboardButton(text="📚 Mavzular", callback_data=f"op_mavzu:{_cid_ai}"),
+                     InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{_cid_ai}")],
+                    [InlineKeyboardButton(text="⭐ Baholar", callback_data=f"op_baho:{_cid_ai}"),
+                     InlineKeyboardButton(text="📈 Nazorat tarixi", callback_data=f"nz_tarix:{_cid_ai}")],
+                ]
+            else:
+                _ai_rows = [[InlineKeyboardButton(text=f"👤 {ism_ai[:26]}",
+                             callback_data=f"op_asosiy:{cid_ai}")] for cid_ai, ism_ai, _ in _bolalar]
+        elif "quvchi" in role2.lower():
+            _ai_rows = [
+                [InlineKeyboardButton(text="📌 Bugungi dars", callback_data="dash_bugun"),
+                 InlineKeyboardButton(text="📝 Vazifalarim", callback_data="dash_vazifa")],
+                [InlineKeyboardButton(text="📚 To'garaklarim", callback_data="dash_togarak"),
+                 InlineKeyboardButton(text="🏫 Statistikam", callback_data="dash_maktab")],
+            ]
+
+        _ai_rows.append([InlineKeyboardButton(text="❌ AI ni o'chirish", callback_data="ai_stop")])
 
         user_state[user_id] = "ai_mode"
-        await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="❌ AI ni o'chirish", callback_data="ai_stop")
-        ]]))
+        await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=_ai_rows))
         return
 
     if message.text == "🧪 Bilimni sinash":
@@ -7698,12 +7716,14 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                          callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
                         for m in ("oxirgi", "oldingi", "oxirgi10")]
                 rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")])
+                await call.answer()
                 await call.message.answer(
                     "🎯 <b>Farzandimga test</b>\n\nQayerdan savol tanlaymiz?",
                     parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
                 return
             rows = [[InlineKeyboardButton(text=f"📚 {t[1][:32]}",
                      callback_data=f"nz_tog:{child_id}:{t[0]}")] for t in tgs]
+            await call.answer()
             await call.message.answer("🎯 Qaysi to'garakdan?",
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
             return
@@ -7714,6 +7734,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                      callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
                     for m in ("oxirgi", "oldingi", "oxirgi10")]
             rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"nz_start:{child_id}")])
+            await call.answer()
             await call.message.answer("Qayerdan savol tanlaymiz?",
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
             return
@@ -7732,6 +7753,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             nomlar_txt = ", ".join(nomlar[:5]) + (f" (+{len(nomlar)-5})" if len(nomlar) > 5 else "")
             temp_user[f"nz_ctx:{user_id}"] = {"child_id": child_id, "tgid": tgid,
                                               "manba": manba, "kodlar": kodlar, "bor": bor}
+            await call.answer()
             await call.message.answer(
                 f"📚 {nomlar_txt}\n📊 {bor} ta savol mavjud\n\nQanday boshlaymiz?",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -7751,11 +7773,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             if amal == "nz_sozla":
                 rows = [[InlineKeyboardButton(text=f"{n} ta", callback_data=f"nz_cnt:{n}")]
                         for n in (5, 10, 15, 20, 30) if n <= ctx["bor"]]
+                await call.answer()
                 await call.message.answer("Nechta savol bo'lsin?",
                                           reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
                 return
 
             # nz_tezkor — 20 ta random, darhol yuboriladi
+            await call.answer()
             soni = min(20, ctx["bor"])
             await _nz_yubor(call, user_id, ctx, soni, bot)
             return
@@ -7765,6 +7789,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             ctx = temp_user.get(f"nz_ctx:{user_id}")
             if not ctx:
                 await call.answer("⚠️ Sessiya eskirgan, qaytadan boshlang", show_alert=True); return
+            await call.answer()
             await _nz_yubor(call, user_id, ctx, soni, bot)
             return
 
@@ -7777,6 +7802,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             info = _oo.kim(child_id)
             ism = info[0] if info else "Farzand"
             if not t:
+                await call.answer()
                 await call.message.answer(
                     f"📈 <b>{ism}</b>\n\n<i>Hali nazorat testi topshirilmagan.</i>",
                     parse_mode="HTML",
@@ -7808,6 +7834,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                     s = sana2.strftime("%d.%m") if hasattr(sana2, "strftime") else ""
                     txt.append(f"  {s}: {float(foiz2):.0f}% · {round(son2/max(1,jami2),1)} son/savol")
 
+            await call.answer()
             await call.message.answer("\n".join(txt)[:3900], parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="🎯 Yana test yuborish", callback_data=f"nz_start:{child_id}")],[
@@ -8914,15 +8941,18 @@ async def _javob(source, matn, kb=None):
 
 
 async def _nz_yubor(call, parent_id, ctx, soni, bot):
-    """Nazorat testini yaratadi va farzandga yuboradi."""
+    """Nazorat testini yaratadi va farzandga yuboradi.
+    DIQQAT: call.answer() bu funksiya chaqirilishidan OLDIN allaqachon
+    chaqirilgan — shu sabab bu yerda call.message.answer() ishlatamiz,
+    call.answer() emas (ikki marta chaqirish Telegram xatosiga olib keladi)."""
     _nz = _modul('nazorat_test')
     if not _nz:
-        await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+        await call.message.answer('⚠️ nazorat_test.py yuklanmagan'); return
 
     child_id = ctx["child_id"]
     nid = _nz.yarat(parent_id, child_id, ctx["tgid"], ctx["manba"], ctx["kodlar"], soni)
     if not nid:
-        await call.answer("❌ Test yaratilmadi", show_alert=True); return
+        await call.message.answer("❌ Test yaratilmadi"); return
 
     temp_user.pop(f"nz_ctx:{parent_id}", None)
 
