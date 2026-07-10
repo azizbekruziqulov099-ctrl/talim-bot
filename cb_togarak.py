@@ -100,6 +100,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         pend_txt=f"📨 So'rovlar ({pend_cnt})" if pend_cnt else "📨 So'rovlar"
         kb2=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📅 Dars jadvali",callback_data=f"tg_reja:{tgid}:0")],
+            [InlineKeyboardButton(text="🎓 Imtihon / Baholash",callback_data=f"im_menu:{tgid}")],
             [InlineKeyboardButton(text="👥 A'zolar",callback_data=f"tg_azolar:{tgid}"),
              InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"tg_yoqlama:{tgid}")],
             [InlineKeyboardButton(text="📈 Guruh holati",callback_data=f"tg_guruh:{tgid}"),
