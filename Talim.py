@@ -2313,6 +2313,30 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                              reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
 
+    # ═══ IMTIHON: yozma javobli savol ═══
+    # Holat-asosli tekshiruv — ota-ona kalit-so'z izlashdan OLDIN turishi shart,
+    # aks holda o'quvchi javobida "baho" kabi so'z bo'lsa noto'g'ri yo'nalishi mumkin.
+    if str(admin_state.get(user_id) or "").startswith("im_javob:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        iid = int(_q[1]); idx = int(_q[2])
+
+        _bh = _modul('baholash')
+        if not _bh:
+            await message.answer('⚠️ baholash.py yuklanmagan'); return
+
+        st = _bh.seans(user_id)
+        if not st or st["idx"] != idx:
+            admin_state.pop(user_id, None)
+            await message.answer("⚠️ Bu savol allaqachon javoblangan yoki imtihon tugagan.")
+            return
+        admin_state.pop(user_id, None)
+
+        togri, tugadi, foiz = _bh.javob_tekshir_matn(user_id, message.text)
+        await message.answer("✅ To'g'ri!" if togri else "❌ Noto'g'ri")
+
+        await _imtihon_keyingi(message, user_id, iid, togri, tugadi, foiz, bot)
+        return
+
     # ═══════════════════════════════════════════
     # 👨‍👩‍👧 OTA-ONA PANELI (matn tugmalari)
     # handler_parent.py routeri handle_all dan keyin ulanadi va
@@ -7848,51 +7872,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.delete()
         except Exception: pass
 
-        if not tugadi:
-            s = st["savollar"][st["idx"]]
-            matn = _bh.savol_matni(s, st["idx"], len(st["savollar"]))
-            kb = _bh.savol_kb(iid, st["idx"])
-            if s[6]:
-                try:
-                    await call.message.answer_photo(s[6], caption=matn, reply_markup=kb)
-                    return
-                except Exception: pass
-            await call.message.answer(matn, reply_markup=kb)
-            return
-
-        # ── IMTIHON TUGADI ──
-        st = _bh.seans_tugat(user_id)
-        _bh.baho_qoy(iid, user_id, foiz, manba="test")
-        imt = _bh.imtihon_ol(iid)
-        d = _bh.daraja(foiz)
-
-        await call.message.answer(
-            f"🏁 <b>Imtihon tugadi</b>\n\n"
-            f"📝 {imt['nomi'] if imt else '—'}\n"
-            f"✅ To'g'ri: {st['togri']}/{len(st['savollar'])}\n"
-            f"📊 Natija: <b>{foiz}%</b>\n"
-            f"🎖 {d}\n\n"
-            f"<i>Natija o'qituvchi va ota-onangizga ko'rinadi.</i>",
-            parse_mode="HTML"
-        )
-
-        # O'qituvchi va ota-onaga xabar
-        if imt:
-            try:
-                c = _get_db_conn(); cr = c.cursor()
-                cr.execute("SELECT full_name FROM users WHERE user_id=%s", (user_id,))
-                ism = (cr.fetchone() or ["O'quvchi"])[0]
-                cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (user_id,))
-                otalar = [r[0] for r in cr.fetchall()]
-                cr.close(); c.close()
-            except Exception:
-                ism = "O'quvchi"; otalar = []
-
-            xabar = f"📊 {ism}\n📝 {imt['nomi']}\n🎯 Natija: {foiz}% · {d}"
-            for kim in [imt["teacher_id"]] + otalar:
-                if kim:
-                    try: await bot.send_message(_tg_id(kim), xabar)
-                    except Exception: pass
+        await _imtihon_keyingi(call.message, user_id, iid, togri, tugadi, foiz, bot)
         return
 
     # ═══════════════════════════════════════════
@@ -8179,8 +8159,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             try: await call.message.edit_reply_markup(reply_markup=None)
             except Exception: pass
             s = savollar[0]
+            yozma = _bh.savol_yozmami(s)
             matn = _bh.savol_matni(s, 0, len(savollar))
-            kb = _bh.savol_kb(iid, 0)
+            kb = _bh.savol_kb(iid, 0, yozma=yozma)
+            if yozma:
+                admin_state[user_id] = f"im_javob:{iid}:0"
             if s[6]:
                 try:
                     await call.message.answer_photo(s[6], caption=matn, reply_markup=kb); return
@@ -8466,6 +8449,63 @@ async def _javob(source, matn, kb=None):
             await source.answer(matn, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         print(f"[ota_ekran] {e}")
+
+
+async def _imtihon_keyingi(target, user_id, iid, togri, tugadi, foiz, bot):
+    """Javobdan keyin: keyingi savolni yuboradi (turi bo'yicha) yoki imtihonni yakunlaydi.
+    target — .answer()/.answer_photo() metodi bor obyekt (call.message yoki message)."""
+    _bh = _modul('baholash')
+    if not _bh:
+        return
+    st = _bh.seans(user_id)
+
+    if not tugadi and st:
+        s = st["savollar"][st["idx"]]
+        yozma = _bh.savol_yozmami(s)
+        matn = _bh.savol_matni(s, st["idx"], len(st["savollar"]))
+        kb = _bh.savol_kb(iid, st["idx"], yozma=yozma)
+        if yozma:
+            admin_state[user_id] = f"im_javob:{iid}:{st['idx']}"
+        if s[6]:
+            try:
+                await target.answer_photo(s[6], caption=matn, reply_markup=kb)
+                return
+            except Exception: pass
+        await target.answer(matn, reply_markup=kb)
+        return
+
+    # ── IMTIHON TUGADI ──
+    st_final = _bh.seans_tugat(user_id)
+    _bh.baho_qoy(iid, user_id, foiz, manba="test")
+    imt = _bh.imtihon_ol(iid)
+    d = _bh.daraja(foiz)
+
+    await target.answer(
+        f"🏁 <b>Imtihon tugadi</b>\n\n"
+        f"📝 {imt['nomi'] if imt else '—'}\n"
+        f"✅ To'g'ri: {st_final['togri']}/{len(st_final['savollar'])}\n"
+        f"📊 Natija: <b>{foiz}%</b>\n"
+        f"🎖 {d}\n\n"
+        f"<i>Natija o'qituvchi va ota-onangizga ko'rinadi.</i>",
+        parse_mode="HTML"
+    )
+
+    if imt:
+        try:
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("SELECT full_name FROM users WHERE user_id=%s", (user_id,))
+            ism = (cr.fetchone() or ["O'quvchi"])[0]
+            cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (user_id,))
+            otalar = [r[0] for r in cr.fetchall()]
+            cr.close(); c.close()
+        except Exception:
+            ism = "O'quvchi"; otalar = []
+
+        xabar = f"📊 {ism}\n📝 {imt['nomi']}\n🎯 Natija: {foiz}% · {d}"
+        for kim in [imt["teacher_id"]] + otalar:
+            if kim:
+                try: await bot.send_message(_tg_id(kim), xabar)
+                except Exception: pass
 
 
 async def _im_elon(call, tgid, iid, bot):
