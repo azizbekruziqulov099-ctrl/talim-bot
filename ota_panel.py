@@ -195,3 +195,39 @@ def nazorat(child_id):
             y["orin"] = None; y["jami"] = 0
         natija.append(y)
     return natija
+
+
+# ═══════════════ MAVZULAR (o'quv rejasi) ═══════════════
+
+def _mavzu_nomi(code):
+    """togarak_reja.topic_code ba'zan haqiqiy kod, ba'zan mavzu nomi matni.
+    Kod bo'lsa dts_tree'dan o'qiladigan nom topiladi, aks holda o'zi qaytadi."""
+    if not code:
+        return "—"
+    code = str(code)
+    if "-" in code and any(ch.isdigit() for ch in code):
+        r = _bir("SELECT mavzu_name FROM dts_tree WHERE topic_code=%s LIMIT 1", (code,))
+        if r and r[0]:
+            return r[0]
+    return code
+
+
+def mavzular_royxati(child_id):
+    """[(togarak_nomi, [(mavzu_nomi, o'tilganmi, dars_vaqt)])] — o'quv rejasi."""
+    try:
+        import togarak as _tg
+    except Exception as e:
+        print(f"[op] togarak import: {e}")
+        return []
+
+    natija = []
+    for tid, nomi, fan in togaraklari(child_id):
+        try:
+            reja = _tg.get_reja(tid)
+        except Exception as e:
+            print(f"[op] get_reja({tid}): {e}")
+            reja = []
+        mavzular = [(_mavzu_nomi(r.get("code")), bool(r.get("completed")),
+                     r.get("dars_vaqt")) for r in reja]
+        natija.append((nomi, mavzular))
+    return natija
