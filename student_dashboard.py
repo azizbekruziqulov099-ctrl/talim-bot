@@ -204,6 +204,48 @@ def _togarak_soni(uid):
     return (r[0] if r else 0) or 0
 
 
+def _togarak_qisqa(uid):
+    """Bosh ekran uchun BIR QATORLIK dastur+loyiha xulosasi.
+    Bir nechta to'garak bo'lsa — birinchisini ko'rsatadi, qolganini +N deb qo'shadi."""
+    conn = _db(); cur = conn.cursor()
+    cur.execute("""SELECT t.id, t.nomi FROM togarak_azolar a
+        JOIN togaraklar t ON t.id=a.togarak_id
+        WHERE a.user_id=%s AND a.aktiv=TRUE AND t.aktiv=TRUE
+        ORDER BY t.nomi""", (uid,))
+    tgs = cur.fetchall()
+    if not tgs:
+        cur.close(); conn.close()
+        return None
+
+    tid, nomi = tgs[0]
+    try:
+        cur.execute("""SELECT COUNT(*), COUNT(*) FILTER (WHERE completed=TRUE)
+            FROM togarak_reja WHERE togarak_id=%s""", (tid,))
+        r = cur.fetchone() or (0, 0)
+    except Exception:
+        conn.rollback(); r = (0, 0)
+    jami, otilgan = (r[0] or 0), (r[1] or 0)
+    foiz = round(otilgan * 100 / jami) if jami else 0
+
+    loyiha_soni = 0
+    try:
+        cur.execute("""SELECT COUNT(*) FROM imtihon_natija n
+            JOIN togarak_imtihon i ON i.id=n.imtihon_id
+            WHERE i.togarak_id=%s AND n.user_id=%s AND i.turi='loyiha'""", (tid, uid))
+        loyiha_soni = (cur.fetchone() or [0])[0]
+    except Exception:
+        conn.rollback()
+    cur.close(); conn.close()
+
+    matn = f"{otilgan}/{jami} mavzu ({foiz}%)" if jami else "mavzu belgilanmagan"
+    if loyiha_soni:
+        matn += f" · 🎨 {loyiha_soni} loyiha"
+    qolgan = len(tgs) - 1
+    if qolgan:
+        matn += f"  <i>(+{qolgan} to'garak)</i>"
+    return matn
+
+
 # ═══════════════════ BOSH EKRAN ═══════════════════
 
 async def build_dashboard(uid):
@@ -246,6 +288,11 @@ async def build_dashboard(uid):
     if sk > 0:
         stat += f"   🔥 {sk} kun"
     t.append(stat)
+
+    # To'garak dasturi — qisqa xulosa (tafsilot "To'garaklarim" tugmasida)
+    tg_qisqa = _safe(lambda: _togarak_qisqa(uid), None)
+    if tg_qisqa:
+        t.append(f"📗 <b>Dastur:</b> {tg_qisqa}")
 
     t.append("")
     t.append(f"💡 <i>{_kunlik_maslahat(uid)}</i>")
@@ -344,11 +391,22 @@ async def build_togarak_stat(uid):
             conn.rollback(); r = (0, 0)
         prog = round((r[1] or 0) * 100 / r[0]) if r[0] else 0
 
+        # Loyiha ishlari
+        try:
+            cur.execute("""SELECT COUNT(*), COALESCE(AVG(n.foiz),0) FROM imtihon_natija n
+                JOIN togarak_imtihon i ON i.id=n.imtihon_id
+                WHERE i.togarak_id=%s AND n.user_id=%s AND i.turi='loyiha'""", (tid, uid))
+            lo = cur.fetchone() or (0, 0)
+        except Exception:
+            conn.rollback(); lo = (0, 0)
+
         t.append(f"<b>{nomi}</b> <i>({fan or '—'})</i>")
         t.append(f"   📈 Davomat: {dav}%")
         if b[0]:
             t.append(f"   ⭐ O'rtacha baho: {round(float(b[1]),1)} ({b[0]} ta)")
         t.append(f"   📗 Dastur: {prog}% ({r[1]}/{r[0]} mavzu)")
+        if lo[0]:
+            t.append(f"   🎨 Loyiha: {lo[0]} ta, o'rtacha {round(float(lo[1]),1)}%")
         t.append("")
 
     cur.close(); conn.close()
