@@ -2337,6 +2337,28 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await _imtihon_keyingi(message, user_id, iid, togri, tugadi, foiz, bot)
         return
 
+    # ═══ NAZORAT TESTI: yozma javobli savol ═══
+    if str(admin_state.get(user_id) or "").startswith("nz_javob:") and message.text:
+        _q = str(admin_state[user_id]).split(":")
+        nid = int(_q[1]); idx = int(_q[2])
+
+        _nz = _modul('nazorat_test')
+        if not _nz:
+            await message.answer('⚠️ nazorat_test.py yuklanmagan'); return
+
+        st = _nz.seans(user_id)
+        if not st or st["idx"] != idx:
+            admin_state.pop(user_id, None)
+            await message.answer("⚠️ Bu savol allaqachon javoblangan yoki test tugagan.")
+            return
+        admin_state.pop(user_id, None)
+
+        togri, tugadi, _ = _nz.javob_tekshir_matn(user_id, message.text)
+        await message.answer("✅ To'g'ri!" if togri else "❌ Noto'g'ri")
+
+        await _nz_keyingi(message, user_id, nid, togri, tugadi, bot)
+        return
+
     # ═══════════════════════════════════════════
     # 👨‍👩‍👧 OTA-ONA PANELI (matn tugmalari)
     # handler_parent.py routeri handle_all dan keyin ulanadi va
@@ -7461,12 +7483,162 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     # ═══════════════════════════════════════════
+    # 🎯 OTA-ONA -> FARZANDGA TEZKOR NAZORAT TESTI (nz_)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("nz_"):
+        _nz = _modul('nazorat_test')
+        if not _nz:
+            await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+        _oo = _modul('ota_ona')
+        if not _oo:
+            await call.answer('⚠️ ota_ona.py yuklanmagan', show_alert=True); return
+
+        qism = call.data.split(":")
+        amal = qism[0]
+
+        # ── Boshlash: farzand tanlash yoki to'g'ridan to'garak ──
+        if amal == "nz_start":
+            child_id = int(qism[1])
+            if not _oo.bogliqmi(user_id, child_id):
+                await call.answer("❌ Bu farzand sizga ulanmagan", show_alert=True); return
+            _op = _modul('ota_panel')
+            if not _op:
+                await call.answer('⚠️ ota_panel.py yuklanmagan', show_alert=True); return
+            tgs = _op.togaraklari(child_id)
+            if not tgs:
+                await call.answer("❌ Farzandingiz hech qaysi to'garakka a'zo emas", show_alert=True)
+                return
+            if len(tgs) == 1:
+                tgid = tgs[0][0]
+                rows = [[InlineKeyboardButton(text=_nz.manba_nomi(m),
+                         callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
+                        for m in ("oxirgi", "oldingi", "oxirgi10")]
+                rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")])
+                await call.message.answer(
+                    "🎯 <b>Farzandimga test</b>\n\nQayerdan savol tanlaymiz?",
+                    parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+                return
+            rows = [[InlineKeyboardButton(text=f"📚 {t[1][:32]}",
+                     callback_data=f"nz_tog:{child_id}:{t[0]}")] for t in tgs]
+            await call.message.answer("🎯 Qaysi to'garakdan?",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "nz_tog":
+            child_id = int(qism[1]); tgid = int(qism[2])
+            rows = [[InlineKeyboardButton(text=_nz.manba_nomi(m),
+                     callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
+                    for m in ("oxirgi", "oldingi", "oxirgi10")]
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"nz_start:{child_id}")])
+            await call.message.answer("Qayerdan savol tanlaymiz?",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        # ── Manba tanlandi: tezkor yoki sozlash ──
+        if amal == "nz_manba":
+            child_id = int(qism[1]); tgid = int(qism[2]); manba = qism[3]
+            kodlar, nomlar = _nz.manba_kodlari(tgid, manba)
+            if not kodlar:
+                await call.answer("❌ Bu to'garakda o'tilgan mavzu topilmadi", show_alert=True)
+                return
+            bor = _nz.test_soni_bor(kodlar)
+            if bor == 0:
+                await call.answer("❌ Bu mavzu(lar)da test topilmadi", show_alert=True)
+                return
+            nomlar_txt = ", ".join(nomlar[:5]) + (f" (+{len(nomlar)-5})" if len(nomlar) > 5 else "")
+            temp_user[f"nz_ctx:{user_id}"] = {"child_id": child_id, "tgid": tgid,
+                                              "manba": manba, "kodlar": kodlar, "bor": bor}
+            await call.message.answer(
+                f"📚 {nomlar_txt}\n📊 {bor} ta savol mavjud\n\nQanday boshlaymiz?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=f"⚡ Tezkor — {min(20,bor)} ta random",
+                                          callback_data="nz_tezkor")],
+                    [InlineKeyboardButton(text="⚙️ Savol sonini sozlash",
+                                          callback_data="nz_sozla")],
+                    [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"nz_tog:{child_id}:{tgid}")],
+                ]))
+            return
+
+        if amal in ("nz_tezkor", "nz_sozla") and qism[0] in ("nz_tezkor", "nz_sozla") and len(qism) == 1:
+            ctx = temp_user.get(f"nz_ctx:{user_id}")
+            if not ctx:
+                await call.answer("⚠️ Sessiya eskirgan, qaytadan boshlang", show_alert=True); return
+
+            if amal == "nz_sozla":
+                rows = [[InlineKeyboardButton(text=f"{n} ta", callback_data=f"nz_cnt:{n}")]
+                        for n in (5, 10, 15, 20, 30) if n <= ctx["bor"]]
+                await call.message.answer("Nechta savol bo'lsin?",
+                                          reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+                return
+
+            # nz_tezkor — 20 ta random, darhol yuboriladi
+            soni = min(20, ctx["bor"])
+            await _nz_yubor(call, user_id, ctx, soni, bot)
+            return
+
+        if amal == "nz_cnt":
+            soni = int(qism[1])
+            ctx = temp_user.get(f"nz_ctx:{user_id}")
+            if not ctx:
+                await call.answer("⚠️ Sessiya eskirgan, qaytadan boshlang", show_alert=True); return
+            await _nz_yubor(call, user_id, ctx, soni, bot)
+            return
+
+        # ── Tarix / tahlil ekrani ──
+        if amal == "nz_tarix":
+            child_id = int(qism[1])
+            if not _oo.bogliqmi(user_id, child_id):
+                await call.answer("❌ Bu farzand sizga ulanmagan", show_alert=True); return
+            t = _nz.tahlil(child_id)
+            info = _oo.kim(child_id)
+            ism = info[0] if info else "Farzand"
+            if not t:
+                await call.message.answer(
+                    f"📈 <b>{ism}</b>\n\n<i>Hali nazorat testi topshirilmagan.</i>",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="🎯 Test yuborish", callback_data=f"nz_start:{child_id}"),
+                        InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}"),
+                    ]]))
+                return
+            _bh2 = _modul('baholash')
+            d_foiz = _bh2.daraja(t["foiz"]) if _bh2 else ""
+            togri_soni = round(t["foiz"] * t["jami"] / 100.0) if t["jami"] else 0
+            txt = [f"📈 <b>{ism}</b> — Nazorat testi tahlili\n",
+                   f"📚 {t['manba']}",
+                   f"✅ Aniqlik: <b>{t['foiz']}%</b> {d_foiz} ({togri_soni}/{t['jami']})",
+                   f"⚡ Tezlik: {t['tezlik']} soniya/savol {t['daraja_tezlik']}",
+                   f"🕐 Jami vaqt: {t['sarflangan']} soniya, {t['jami']} savol"]
+            if t["foiz_farqi"] is not None:
+                belgi_f = "📈" if t["foiz_farqi"] > 0 else ("📉" if t["foiz_farqi"] < 0 else "➖")
+                belgi_t = "⚡" if t["tezlik_farqi"] > 0 else ("🐢" if t["tezlik_farqi"] < 0 else "➖")
+                txt.append(f"\n{belgi_f} Aniqlik oldingisiga nisbatan: {t['foiz_farqi']:+.1f}%")
+                txt.append(f"{belgi_t} Tezlik farqi: {t['tezlik_farqi']:+.1f} soniya/savol")
+            else:
+                txt.append("\n<i>Bu birinchi nazorat testi — solishtirish uchun ma'lumot yo'q.</i>")
+
+            tar = _nz.tarix(child_id, limit=8)
+            if len(tar) > 1:
+                txt.append("\n📊 <b>Oxirgi natijalar:</b>")
+                for _, foiz2, son2, jami2, sana2, manba2 in tar:
+                    s = sana2.strftime("%d.%m") if hasattr(sana2, "strftime") else ""
+                    txt.append(f"  {s}: {float(foiz2):.0f}% · {round(son2/max(1,jami2),1)} son/savol")
+
+            await call.message.answer("\n".join(txt)[:3900], parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="🎯 Yana test yuborish", callback_data=f"nz_start:{child_id}")],[
+                    InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")]]))
+            return
+        return
+
+    # ═══════════════════════════════════════════
     # 👨‍👩‍👧 OTA-ONA PANELI (op_)
     # ═══════════════════════════════════════════
     if call.data.startswith("op_"):
         qism = call.data.split(":")
-        bolim = qism[0][3:]           # asosiy / yoqlama / vazifa / imtihon / baho / nazorat
+        bolim = qism[0][3:]           # asosiy / mavzu / yoqlama / vazifa / imtihon / baho / nazorat
         child_id = int(qism[1])
+        await call.answer()
         await _ota_ekran(call, user_id, child_id, bolim)
         return
 
@@ -7572,8 +7744,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         # ── Ota-ona kod so'raydi ──
         if amal == "fk_add":
             _ak = _modul('akkaunt')
-        if not _ak:
-            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
+            if not _ak:
+                await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
             tg = _tg_id(user_id)
             # Shu telefondagi boshqa akkauntlar (kod kerak emas — egasi o'zi)
             boshqa = [a for a in _ak.akkauntlar(tg) if a[0] and int(a[0]) != user_id]
@@ -7603,8 +7775,8 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             if child == user_id:
                 await call.answer("❌ O'zingizni ulay olmaysiz", show_alert=True); return
             _ak = _modul('akkaunt')
-        if not _ak:
-            await message.answer('⚠️ akkaunt.py yuklanmagan'); return
+            if not _ak:
+                await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
             tg = _tg_id(user_id)
             # Haqiqatan shu telefondami?
             egasi = {int(a[0]) for a in _ak.akkauntlar(tg) if a[0]}
@@ -7839,6 +8011,74 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.edit_text(sarlavha, reply_markup=kb)
         except Exception:
             await call.message.answer(sarlavha, reply_markup=kb)
+        return
+
+    # ═══════════════════════════════════════════
+    # 🎯 NAZORAT TESTI — O'QUVCHI TOMONI (nz_go / nzq / nzstop)
+    # ═══════════════════════════════════════════
+    if call.data.startswith("nz_go:"):
+        _nz = _modul('nazorat_test')
+        if not _nz:
+            await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+        nid = int(call.data.split(":")[1])
+        nz = _nz.ol(nid)
+        if not nz:
+            await call.answer("❌ Test topilmadi", show_alert=True); return
+        if nz["child_id"] != user_id:
+            await call.answer("❌ Bu test sizga tegishli emas", show_alert=True); return
+        savollar = _nz.savollar_ol(nz["topic_codes"], nz["savol_soni"])
+        if not savollar:
+            await call.answer("❌ Savol topilmadi", show_alert=True); return
+
+        _nz.seans_boshla(user_id, nid, savollar)
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
+        s = savollar[0]
+        yozma = _nz.savol_yozmami(s)
+        matn = _nz.savol_matni(s, 0, len(savollar))
+        kb = _nz.savol_kb(nid, 0, yozma=yozma)
+        if yozma:
+            admin_state[user_id] = f"nz_javob:{nid}:0"
+        if s[6]:
+            try:
+                await call.message.answer_photo(s[6], caption=matn, reply_markup=kb); return
+            except Exception: pass
+        await call.message.answer(matn, reply_markup=kb)
+        return
+
+    if call.data.startswith("nzstop:"):
+        _nz = _modul('nazorat_test')
+        if not _nz:
+            await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+        nid = int(call.data.split(":")[1])
+        _nz.seans_bekor(user_id)
+        _nz.bekor_qil(nid)
+        admin_state.pop(user_id, None)
+        await call.answer("🛑 To'xtatildi")
+        try: await call.message.edit_text("🛑 Nazorat testi to'xtatildi.\nNatija saqlanmadi.")
+        except Exception: pass
+        return
+
+    if call.data.startswith("nzq:"):
+        _nz = _modul('nazorat_test')
+        if not _nz:
+            await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+        _, nid, idx, javob = call.data.split(":")
+        nid = int(nid); idx = int(idx)
+
+        st = _nz.seans(user_id)
+        if not st or st["idx"] != idx:
+            await call.answer("⚠️ Bu savol allaqachon javoblangan", show_alert=True)
+            return
+
+        togri, tugadi, _ = _nz.javob_tekshir(user_id, javob)
+        await call.answer("✅ To'g'ri" if togri else "❌ Noto'g'ri")
+
+        try: await call.message.delete()
+        except Exception: pass
+
+        await _nz_keyingi(call.message, user_id, nid, togri, tugadi, bot)
         return
 
     # ═══════════════════════════════════════════
@@ -8309,6 +8549,11 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
 
     if bolim == "asosiy":
         naz = _op.nazorat(child_id)
+        royxat = _op.mavzular_royxati(child_id)
+        mavzu_map = {tg_nomi: mv for tg_nomi, mv in royxat}
+        barcha_imt = _op.imtihonlar(child_id)
+        loyihalar = [x for x in barcha_imt if x[2] == "loyiha"]
+
         t = [bosh]
         if naz:
             for y in naz:
@@ -8316,15 +8561,27 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append(f"   🎯 Yakuniy: <b>{y['yakuniy']}%</b> {y['daraja']}")
                 if y["orin"]:
                     t.append(f"   🏆 O'rin: {y['orin']}/{y['jami']}")
+                mv = mavzu_map.get(y['togarak'], [])
+                if mv:
+                    otilgan = sum(1 for _, ok, _ in mv if ok)
+                    foiz_mv = round(otilgan * 100.0 / len(mv))
+                    t.append(f"   📖 Mavzu: {otilgan}/{len(mv)} o'tildi ({foiz_mv}%)")
+            if loyihalar:
+                ort = round(sum(float(x[1]) for x in loyihalar) / len(loyihalar), 1)
+                t.append(f"\n🎨 Loyiha ishlari: {len(loyihalar)} ta bajarildi, o'rtacha {ort}%")
         else:
             t.append("\n<i>Hali to'garakka a'zo emas.</i>")
+
         kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎯 Farzandimga test", callback_data=f"nz_start:{child_id}")],
+            [InlineKeyboardButton(text="🔄 Yangilash", callback_data=f"op_asosiy:{child_id}")],
             [InlineKeyboardButton(text="📚 Mavzular", callback_data=f"op_mavzu:{child_id}"),
              InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{child_id}")],
             [InlineKeyboardButton(text="📝 Uy vazifasi", callback_data=f"op_vazifa:{child_id}"),
              InlineKeyboardButton(text="🎓 Imtihonlar", callback_data=f"op_imtihon:{child_id}")],
             [InlineKeyboardButton(text="⭐ Baholar", callback_data=f"op_baho:{child_id}"),
              InlineKeyboardButton(text="📊 Nazorat", callback_data=f"op_nazorat:{child_id}")],
+            [InlineKeyboardButton(text="📈 Nazorat testlari tarixi", callback_data=f"nz_tarix:{child_id}")],
         ])
         await _javob(source, "\n".join(t)[:3800], kb)
         return
@@ -8348,7 +8605,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
             t.append("")
         if not bor:
             t.append("<i>Bu to'garakda hali o'quv rejasi tuzilmagan.</i>")
-        await _javob(source, "\n".join(t)[:3900], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3900], _ota_orqaga(child_id, "mavzu"))
         return
 
     if bolim == "yoqlama":
@@ -8361,7 +8618,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append(f"   {keldi}/{jami} dars · {foiz}%")
         else:
             t.append("<i>Yo'qlama ma'lumoti yo'q.</i>")
-        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id, "yoqlama"))
         return
 
     if bolim == "vazifa":
@@ -8376,7 +8633,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append(f"{belgi} {mavzu[:38]}{sana}")
         else:
             t.append("<i>Vazifa yo'q.</i>")
-        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id, "vazifa"))
         return
 
     if bolim == "imtihon":
@@ -8391,7 +8648,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append(f"{belgi} {tur} {nomi[:28]} — <b>{f:.0f}%</b>  {s}")
         else:
             t.append("<i>Hali imtihon topshirmagan.</i>")
-        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id, "imtihon"))
         return
 
     if bolim == "baho":
@@ -8409,7 +8666,7 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append(f"   {fan[:24]} — {int(foiz or 0)}%")
         if not b and not tn:
             t.append("<i>Baho yo'q.</i>")
-        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id, "baho"))
         return
 
     if bolim == "nazorat":
@@ -8428,13 +8685,17 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
                 t.append("")
         else:
             t.append("<i>To'garak yo'q.</i>")
-        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id))
+        await _javob(source, "\n".join(t)[:3800], _ota_orqaga(child_id, "nazorat"))
         return
 
 
-def _ota_orqaga(child_id):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")]])
+def _ota_orqaga(child_id, bolim=None):
+    """Har ichki ekranda: 🔄 Yangilash (shu ekranni qayta yuklaydi) + ⬅️ Orqaga (bosh ekran)."""
+    rows = []
+    if bolim:
+        rows.append([InlineKeyboardButton(text="🔄 Yangilash", callback_data=f"op_{bolim}:{child_id}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Bosh ekran", callback_data=f"op_asosiy:{child_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _javob(source, matn, kb=None):
@@ -8443,12 +8704,119 @@ async def _javob(source, matn, kb=None):
         if hasattr(source, "message") and source.message is not None:
             try:
                 await source.message.edit_text(matn, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                await source.message.answer(matn, parse_mode="HTML", reply_markup=kb)
+            except Exception as e:
+                if "message is not modified" in str(e).lower():
+                    pass   # Kontent o'zgarmagan — Yangilash bosilganda bu normal holat
+                else:
+                    await source.message.answer(matn, parse_mode="HTML", reply_markup=kb)
         else:
             await source.answer(matn, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         print(f"[ota_ekran] {e}")
+
+
+async def _nz_yubor(call, parent_id, ctx, soni, bot):
+    """Nazorat testini yaratadi va farzandga yuboradi."""
+    _nz = _modul('nazorat_test')
+    if not _nz:
+        await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+
+    child_id = ctx["child_id"]
+    nid = _nz.yarat(parent_id, child_id, ctx["tgid"], ctx["manba"], ctx["kodlar"], soni)
+    if not nid:
+        await call.answer("❌ Test yaratilmadi", show_alert=True); return
+
+    temp_user.pop(f"nz_ctx:{parent_id}", None)
+
+    info = None
+    _oo = _modul('ota_ona')
+    if _oo:
+        info = _oo.kim(child_id)
+    ism = info[0] if info else "Farzand"
+
+    try:
+        await bot.send_message(
+            _tg_id(child_id),
+            f"🎯 <b>Nazorat testi</b>\n\n"
+            f"Ota-onangiz sizga {soni} ta savoldan iborat\n"
+            f"tezkor nazorat testi yubordi.\n\n"
+            f"Tayyor bo'lsangiz boshlang:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="▶️ Boshlash", callback_data=f"nz_go:{nid}")]]))
+        await call.message.answer(
+            f"✅ <b>{ism}</b>ga {soni} ta savoldan iborat nazorat testi yuborildi.\n\n"
+            f"Natija tugagach sizga xabar keladi.",
+            parse_mode="HTML")
+    except Exception as e:
+        print(f"[nz_yubor] {e}")
+        await call.message.answer(f"❌ Farzandingizga xabar yuborib bo'lmadi: {e}")
+
+
+async def _nz_keyingi(target, child_id, nz_id, togri, tugadi, bot):
+    """nzq javobidan keyin: keyingi savol yoki yakunlash + ota-onaga 3 parametrli xabar."""
+    _nz = _modul('nazorat_test')
+    if not _nz:
+        return
+    st = _nz.seans(child_id)
+
+    if not tugadi and st:
+        s = st["savollar"][st["idx"]]
+        yozma = _nz.savol_yozmami(s)
+        matn = _nz.savol_matni(s, st["idx"], len(st["savollar"]))
+        kb = _nz.savol_kb(nz_id, st["idx"], yozma=yozma)
+        if yozma:
+            admin_state[child_id] = f"nz_javob:{nz_id}:{st['idx']}"
+        if s[6]:
+            try:
+                await target.answer_photo(s[6], caption=matn, reply_markup=kb)
+                return
+            except Exception: pass
+        await target.answer(matn, reply_markup=kb)
+        return
+
+    # ── TUGADI: yakunlash + tahlil ──
+    natija = _nz.yakunla(child_id)
+    if not natija:
+        return
+    t = _nz.tahlil(child_id)
+    _bh2 = _modul('baholash')
+    d = _bh2.daraja(natija["foiz"]) if _bh2 else ""
+
+    await target.answer(
+        f"🏁 <b>Nazorat testi tugadi</b>\n\n"
+        f"✅ To'g'ri: {natija['togri']}/{natija['jami']}\n"
+        f"📊 Natija: <b>{natija['foiz']}%</b> {d}\n"
+        f"⏱ Vaqt: {natija['sarflangan']} soniya\n\n"
+        f"<i>Natija ota-onangizga yuborildi.</i>",
+        parse_mode="HTML")
+
+    nz = _nz.ol(nz_id)
+    if not nz:
+        return
+    info = None
+    _oo = _modul('ota_ona')
+    if _oo:
+        info = _oo.kim(child_id)
+    ism = info[0] if info else "Farzand"
+
+    xabar = [f"📊 <b>Nazorat testi natijasi</b>\n",
+             f"👤 {ism}",
+             f"✅ Aniqlik: <b>{natija['foiz']}%</b> {d} ({natija['togri']}/{natija['jami']})"]
+    if t:
+        xabar.append(f"⚡ Tezlik: {t['tezlik']} soniya/savol {t['daraja_tezlik']}")
+        if t["foiz_farqi"] is not None:
+            belgi_f = "📈" if t["foiz_farqi"] > 0 else ("📉" if t["foiz_farqi"] < 0 else "➖")
+            belgi_t = "⚡" if t["tezlik_farqi"] > 0 else ("🐢" if t["tezlik_farqi"] < 0 else "➖")
+            xabar.append(f"{belgi_f} Aniqlik farqi: {t['foiz_farqi']:+.1f}%")
+            xabar.append(f"{belgi_t} Tezlik farqi: {t['tezlik_farqi']:+.1f} soniya/savol")
+
+    try:
+        await bot.send_message(_tg_id(nz["parent_id"]), "\n".join(xabar), parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📈 To'liq tahlil", callback_data=f"nz_tarix:{child_id}")]]))
+    except Exception as e:
+        print(f"[nz_keyingi] ota-onaga xabar: {e}")
 
 
 async def _imtihon_keyingi(target, user_id, iid, togri, tugadi, foiz, bot):
@@ -8638,6 +9006,12 @@ async def main():
             print("[admin] admin_akkaunt tayyor")
         except Exception as _e:
             print(f"[admin] {_e}")
+        try:
+            import nazorat_test
+            nazorat_test.jadval()
+            print("[nazorat_test] jadval tayyor")
+        except Exception as _e:
+            print(f"[nazorat_test] {_e}")
     except Exception as _he:
         print(f"Health server xato: {_he}")
     # Foydalanuvchilar jimgina davom etaveradi (xabar yuborilmaydi)
