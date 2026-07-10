@@ -227,38 +227,96 @@ def _modul(nom):
         print(f"[modul] '{nom}' yuklanmadi: {e}")
         return None
 
+def _levenshtein(a, b):
+    """Ikki so'z orasidagi tahrirlash masofasi (imlo xatosini o'lchash uchun)."""
+    if a == b: return 0
+    if len(a) < len(b): a, b = b, a
+    if not b: return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _fuzzy_ozak(soz, nishon, maks=1):
+    """so'z NISHON o'zagi bilan (taxminan) boshlanadimi?
+    O'zbek tilida ko'p qo'shimcha qo'shiladi (yubor+sam+mi, tist+ni),
+    shuning uchun so'zning FAQAT BOSHINI solishtiramiz, davomini e'tiborsiz qoldiramiz."""
+    if len(soz) < 3:
+        return False
+    m = maks if len(nishon) <= 5 else maks + 1
+    for uzunlik in (len(nishon) - 1, len(nishon), len(nishon) + 1):
+        if uzunlik < 2 or uzunlik > len(soz):
+            continue
+        if _levenshtein(soz[:uzunlik], nishon) <= m:
+            return True
+    return False
+
+
+def _tozala_sozlar(matn):
+    """Apostrof/tinish belgilarini olib tashlab, so'zlarga bo'ladi."""
+    t = matn.lower().replace("'", "").replace("’", "").replace("`", "")
+    t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+    return t.split()
+
+
+def _fuzzy_bor(sozlar, nishonlar):
+    return any(_fuzzy_ozak(s, n) for s in sozlar for n in nishonlar)
+
+
 def _ota_ai_router(matn):
-    """Ota-onaning ozod matnida bot imkoniyatiga mos kalit so'z qidiradi.
-    Topilsa ('bolim', child_kerak) qaytaradi, topilmasa None -> Gemini ga o'tadi.
-    Aniqroq iboralar avval tekshiriladi (masalan 'test yubor' 'imtihon'dan oldin)."""
-    mt = matn.lower()
+    """Ota-onaning ozod matnida — IMLO XATOSI VA QISQARTMALARGA CHIDAMLI —
+    bot imkoniyatiga mos bo'limni qidiradi. Topilsa bolim nomini qaytaradi,
+    topilmasa None (Gemini ga o'tadi)."""
+    sozlar = _tozala_sozlar(matn)
+    if not sozlar:
+        return None
+
+    TEST = ["test", "tist", "sinov", "sinob"]
+    YUBOR = ["yubor", "jonat", "jonat", "ber", "tuz", "yolla"]
+    NAZORAT = ["nazorat", "nazarat"]
+    TARIX = ["tarix", "tezlik", "taraqqiyot", "dinamika", "yaxshilan"]
+    MAVZU = ["mavzu", "oqiyapti", "organayapti", "organyapti", "otilgan"]
+    DAVOMAT = ["davomat", "yoqlama", "yoklama", "kelmadi", "kelgan", "qatnash"]
+    VAZIFA = ["vazifa"]
+    BAHO = ["baho", "ball"]
+    IMTIHON = ["imtihon", "natija"]
+    LOYIHA = ["loyiha", "loyixa"]
+    FARZAND = ["farzand", "farzant", "bola", "bolam"]
+    QOSHISH = ["qosh", "ulash", "ula"]      # "qo'sh" — farzand QO'SHISH (add)
+    QOYISH = ["qoy"]                         # "qo'y" — baho QO'YISH (teacher sets grade)
 
     # ── Nazorat testi yuborish (eng aniq, birinchi tekshiriladi) ──
-    if any(k in mt for k in ("test yubor", "sinov yubor", "test ber", "sinov ber",
-                             "test tuz", "nazorat test", "farzandimga test",
-                             "bolamga test", "farzandimga sinov", "test jo'nat")):
+    if _fuzzy_bor(sozlar, TEST) and _fuzzy_bor(sozlar, YUBOR):
         return "nz_start"
-    if any(k in mt for k in ("nazorat tarix", "qanchalik tez", "tezlik qanday",
-                             "qanchalik yaxshilan", "oldingisiga nisbatan", "taraqqiyot")):
+    if _fuzzy_bor(sozlar, NAZORAT) and (_fuzzy_bor(sozlar, TEST) or _fuzzy_bor(sozlar, YUBOR)):
+        return "nz_start"
+    if _fuzzy_bor(sozlar, NAZORAT) and _fuzzy_bor(sozlar, TARIX):
+        return "nz_tarix"
+    if _fuzzy_bor(sozlar, TARIX) and not _fuzzy_bor(sozlar, BAHO):
         return "nz_tarix"
 
     # ── Mavjud ekranlar ──
-    if any(k in mt for k in ("qanday o'qi", "nima o'rgan", "qaysi mavzu", "mavzuni")):
+    if _fuzzy_bor(sozlar, MAVZU):
         return "mavzu"
-    if any(k in mt for k in ("davomat", "yo'qlama", "kelmadi", "kelgan", "qatnash")):
+    if _fuzzy_bor(sozlar, DAVOMAT):
         return "yoqlama"
-    if any(k in mt for k in ("uy vazifa", "vazifa qildi", "vazifa topshir")):
+    if _fuzzy_bor(sozlar, VAZIFA):
         return "vazifa"
-    if "loyiha" in mt:
+    if _fuzzy_bor(sozlar, LOYIHA):
         return "asosiy"
-    if any(k in mt for k in ("imtihon natija", "imtihon qanday", "test natija")):
+    if _fuzzy_bor(sozlar, IMTIHON):
         return "imtihon"
-    if any(k in mt for k in ("baho", "necha foiz", "necha ball")) and "qo'y" not in mt:
+    if _fuzzy_bor(sozlar, BAHO) and not _fuzzy_bor(sozlar, QOYISH):
         return "baho"
-    if any(k in mt for k in ("qanday ket", "umumiy holat", "farzandim qalay",
-                             "farzandim qanday", "holati qanday")):
+    if _fuzzy_bor(sozlar, FARZAND) and not _fuzzy_bor(sozlar, QOSHISH):
         return "asosiy"
     return None
+
+
 
 
 def _get_user_qisqa(uid):
@@ -8594,6 +8652,23 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
 
+def _progress_bar(foiz, uzunlik=10):
+    """Vizual progress-bar: ▓▓▓▓▓░░░░░ 50%"""
+    foiz = max(0, min(100, foiz))
+    toldi = round(foiz / 100 * uzunlik)
+    return "▓" * toldi + "░" * (uzunlik - toldi)
+
+
+def _orin_medal(orin, jami):
+    """O'rinni qiziqarli taqdim etadi — medal yoki rag'batlantiruvchi jumla."""
+    if not orin:
+        return ""
+    if orin == 1: return f"🥇 1-o'rin / {jami} ta"
+    if orin == 2: return f"🥈 2-o'rin / {jami} ta"
+    if orin == 3: return f"🥉 3-o'rin / {jami} ta"
+    return f"📍 {orin}-o'rin / {jami} ta"
+
+
 async def _ota_ekran(source, parent_id, child_id, bolim):
     """Ota-ona uchun farzand ekranlari."""
     _op = _modul("ota_panel")
@@ -8622,18 +8697,19 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
         t = [bosh]
         if naz:
             for y in naz:
-                t.append(f"\n📚 <b>{y['togarak']}</b>")
-                t.append(f"   🎯 Yakuniy: <b>{y['yakuniy']}%</b> {y['daraja']}")
+                t.append(f"\n📐 <b>{y['togarak']}</b>")
                 if y["orin"]:
-                    t.append(f"   🏆 O'rin: {y['orin']}/{y['jami']}")
+                    t.append(_orin_medal(y["orin"], y["jami"]))
+                t.append(f"{_progress_bar(y['yakuniy'])} <b>{y['yakuniy']}%</b> {y['daraja']}")
+
                 mv = mavzu_map.get(y['togarak'], [])
                 if mv:
                     otilgan = sum(1 for _, ok, _ in mv if ok)
                     foiz_mv = round(otilgan * 100.0 / len(mv))
-                    t.append(f"   📖 Mavzu: {otilgan}/{len(mv)} o'tildi ({foiz_mv}%)")
+                    t.append(f"📖 {_progress_bar(foiz_mv, 8)} {foiz_mv}% ({otilgan}/{len(mv)} mavzu)")
             if loyihalar:
                 ort = round(sum(float(x[1]) for x in loyihalar) / len(loyihalar), 1)
-                t.append(f"\n🎨 Loyiha ishlari: {len(loyihalar)} ta bajarildi, o'rtacha {ort}%")
+                t.append(f"🎨 {len(loyihalar)} ta loyiha — o'rtacha {ort}%")
         else:
             t.append("\n<i>Hali to'garakka a'zo emas.</i>")
 
