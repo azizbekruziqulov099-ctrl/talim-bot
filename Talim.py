@@ -245,6 +245,8 @@ def _fuzzy_ozak(soz, nishon, maks=1):
     """so'z NISHON o'zagi bilan (taxminan) boshlanadimi?
     O'zbek tilida ko'p qo'shimcha qo'shiladi (yubor+sam+mi, tist+ni),
     shuning uchun so'zning FAQAT BOSHINI solishtiramiz, davomini e'tiborsiz qoldiramiz."""
+    if soz == nishon:
+        return True   # aniq mos — qisqa so'zlarda ham (masalan "uy") ishlashi kerak
     if len(soz) < 3:
         return False
     m = maks if len(nishon) <= 5 else maks + 1
@@ -316,6 +318,36 @@ def _ota_ai_router(matn):
         return "asosiy"
     return None
 
+
+def _oquvchi_ai_router(matn):
+    """O'quvchining ozod matnida — imlo xatosi va qisqartmalarga chidamli —
+    bot imkoniyatiga mos harakatni qidiradi. Topilsa harakat nomini qaytaradi,
+    topilmasa None (Gemini ga o'tadi)."""
+    sozlar = _tozala_sozlar(matn)
+    if not sozlar:
+        return None
+
+    TEST = ["test", "tist", "sinov", "sinob"]
+    BOSHLASH = ["boshla", "yech", "ishla", "topshir"]
+    BUGUN = ["bugun", "bugungi"]
+    DARS = ["dars", "reja", "jadval"]
+    VAZIFA = ["vazifa", "uy"]
+    TOGARAK = ["togarak", "dastur", "mavzu"]
+    MAKTAB = ["maktab", "statistika", "rivojlan", "natija"]
+    BAHO = ["baho", "ball"]
+
+    # ── Test boshlash (eng aniq, birinchi) ──
+    if _fuzzy_bor(sozlar, TEST) and _fuzzy_bor(sozlar, BOSHLASH):
+        return "test"
+    if _fuzzy_bor(sozlar, BUGUN) and _fuzzy_bor(sozlar, DARS):
+        return "bugun"
+    if _fuzzy_bor(sozlar, VAZIFA):
+        return "vazifa"
+    if _fuzzy_bor(sozlar, TOGARAK):
+        return "togarak"
+    if _fuzzy_bor(sozlar, MAKTAB) or _fuzzy_bor(sozlar, BAHO):
+        return "maktab"
+    return None
 
 
 
@@ -2522,6 +2554,34 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
             return
 
+        # ── O'quvchi bo'lsa: xuddi shu tezkor yo'naltirish ──
+        if not _ota_mi0:
+            _rol_oq = (_get_user_qisqa(user_id)[1] or "").lower()
+            if "quvchi" in _rol_oq:
+                _harakat = _oquvchi_ai_router(_mt)
+                if _harakat == "test":
+                    await message.answer(
+                        "🧪 Test boshlash uchun pastdagi «🧪 Bilimni sinash» "
+                        "tugmasini bosing — mavzu tanlab boshlaysiz.")
+                    return
+                if _harakat:
+                    try:
+                        import student_dashboard as _sd
+                        _matn2 = _kb2 = None
+                        if _harakat == "bugun":
+                            _matn2, _kb2 = await _sd.build_bugungi(user_id)
+                        elif _harakat == "vazifa":
+                            _matn2, _kb2 = await _sd.build_vazifalar(user_id)
+                        elif _harakat == "togarak":
+                            _matn2, _kb2 = await _sd.build_togarak_stat(user_id)
+                        elif _harakat == "maktab":
+                            _matn2, _kb2 = await _sd.build_maktab_stat(user_id)
+                        if _matn2:
+                            await message.answer(_matn2, reply_markup=_kb2, parse_mode="HTML")
+                            return
+                    except Exception as _e:
+                        print(f"[oquvchi_ai] {_e}")
+
     # ═══ AKKAUNT: ko'chirish kodi kiritildi ═══
     if user_state.get(user_id) == "ak_kod_kirit" and message.text:
         user_state.pop(user_id, None)
@@ -4013,13 +4073,14 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                    "Mos amal topilsa — tugma bilan tez ko'rsataman.\n"
                    "Boshqa savolingiz bo'lsa ham yozavering 👇")
         else:
-            txt = ("🤖 O'quvchi AI Yordamchi\n\n"
-                   "Nima qila olaman:\n"
-                   "• Mavzuni tushuntiraman\n"
-                   "• Misol yechamiz\n"
-                   "• Test beraman\n"
-                   "• Kitobdan misol beraman\n\n"
-                   "Savolingizni yozing 👇")
+            txt = ("🤖 O'quvchi Yordamchi\n\n"
+                   "Yozib ko'ring, masalan:\n"
+                   "• «Bugungi darsim nima?»\n"
+                   "• «Vazifalarim bormi?»\n"
+                   "• «To'garak dasturim qanday?»\n"
+                   "• «Statistikam qanday?»\n\n"
+                   "Mos amal topilsa — tez ko'rsataman.\n"
+                   "Boshqa savolingiz bo'lsa ham yozavering 👇")
 
         user_state[user_id] = "ai_mode"
         await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
@@ -8715,7 +8776,6 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎯 Farzandimga test", callback_data=f"nz_start:{child_id}")],
-            [InlineKeyboardButton(text="🔄 Yangilash", callback_data=f"op_asosiy:{child_id}")],
             [InlineKeyboardButton(text="📚 Mavzular", callback_data=f"op_mavzu:{child_id}"),
              InlineKeyboardButton(text="📋 Yo'qlama", callback_data=f"op_yoqlama:{child_id}")],
             [InlineKeyboardButton(text="📝 Uy vazifasi", callback_data=f"op_vazifa:{child_id}"),
@@ -8831,12 +8891,9 @@ async def _ota_ekran(source, parent_id, child_id, bolim):
 
 
 def _ota_orqaga(child_id, bolim=None):
-    """Har ichki ekranda: 🔄 Yangilash (shu ekranni qayta yuklaydi) + ⬅️ Orqaga (bosh ekran)."""
-    rows = []
-    if bolim:
-        rows.append([InlineKeyboardButton(text="🔄 Yangilash", callback_data=f"op_{bolim}:{child_id}")])
-    rows.append([InlineKeyboardButton(text="⬅️ Bosh ekran", callback_data=f"op_asosiy:{child_id}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    """Har ichki ekranda: ⬅️ Bosh ekran tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ Bosh ekran", callback_data=f"op_asosiy:{child_id}")]])
 
 
 async def _javob(source, matn, kb=None):
