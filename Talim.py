@@ -7690,10 +7690,10 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("nz_"):
         _nz = _modul('nazorat_test')
         if not _nz:
-            await call.answer('⚠️ nazorat_test.py yuklanmagan', show_alert=True); return
+            await call.message.answer('⚠️ nazorat_test.py yuklanmagan'); return
         _oo = _modul('ota_ona')
         if not _oo:
-            await call.answer('⚠️ ota_ona.py yuklanmagan', show_alert=True); return
+            await call.message.answer('⚠️ ota_ona.py yuklanmagan'); return
 
         qism = call.data.split(":")
         amal = qism[0]
@@ -7702,13 +7702,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if amal == "nz_start":
             child_id = int(qism[1])
             if not _oo.bogliqmi(user_id, child_id):
-                await call.answer("❌ Bu farzand sizga ulanmagan", show_alert=True); return
+                await call.message.answer("❌ Bu farzand sizga ulanmagan"); return
             _op = _modul('ota_panel')
             if not _op:
-                await call.answer('⚠️ ota_panel.py yuklanmagan', show_alert=True); return
+                await call.message.answer('⚠️ ota_panel.py yuklanmagan'); return
             tgs = _op.togaraklari(child_id)
             if not tgs:
-                await call.answer("❌ Farzandingiz hech qaysi to'garakka a'zo emas", show_alert=True)
+                await call.message.answer("❌ Farzandingiz hech qaysi to'garakka a'zo emas")
                 return
             if len(tgs) == 1:
                 tgid = tgs[0][0]
@@ -7716,14 +7716,12 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                          callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
                         for m in ("oxirgi", "oldingi", "oxirgi10")]
                 rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"op_asosiy:{child_id}")])
-                await call.answer()
                 await call.message.answer(
                     "🎯 <b>Farzandimga test</b>\n\nQayerdan savol tanlaymiz?",
                     parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
                 return
             rows = [[InlineKeyboardButton(text=f"📚 {t[1][:32]}",
                      callback_data=f"nz_tog:{child_id}:{t[0]}")] for t in tgs]
-            await call.answer()
             await call.message.answer("🎯 Qaysi to'garakdan?",
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
             return
@@ -7734,7 +7732,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                      callback_data=f"nz_manba:{child_id}:{tgid}:{m}")]
                     for m in ("oxirgi", "oldingi", "oxirgi10")]
             rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"nz_start:{child_id}")])
-            await call.answer()
             await call.message.answer("Qayerdan savol tanlaymiz?",
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
             return
@@ -7744,16 +7741,15 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             child_id = int(qism[1]); tgid = int(qism[2]); manba = qism[3]
             kodlar, nomlar = _nz.manba_kodlari(tgid, manba)
             if not kodlar:
-                await call.answer("❌ Bu to'garakda o'tilgan mavzu topilmadi", show_alert=True)
+                await call.message.answer("❌ Bu to'garakda o'tilgan mavzu topilmadi")
                 return
             bor = _nz.test_soni_bor(kodlar)
             if bor == 0:
-                await call.answer("❌ Bu mavzu(lar)da test topilmadi", show_alert=True)
+                await call.message.answer("❌ Bu mavzu(lar)da test topilmadi")
                 return
             nomlar_txt = ", ".join(nomlar[:5]) + (f" (+{len(nomlar)-5})" if len(nomlar) > 5 else "")
             temp_user[f"nz_ctx:{user_id}"] = {"child_id": child_id, "tgid": tgid,
                                               "manba": manba, "kodlar": kodlar, "bor": bor}
-            await call.answer()
             await call.message.answer(
                 f"📚 {nomlar_txt}\n📊 {bor} ta savol mavjud\n\nQanday boshlaymiz?",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -7768,18 +7764,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if amal in ("nz_tezkor", "nz_sozla") and qism[0] in ("nz_tezkor", "nz_sozla") and len(qism) == 1:
             ctx = temp_user.get(f"nz_ctx:{user_id}")
             if not ctx:
-                await call.answer("⚠️ Sessiya eskirgan, qaytadan boshlang", show_alert=True); return
+                await call.message.answer("⚠️ Sessiya eskirgan, qaytadan boshlang"); return
 
             if amal == "nz_sozla":
                 rows = [[InlineKeyboardButton(text=f"{n} ta", callback_data=f"nz_cnt:{n}")]
                         for n in (5, 10, 15, 20, 30) if n <= ctx["bor"]]
-                await call.answer()
                 await call.message.answer("Nechta savol bo'lsin?",
                                           reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
                 return
 
             # nz_tezkor — 20 ta random, darhol yuboriladi
-            await call.answer()
             soni = min(20, ctx["bor"])
             await _nz_yubor(call, user_id, ctx, soni, bot)
             return
@@ -7788,8 +7782,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             soni = int(qism[1])
             ctx = temp_user.get(f"nz_ctx:{user_id}")
             if not ctx:
-                await call.answer("⚠️ Sessiya eskirgan, qaytadan boshlang", show_alert=True); return
-            await call.answer()
+                await call.message.answer("⚠️ Sessiya eskirgan, qaytadan boshlang"); return
             await _nz_yubor(call, user_id, ctx, soni, bot)
             return
 
@@ -7797,12 +7790,11 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         if amal == "nz_tarix":
             child_id = int(qism[1])
             if not _oo.bogliqmi(user_id, child_id):
-                await call.answer("❌ Bu farzand sizga ulanmagan", show_alert=True); return
+                await call.message.answer("❌ Bu farzand sizga ulanmagan"); return
             t = _nz.tahlil(child_id)
             info = _oo.kim(child_id)
             ism = info[0] if info else "Farzand"
             if not t:
-                await call.answer()
                 await call.message.answer(
                     f"📈 <b>{ism}</b>\n\n<i>Hali nazorat testi topshirilmagan.</i>",
                     parse_mode="HTML",
@@ -7834,7 +7826,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                     s = sana2.strftime("%d.%m") if hasattr(sana2, "strftime") else ""
                     txt.append(f"  {s}: {float(foiz2):.0f}% · {round(son2/max(1,jami2),1)} son/savol")
 
-            await call.answer()
             await call.message.answer("\n".join(txt)[:3900], parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="🎯 Yana test yuborish", callback_data=f"nz_start:{child_id}")],[
@@ -7849,7 +7840,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         qism = call.data.split(":")
         bolim = qism[0][3:]           # asosiy / mavzu / yoqlama / vazifa / imtihon / baho / nazorat
         child_id = int(qism[1])
-        await call.answer()
         await _ota_ekran(call, user_id, child_id, bolim)
         return
 
