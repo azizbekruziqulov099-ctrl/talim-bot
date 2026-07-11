@@ -15,3 +15,5 @@ PyMuPDF
 yt-dlp
 segno
 faster-whisper
+opencv-python-headless
+numpy
