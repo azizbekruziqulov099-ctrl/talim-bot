@@ -130,7 +130,7 @@ def tarjima_qil(matn, maqsad_til_kod):
 
     try:
         url = ("https://generativelanguage.googleapis.com/v1beta/"
-               f"models/gemini-2.0-flash:generateContent?key={api_key}")
+               f"models/gemini-2.5-flash:generateContent?key={api_key}")
         body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
         req = urllib.request.Request(url, data=body,
                                      headers={"Content-Type": "application/json"})
@@ -165,7 +165,7 @@ def tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
 
     try:
         url = ("https://generativelanguage.googleapis.com/v1beta/"
-               f"models/gemini-2.0-flash:generateContent?key={api_key}")
+               f"models/gemini-2.5-flash:generateContent?key={api_key}")
         body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
         req = urllib.request.Request(url, data=body,
                                      headers={"Content-Type": "application/json"})
