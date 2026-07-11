@@ -8129,12 +8129,13 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
 
         papka = ctx["papka"]; video_yol = ctx["video_yol"]
         segmentlar = ctx["segmentlar"]; jami_uzunlik = ctx["jami_uzunlik"]
+        manba_til = ctx.get("manba_til", "uz")
 
         xabar = await call.message.answer(
             f"⏳ 1/3 — {_db_.til_nomi(maqsad_til)} tiliga tarjima qilinmoqda...\n"
-            f"<i>({len(segmentlar)} ta gap)</i>", parse_mode="HTML")
+            f"<i>({len(segmentlar)} ta gap — NLLB, mustaqil model)</i>", parse_mode="HTML")
         segmentlar_tarjima, xato = await asyncio.to_thread(
-            _db_.tarjima_qil_segmentlar, segmentlar, maqsad_til)
+            _db_.nllb_tarjima_qil_segmentlar, segmentlar, manba_til, maqsad_til)
         if not segmentlar_tarjima:
             try: await xabar.edit_text(f"❌ Tarjima qilinmadi:\n<code>{xato}</code>", parse_mode="HTML")
             except Exception: pass
