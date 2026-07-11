@@ -102,22 +102,43 @@ def link_keshi_jadval():
     try:
         c = db(); cr = c.cursor()
         cr.execute("""CREATE TABLE IF NOT EXISTS video_link_kesh(
-            link TEXT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
+            link TEXT NOT NULL,
+            turi TEXT NOT NULL DEFAULT 'video',
             file_id TEXT,
             yuklagan BIGINT,
             yaratildi TIMESTAMP DEFAULT NOW()
         )""")
-        c.commit(); cr.close(); c.close()
+        c.commit()
+        # Eski sxema (link PRIMARY KEY, turi ustunisiz) bo'lsa — moslashtiramiz
+        try:
+            cr.execute("ALTER TABLE video_link_kesh ADD COLUMN IF NOT EXISTS turi TEXT NOT NULL DEFAULT 'video'")
+            c.commit()
+        except Exception:
+            c.rollback()
+        try:
+            cr.execute("ALTER TABLE video_link_kesh DROP CONSTRAINT IF EXISTS video_link_kesh_pkey")
+            c.commit()
+        except Exception:
+            c.rollback()
+        try:
+            cr.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_vlk_uniq
+                ON video_link_kesh(link, turi)""")
+            c.commit()
+        except Exception:
+            c.rollback()
+        cr.close(); c.close()
     except Exception as e:
         print(f"[video] link_keshi_jadval: {e}")
 
 
-def link_keshi_bormi(link):
-    """Bu havola avval yuklanganmi? file_id qaytaradi yoki None."""
+def link_keshi_bormi(link, turi="video"):
+    """Bu havola (shu turda) avval yuklanganmi? file_id qaytaradi yoki None."""
     link_keshi_jadval()
     try:
         c = db(); cr = c.cursor()
-        cr.execute("SELECT file_id FROM video_link_kesh WHERE link=%s", (link,))
+        cr.execute("SELECT file_id FROM video_link_kesh WHERE link=%s AND turi=%s",
+                   (link, turi))
         r = cr.fetchone(); cr.close(); c.close()
         return r[0] if r and r[0] else None
     except Exception as e:
@@ -125,37 +146,52 @@ def link_keshi_bormi(link):
         return None
 
 
-def link_keshiga_saqla(link, file_id, yuklagan):
+def link_keshiga_saqla(link, file_id, yuklagan, turi="video"):
     try:
         c = db(); cr = c.cursor()
-        cr.execute("""INSERT INTO video_link_kesh(link, file_id, yuklagan)
-            VALUES(%s,%s,%s) ON CONFLICT(link) DO UPDATE
-            SET file_id=EXCLUDED.file_id""", (link, file_id, yuklagan))
+        cr.execute("""INSERT INTO video_link_kesh(link, turi, file_id, yuklagan)
+            VALUES(%s,%s,%s,%s) ON CONFLICT(link, turi) DO UPDATE
+            SET file_id=EXCLUDED.file_id""", (link, turi, file_id, yuklagan))
         c.commit(); cr.close(); c.close()
     except Exception as e:
         print(f"[video] link_keshiga_saqla: {e}")
 
 
+
 # ═══════════════ YUKLASH (yt-dlp) ═══════════════
 
-def yukla(link, chiqish_yol):
-    """Havoladan videoni diskka yuklaydi. (muvaffaqiyat, xato_matni)"""
+def yukla(link, chiqish_yol, faqat_audio=False):
+    """Havoladan videoni (yoki faqat audiosini) diskka yuklaydi.
+    (muvaffaqiyat, xato_matni)"""
     try:
-        natija = subprocess.run(
-            ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best",
-             "--recode-video", "mp4",
-             "-o", chiqish_yol, "--no-playlist",
-             "--max-filesize", MAX_HAJM_MB, link],
-            capture_output=True, text=True, timeout=MAX_VAQT_SONIYA
-        )
+        if faqat_audio:
+            buyruq = ["yt-dlp", "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                      "-o", chiqish_yol, "--no-playlist",
+                      "--max-filesize", MAX_HAJM_MB, link]
+        else:
+            buyruq = ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best",
+                      "--recode-video", "mp4",
+                      "-o", chiqish_yol, "--no-playlist",
+                      "--max-filesize", MAX_HAJM_MB, link]
+        natija = subprocess.run(buyruq, capture_output=True, text=True, timeout=MAX_VAQT_SONIYA)
         if natija.returncode != 0:
             xato = (natija.stderr or "").strip()
-            # Eng foydali qatorni ajratib olamiz
             qatorlar = [q for q in xato.split("\n") if q.strip()]
             qisqa = qatorlar[-1] if qatorlar else "Noma'lum xato"
             return (False, qisqa[:300])
+        # --audio-format mp3 fayl kengaytmasini o'zi almashtirishi mumkin —
+        # chiqish_yol aynan mos kelmasa ham, papkada mp3 borligini tekshiramiz
+        if faqat_audio and not os.path.exists(chiqish_yol):
+            papka = os.path.dirname(chiqish_yol) or "."
+            nomsiz = os.path.splitext(os.path.basename(chiqish_yol))[0]
+            for f in os.listdir(papka):
+                if f.startswith(nomsiz) and f.endswith(".mp3"):
+                    chiqish_yol_topilgan = os.path.join(papka, f)
+                    if os.path.getsize(chiqish_yol_topilgan) > 0:
+                        os.replace(chiqish_yol_topilgan, chiqish_yol)
+                        break
         if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
-            return (False, "Video fayli yaratilmadi (bo'sh yoki mavjud emas)")
+            return (False, "Fayl yaratilmadi (bo'sh yoki mavjud emas)")
         return (True, None)
     except subprocess.TimeoutExpired:
         return (False, f"⏱ {MAX_VAQT_SONIYA} soniyada yuklanmadi (juda uzun/sekin)")
