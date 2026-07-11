@@ -28,13 +28,11 @@ def get_main_keyboard(role=None, unread_errors=0):
             [KeyboardButton(text="🚀 Mavzu tayyorla"),  KeyboardButton(text="📊 Test statistikasi"),
              KeyboardButton(text="📋 Shablonlar"),       KeyboardButton(text="📝 Shablon to'ldirish")],
             [KeyboardButton(text="📚 Kitoblar ▾"),       KeyboardButton(text="🧠 Bilimlar ▾"),
-             KeyboardButton(text="🖼 Rasmlar boshqaruvi"), KeyboardButton(text="🎨 AI Rasm yaratish")],
-            [KeyboardButton(text="🎥 Video havola"),     KeyboardButton(text="📤 Video fayl"),
-             KeyboardButton(text="📝 Video matni"),      KeyboardButton(text="🎵 Audio matni")],
+             KeyboardButton(text="🖼 Rasmlar boshqaruvi"), KeyboardButton(text="🎨 Qo'shimcha imkoniyatlar")],
             [KeyboardButton(text=f"📊 Hisobotlar & Xatolar{err}"), KeyboardButton(text="👥 Foydalanuvchilar"),
              KeyboardButton(text="🧭 DTS topik boshqaruvi"), KeyboardButton(text="📚 To'garaklar")],
             [KeyboardButton(text="🤖 Yordamchi"),        KeyboardButton(text="📖 Darslar holati"),
-             KeyboardButton(text="👤 Kabinet")],
+             KeyboardButton(text="👤 Kabinet"),          KeyboardButton(text="📷 Rasmdan hujjat")],
         ]
     else:
         keyboard = [[KeyboardButton(text="🏠 Bosh menyu")]]
