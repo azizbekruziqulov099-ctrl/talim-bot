@@ -1249,13 +1249,68 @@ async def show_topics_page(
     
 @dp.message(F.photo)
 async def save_image(message: types.Message):
+    user_id = _eff_uid(message.from_user.id)
     if not _is_admin(user_id):
+        return
+
+    # ── YANGI: 📷 Rasmdan hujjat (PDF/Word) kutilayotgan bo'lsa ──
+    _huj_holat = str(admin_state.get(user_id) or "")
+    if _huj_holat.startswith("huj_rasm_wait:"):
+        admin_state.pop(user_id, None)
+        format_nomi = _huj_holat.split(":", 1)[1]
+        _hj = _modul('hujjat')
+        if not _hj:
+            await message.answer('⚠️ hujjat.py yuklanmagan'); return
+
+        import tempfile as _tf, shutil as _sh
+        papka = _tf.mkdtemp(prefix=f"huj_{user_id}_")
+        rasm_yol = os.path.join(papka, "rasm.jpg")
+
+        xabar = await message.answer("⏳ 1/2 — Rasm o'qilmoqda...")
+        try:
+            await message.bot.download(message.photo[-1].file_id, destination=rasm_yol)
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Rasm olinmadi: {e}")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        matn, xato = await asyncio.to_thread(_hj.matn_ol_rasmdan, rasm_yol)
+        if not matn:
+            try: await xabar.edit_text(f"❌ Matn o'qilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text(f"⏳ 2/2 — {format_nomi.upper()} yaratilmoqda...")
+        except Exception: pass
+
+        if format_nomi == "pdf":
+            chiqish_yol = os.path.join(papka, "hujjat.pdf")
+            ok, xato = await asyncio.to_thread(_hj.matndan_pdf, matn, chiqish_yol)
+        else:
+            chiqish_yol = os.path.join(papka, "hujjat.docx")
+            ok, xato = await asyncio.to_thread(_hj.matndan_docx, matn, chiqish_yol)
+
+        if not ok:
+            try: await xabar.edit_text(f"❌ Hujjat yaratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try:
+            await message.answer_document(FSInputFile(chiqish_yol),
+                                          caption=f"📄 Tayyor ({format_nomi.upper()})")
+            try: await xabar.delete()
+            except Exception: pass
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
+            except Exception: pass
+        finally:
+            _sh.rmtree(papka, ignore_errors=True)
         return
 
     # ── Collage rasm split handler ──
     # Caption: "split:TC:start:rows:cols" yoki "split:TC:start" (default 5x6)
     # Misol: "split:3-02-3:1:5:6" → TC=3-02-3, start=1, 5 qator, 6 ustun
-    uid_sp = message.from_user.id
+    uid_sp = user_id
 
     # ── Collage rasm split handler ──
     _col_cap = (message.caption or "").strip()
@@ -2264,6 +2319,37 @@ async def _auto_generate_images(user_id, resume=False):
             )
         except Exception: pass
     print(f"[auto_img] tugadi ok={ok} fail={fail} skip={skip} cf_tugadi={cf_tugadi}")
+
+
+async def _dub_temp_tozalash():
+    """Har soatda: dublyaj/matn-olish oqimida TASHLAB KETILGAN
+    (foydalanuvchi tasdiqlamay yoki bekor qilmay to'xtatgan) vaqtinchalik
+    papkalarni tozalaydi. Diskni to'lib qolishdan asraydi — bazaga bu
+    umuman aloqasi yo'q, video hech qachon bazaga yozilmaydi, faqat
+    vaqtinchalik diskka tushadi."""
+    import asyncio as _a, tempfile as _tf, time as _time, shutil as _sh
+    ESKIRISH_SONIYA = 2 * 3600   # 2 soatdan eski bo'lsa — tashlab ketilgan deb hisoblanadi
+    while True:
+        await _a.sleep(3600)   # har soatda tekshiradi
+        try:
+            tmpdir = _tf.gettempdir()
+            hozir = _time.time()
+            n = 0
+            for nom in os.listdir(tmpdir):
+                if not nom.startswith(("dub_", "matn_", "amatn_")):
+                    continue
+                yol = os.path.join(tmpdir, nom)
+                try:
+                    yaratilgan = os.path.getctime(yol)
+                    if hozir - yaratilgan > ESKIRISH_SONIYA:
+                        _sh.rmtree(yol, ignore_errors=True)
+                        n += 1
+                except Exception:
+                    pass
+            if n:
+                print(f"[dub_tozalash] {n} ta eski vaqtinchalik papka o'chirildi")
+        except Exception as e:
+            print(f"[dub_tozalash] xato: {e}")
 
 
 async def _daily_image_resume():
@@ -4087,9 +4173,9 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         # Menu tugmalarini o'tkazib yuborish
         menu_items = {"📚 Kitoblar ▾","🚀 Mavzu tayyorla","📋 Shablonlar",
                      "🧠 Bilimlar ▾","📊 Hisobotlar & Xatolar","👥 Foydalanuvchilar",
-                     "🖼 Rasmlar boshqaruvi","🎨 AI Rasm yaratish","⚙️ Akkaunt sozlamalari",
+                     "🖼 Rasmlar boshqaruvi","🎨 Qo'shimcha imkoniyatlar","⚙️ Akkaunt sozlamalari",
                      "📖 Darslar holati","🧭 DTS topik boshqaruvi",
-                     "🎥 Video havola","📤 Video fayl","📝 Video matni","🎵 Audio matni"}
+                     "📷 Rasmdan hujjat"}
         if text3 in menu_items or text3.startswith("/"):
             return
         if text3.lower() in ("tugat","stop","done"):
@@ -5363,66 +5449,31 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         )
         return
 
-    elif message.text == "🎨 AI Rasm yaratish":
+    elif message.text == "🎨 Qo'shimcha imkoniyatlar":
         if not _is_admin(user_id): return
-        conn2 = _get_db_conn(); cur2 = conn2.cursor()
-        cur2.execute("""
-            SELECT grade FROM (
-                SELECT DISTINCT d.grade FROM dts_tree d
-                JOIN generated_tests g ON g.topic_code=d.topic_code
-                WHERE d.is_deleted=FALSE
-            ) _g
-            ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
-        """)
-        grades = [r[0] for r in cur2.fetchall()]
-        cur2.close(); conn2.close()
-        rows = [[InlineKeyboardButton(
-            text=f"🏫 {gr}-sinf" if str(gr).isdigit() else f"📚 {gr}",
-            callback_data=f"rasm_grade:{gr}"
-        )] for gr in grades]
-        rows.append([InlineKeyboardButton(text="✏️ O'zim tavsif beraman", callback_data="ai_rasm_custom")])
         await message.answer(
-            "🎨 AI Rasm yaratish (BEPUL)\n\nSinf tanlang:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+            "🎨 <b>Qo'shimcha imkoniyatlar</b>\n\nNimani xohlaysiz?",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎨 Rasm chizish", callback_data="hub_rasm")],
+                [InlineKeyboardButton(text="🎥 Video yuklash (havola)", callback_data="hub_video_link")],
+                [InlineKeyboardButton(text="📤 Video yuklash (fayl)", callback_data="hub_video_upload")],
+                [InlineKeyboardButton(text="📝 Video matnini olish", callback_data="hub_video_matn")],
+                [InlineKeyboardButton(text="🎵 Audio matnini olish", callback_data="hub_audio_matn")],
+            ])
         )
         return
 
-    elif message.text == "🎥 Video havola":
+    elif message.text == "📷 Rasmdan hujjat":
         if not _is_admin(user_id): return
-        admin_state[user_id] = "vid_simple_wait"
         await message.answer(
-            "🎥 <b>Video yuklab olish</b>\n\n"
-            "Instagram/YouTube/TikTok havolasini yuboring —\n"
-            "video yuklab, sizga qaytarib beraman.",
-            parse_mode="HTML")
-        return
-
-    elif message.text == "📤 Video fayl":
-        if not _is_admin(user_id): return
-        admin_state[user_id] = "hub_dub_upload_wait"
-        await message.answer(
-            "📤 <b>Video yuklash (fayl)</b>\n\n"
-            "Video faylni to'g'ridan-to'g'ri yuboring (havola emas).\n"
-            "Men uni matnga aylantirib, xohlagan tilga dublyaj qilib beraman.",
-            parse_mode="HTML")
-        return
-
-    elif message.text == "📝 Video matni":
-        if not _is_admin(user_id): return
-        admin_state[user_id] = "hub_matn_video_wait"
-        await message.answer(
-            "📝 <b>Video matnini olish</b>\n\n"
-            "Video faylni yuboring, YOKI Instagram/YouTube\n"
-            "havolasini yozing — faqat matnni olib beraman\n"
-            "(tarjima/dublyaj qilmayman).",
-            parse_mode="HTML")
-        return
-
-    elif message.text == "🎵 Audio matni":
-        if not _is_admin(user_id): return
-        admin_state[user_id] = "hub_matn_audio_wait"
-        await message.answer("🎵 <b>Audio matnini olish</b>\n\nAudio faylni yuboring.",
-                             parse_mode="HTML")
+            "📷 <b>Rasmdan hujjat</b>\n\n"
+            "Rasm tashlang, o'qib, tanlagan formatga aylantirib beraman.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📄 PDF qilish", callback_data="huj_pdf"),
+                InlineKeyboardButton(text="📝 Word qilish", callback_data="huj_docx"),
+            ]]))
         return
 
     elif message.text == "📖 Kitob yuklash":
@@ -7775,7 +7826,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "hub_rasm":
         if not _is_admin(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
-        await call.answer()
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
             SELECT grade FROM (
@@ -7801,7 +7851,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "hub_video_link":
         if not _is_admin(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
-        await call.answer()
         admin_state[user_id] = "vid_simple_wait"
         await call.message.answer(
             "🎥 <b>Video yuklab olish</b>\n\n"
@@ -7813,7 +7862,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "hub_video_upload":
         if not _is_admin(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
-        await call.answer()
         admin_state[user_id] = "hub_dub_upload_wait"
         await call.message.answer(
             "📤 <b>Video yuklash (fayl)</b>\n\n"
@@ -7825,7 +7873,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "hub_video_matn":
         if not _is_admin(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
-        await call.answer()
         admin_state[user_id] = "hub_matn_video_wait"
         await call.message.answer(
             "📝 <b>Video matnini olish</b>\n\n"
@@ -7838,10 +7885,19 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data == "hub_audio_matn":
         if not _is_admin(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
-        await call.answer()
         admin_state[user_id] = "hub_matn_audio_wait"
         await call.message.answer("🎵 <b>Audio matnini olish</b>\n\nAudio faylni yuboring.",
                                   parse_mode="HTML")
+        return
+
+    if call.data in ("huj_pdf", "huj_docx"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        format_nomi = "pdf" if call.data == "huj_pdf" else "docx"
+        admin_state[user_id] = f"huj_rasm_wait:{format_nomi}"
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        await call.message.answer("📷 Endi rasmni tashlang.")
         return
 
     if call.data == "vidq_dub":
@@ -10074,6 +10130,7 @@ async def main():
     try:
         asyncio.create_task(_health_server())
         asyncio.create_task(_daily_image_resume())
+        asyncio.create_task(_dub_temp_tozalash())
         try:
             import ts_cache
             _n = ts_cache.tozala(7)
