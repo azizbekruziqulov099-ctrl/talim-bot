@@ -8044,7 +8044,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 await call.answer('⚠️ akkaunt.py yuklanmagan', show_alert=True); return
             tg = _tg_id(user_id)
             # Shu telefondagi boshqa akkauntlar (kod kerak emas — egasi o'zi)
-            boshqa = [a for a in _ak.akkauntlar(tg) if a[0] and int(a[0]) != user_id]
+            # uid bo'yicha DEDUPE — bir xil akkaunt ikki marta chiqmasin
+            _korilgan = set()
+            boshqa = []
+            for a in _ak.akkauntlar(tg):
+                if not a[0] or int(a[0]) == user_id:
+                    continue
+                if int(a[0]) in _korilgan:
+                    continue
+                _korilgan.add(int(a[0]))
+                boshqa.append(a)
 
             rows = []
             for uid2, idx, ism, rol2, sinf2, aktiv in boshqa:
@@ -8079,9 +8088,17 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             if child not in egasi:
                 await call.answer("❌ Bu akkaunt shu telefonda emas", show_alert=True); return
 
-            _oo.bogla(user_id, child)
             ism_c, _, sinf_c = _oo.kim(child)
+            if _oo.bogliqmi(user_id, child):
+                await call.answer("ℹ️ Allaqachon ulangan", show_alert=True)
+                try: await call.message.edit_reply_markup(reply_markup=None)
+                except Exception: pass
+                return
+
+            _oo.bogla(user_id, child)
             await call.answer("✅ Ulandi")
+            try: await call.message.edit_reply_markup(reply_markup=None)
+            except Exception: pass
             await call.message.answer(
                 f"✅ <b>{ism_c or 'Farzand'}</b> {sinf_c or ''} ulandi.\n\n"
                 f"«👤 Kabinet → 👨‍👩‍👧 Farzandlarim» dan ko'rasiz.\n"
