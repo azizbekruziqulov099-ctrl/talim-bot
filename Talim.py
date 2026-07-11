@@ -2465,6 +2465,164 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         await _imtihon_keyingi(message, user_id, iid, togri, tugadi, foiz, bot)
         return
 
+    # ═══ HUB: video fayl yuklab, dublyaj uchun tayyorlash ═══
+    if str(admin_state.get(user_id) or "") == "hub_dub_upload_wait" and message.video:
+        admin_state.pop(user_id, None)
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await message.answer('⚠️ dublyaj.py yuklanmagan'); return
+
+        import tempfile as _tf, shutil as _sh
+        papka = _tf.mkdtemp(prefix=f"dub_{user_id}_")
+        video_yol = os.path.join(papka, "video.mp4")
+        audio_yol = os.path.join(papka, "audio.mp3")
+
+        xabar = await message.answer("⏳ 1/3 — Video qabul qilinmoqda...")
+        try:
+            await message.bot.download(message.video.file_id, destination=video_yol)
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Video olinmadi: {e}")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text("⏳ 2/3 — Audio ajratilmoqda...")
+        except Exception: pass
+        ok, xato = await asyncio.to_thread(_db_.video_dan_audio_ajrat, video_yol, audio_yol)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Audio ajratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text(
+            "⏳ 3/3 — Nutq matnga aylantirilmoqda...\n"
+            "<i>(birinchi marta biroz uzoqroq)</i>", parse_mode="HTML")
+        except Exception: pass
+        segmentlar, manba_til, xato = await asyncio.to_thread(_db_.matnga_aylantir, audio_yol)
+        if not segmentlar:
+            try: await xabar.edit_text(f"❌ Matn aniqlanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        jami_uzunlik = await asyncio.to_thread(_db_.video_davomiyligi, video_yol)
+        temp_user[f"dub_ctx:{user_id}"] = {
+            "papka": papka, "video_yol": video_yol,
+            "segmentlar": segmentlar, "manba_til": manba_til,
+            "jami_uzunlik": jami_uzunlik,
+        }
+        try: await xabar.delete()
+        except Exception: pass
+
+        to_liq_matn = _db_.matn_yigindisi(segmentlar)
+        await message.answer(
+            f"📝 <b>Aniqlangan matn</b> ({manba_til}, {len(segmentlar)} ta gap):\n\n"
+            f"<i>{to_liq_matn[:800]}</i>\n\n"
+            f"To'g'rimi? Davom etsak, har gap o'z vaqtida tarjima qilib gapiriladi.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ To'g'ri, davom et", callback_data="dub_ok"),
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="dub_cancel"),
+            ]]))
+        return
+
+    # ═══ HUB: video matnini olish (fayl YOKI havola) ═══
+    if str(admin_state.get(user_id) or "") == "hub_matn_video_wait" and (message.video or message.text):
+        _db_ = _modul('dublyaj')
+        _vd = _modul('video_admin')
+        if not _db_ or not _vd:
+            admin_state.pop(user_id, None)
+            await message.answer('⚠️ kerakli modul yuklanmagan'); return
+
+        import tempfile as _tf, shutil as _sh
+        papka = _tf.mkdtemp(prefix=f"matn_{user_id}_")
+        video_yol = os.path.join(papka, "video.mp4")
+        audio_yol = os.path.join(papka, "audio.mp3")
+
+        if message.video:
+            admin_state.pop(user_id, None)
+            xabar = await message.answer("⏳ Video qabul qilinmoqda...")
+            try:
+                await message.bot.download(message.video.file_id, destination=video_yol)
+            except Exception as e:
+                try: await xabar.edit_text(f"❌ Xato: {e}")
+                except Exception: pass
+                _sh.rmtree(papka, ignore_errors=True); return
+        else:
+            link = _vd.link_tanidimi(message.text)
+            if not link:
+                await message.answer(
+                    "❌ Havola tanilmadi. Video yuboring yoki to'g'ri havola yozing,\n"
+                    "yoki ❌ bekor qilish uchun /video ni bosing.")
+                return
+            admin_state.pop(user_id, None)
+            xabar = await message.answer("⏳ Video yuklanmoqda...")
+            ok, xato = await asyncio.to_thread(_vd.yukla, link, video_yol, False)
+            if not ok:
+                try: await xabar.edit_text(f"❌ Yuklanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+                except Exception: pass
+                _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text("⏳ Audio ajratilmoqda...")
+        except Exception: pass
+        ok, xato = await asyncio.to_thread(_db_.video_dan_audio_ajrat, video_yol, audio_yol)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Audio ajratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text(
+            "⏳ Matnga aylantirilmoqda...\n<i>(birinchi marta biroz uzoqroq)</i>",
+            parse_mode="HTML")
+        except Exception: pass
+        segmentlar, manba_til, xato = await asyncio.to_thread(_db_.matnga_aylantir, audio_yol)
+        _sh.rmtree(papka, ignore_errors=True)
+        if not segmentlar:
+            try: await xabar.edit_text(f"❌ Matn aniqlanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        to_liq_matn = _db_.matn_yigindisi(segmentlar)
+        try: await xabar.delete()
+        except Exception: pass
+        await message.answer(f"📝 <b>Matn</b> ({manba_til}):\n\n{to_liq_matn[:3500]}", parse_mode="HTML")
+        return
+
+    # ═══ HUB: audio matnini olish ═══
+    if str(admin_state.get(user_id) or "") == "hub_matn_audio_wait" and (message.audio or message.voice):
+        admin_state.pop(user_id, None)
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await message.answer('⚠️ dublyaj.py yuklanmagan'); return
+
+        import tempfile as _tf, shutil as _sh
+        papka = _tf.mkdtemp(prefix=f"amatn_{user_id}_")
+        audio_yol = os.path.join(papka, "audio.mp3")
+
+        xabar = await message.answer("⏳ Audio qabul qilinmoqda...")
+        fayl_id = (message.audio or message.voice).file_id
+        try:
+            await message.bot.download(fayl_id, destination=audio_yol)
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Xato: {e}")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        try: await xabar.edit_text(
+            "⏳ Matnga aylantirilmoqda...\n<i>(birinchi marta biroz uzoqroq)</i>",
+            parse_mode="HTML")
+        except Exception: pass
+        segmentlar, manba_til, xato = await asyncio.to_thread(_db_.matnga_aylantir, audio_yol)
+        _sh.rmtree(papka, ignore_errors=True)
+        if not segmentlar:
+            try: await xabar.edit_text(f"❌ Matn aniqlanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        to_liq_matn = _db_.matn_yigindisi(segmentlar)
+        try: await xabar.delete()
+        except Exception: pass
+        await message.answer(f"🎵 <b>Matn</b> ({manba_til}):\n\n{to_liq_matn[:3500]}", parse_mode="HTML")
+        return
+
     # ═══ NAZORAT TESTI: yozma javobli savol ═══
     if str(admin_state.get(user_id) or "").startswith("nz_javob:") and message.text:
         _q = str(admin_state[user_id]).split(":")
@@ -2765,6 +2923,43 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             ]]))
         return
 
+    # ═══ /video — MAVZUGA BOG'LANMAGAN, oddiy yuklab olish ═══
+    if message.text and message.text.strip() in ("/video", "/vidyo"):
+        if not _is_admin(user_id):
+            return
+        admin_state[user_id] = "vid_simple_wait"
+        await message.answer(
+            "🎥 <b>Video yuklab olish</b>\n\n"
+            "Instagram/YouTube/TikTok havolasini yuboring —\n"
+            "video yuklab, sizga qaytarib beraman.",
+            parse_mode="HTML")
+        return
+
+    if str(admin_state.get(user_id) or "") == "vid_simple_wait" and message.text:
+        _vd = _modul('video_admin')
+        if not _vd:
+            admin_state.pop(user_id, None)
+            await message.answer('⚠️ video_admin.py yuklanmagan'); return
+
+        link = _vd.link_tanidimi(message.text)
+        if not link:
+            await message.answer(
+                "❌ Bu Instagram/YouTube/TikTok havolasiga o'xshamayapti.\n"
+                "Qaytadan yuboring yoki /video ni qayta bosib bekor qiling.")
+            return
+        admin_state.pop(user_id, None)
+        temp_user[f"vid_link:{user_id}"] = link
+
+        await message.answer(
+            "🎬 Qaysi shaklda kerak?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🎥 Video", callback_data="vidq_video"),
+                InlineKeyboardButton(text="🎵 Faqat audio", callback_data="vidq_audio"),
+            ], [
+                InlineKeyboardButton(text="🌐 Boshqa tilga dublyaj", callback_data="vidq_dub"),
+            ]]))
+        return
+
     # ═══ ADMIN AKKAUNTLAR ═══
     if message.text and message.text.strip() in ("/admin", "/adminlar"):
         if not _is_admin(user_id):
@@ -2822,6 +3017,56 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer(f"❌ <code>{uid2}</code> topilmadi.", parse_mode="HTML"); return
         _admin_qosh(uid2, user_id)
         await message.answer(f"✅ {ism} admin qilindi.")
+        return
+
+    # ═══ VIDEO: havola qabul qilish ═══
+    if str(admin_state.get(user_id) or "").startswith("vid_link:") and message.text:
+        tc = str(admin_state[user_id]).split(":", 1)[1]
+        _vd = _modul('video_admin')
+        if not _vd:
+            await message.answer('⚠️ video_admin.py yuklanmagan'); return
+
+        link = _vd.link_tanidimi(message.text)
+        if not link:
+            await message.answer(
+                "❌ Bu Instagram/YouTube/TikTok havolasiga o'xshamayapti.\n"
+                "Qaytadan yuboring yoki ❌ Bekor qilish tugmasini bosing.")
+            return
+
+        admin_state.pop(user_id, None)
+        xabar = await message.answer("⏳ Video yuklanmoqda... (30 soniyadan 3 daqiqagacha ketishi mumkin)")
+
+        import tempfile, asyncio as _a
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yol = os.path.join(tmpdir, f"{tc.replace('/', '_')}.mp4")
+            ok, xato = await _a.to_thread(_vd.yukla, link, yol)
+
+            if not ok:
+                try:
+                    await xabar.edit_text(f"❌ Video yuklanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+                except Exception:
+                    await message.answer(f"❌ Video yuklanmadi:\n{xato}")
+                return
+
+            try:
+                yuborilgan = await message.answer_video(
+                    FSInputFile(yol), caption=f"🎥 {tc}")
+                file_id = yuborilgan.video.file_id
+                _vd.video_saqla(tc, file_id, link, user_id)
+                try: await xabar.delete()
+                except Exception: pass
+                await message.answer(
+                    f"✅ <b>Video saqlandi</b>\n\n"
+                    f"📌 Mavzu kodi: <code>{tc}</code>\n"
+                    f"🔗 Manba: {link}\n\n"
+                    f"<i>Endi bu video har safar qayta yuklanmasdan,\n"
+                    f"saqlangan nusxadan foydalaniladi.</i>",
+                    parse_mode="HTML")
+            except Exception as e:
+                try:
+                    await xabar.edit_text(f"❌ Telegram'ga yuklashda xato: {e}")
+                except Exception:
+                    await message.answer(f"❌ Telegram'ga yuklashda xato: {e}")
         return
 
     # ═══ RASM HOLATI (admin) ═══
@@ -3843,7 +4088,8 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         menu_items = {"📚 Kitoblar ▾","🚀 Mavzu tayyorla","📋 Shablonlar",
                      "🧠 Bilimlar ▾","📊 Hisobotlar & Xatolar","👥 Foydalanuvchilar",
                      "🖼 Rasmlar boshqaruvi","🎨 AI Rasm yaratish","⚙️ Akkaunt sozlamalari",
-                     "📖 Darslar holati","🧭 DTS topik boshqaruvi"}
+                     "📖 Darslar holati","🧭 DTS topik boshqaruvi",
+                     "🎥 Video havola","📤 Video fayl","📝 Video matni","🎵 Audio matni"}
         if text3 in menu_items or text3.startswith("/"):
             return
         if text3.lower() in ("tugat","stop","done"):
@@ -4245,13 +4491,21 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             [InlineKeyboardButton(text="✏️ Ismni o'zgartirish",callback_data="kb_change_name")],
         ]
         _rol = str(rol or "").lower()
-        if "ota" in _rol or "ona" in _rol or "parent" in _rol:
+        _ota_mi = ("ota" in _rol or "ona" in _rol or "parent" in _rol)
+        if _ota_mi:
+            # Ro'yxatdan o'tgan ota-ona — faqat farzand tomoni
             rows2.append([InlineKeyboardButton(text="👨‍👩‍👧 Farzandlarim",
                                                callback_data="fk_list")])
             rows2.append([InlineKeyboardButton(text="➕ Farzand qo'shish",
                                                callback_data="fk_add")])
         else:
-            rows2.append([InlineKeyboardButton(text="🔗 Ota-onani ulash",
+            # O'qituvchi/o'quvchi/boshqa — HAR IKKALASI kerak bo'lishi mumkin
+            # (masalan o'qituvchi hayotda kimningdir ota-onasi bo'lishi mumkin)
+            rows2.append([InlineKeyboardButton(text="👨‍👩‍👧 Farzandlarim",
+                                               callback_data="fk_list")])
+            rows2.append([InlineKeyboardButton(text="➕ Farzand qo'shish",
+                                               callback_data="fk_add")])
+            rows2.append([InlineKeyboardButton(text="🔗 Ota-onamni ulash",
                                                callback_data="fk_mine")])
         rows2 += [
             [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
@@ -4863,12 +5117,13 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
 
     elif message.text == "🖼 Rasmlar boshqaruvi":
         if not _is_admin(user_id): return
-        # 2 xil rejim
+        # 3 xil rejim (rasm x2 + video)
         await message.answer(
-            "🖼 Rasmlar boshqaruvi",
+            "🖼 Media boshqaruvi",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📤 Rasm yuklash (sinf→fan→mavzu)", callback_data="img_upload_start")],
                 [InlineKeyboardButton(text="📋 Barcha rasmlar", callback_data="img_panel")],
+                [InlineKeyboardButton(text="🎥 Video biriktirish", callback_data="vid_start")],
             ])
         )
         return
@@ -5131,6 +5386,45 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
         return
+
+    elif message.text == "🎥 Video havola":
+        if not _is_admin(user_id): return
+        admin_state[user_id] = "vid_simple_wait"
+        await message.answer(
+            "🎥 <b>Video yuklab olish</b>\n\n"
+            "Instagram/YouTube/TikTok havolasini yuboring —\n"
+            "video yuklab, sizga qaytarib beraman.",
+            parse_mode="HTML")
+        return
+
+    elif message.text == "📤 Video fayl":
+        if not _is_admin(user_id): return
+        admin_state[user_id] = "hub_dub_upload_wait"
+        await message.answer(
+            "📤 <b>Video yuklash (fayl)</b>\n\n"
+            "Video faylni to'g'ridan-to'g'ri yuboring (havola emas).\n"
+            "Men uni matnga aylantirib, xohlagan tilga dublyaj qilib beraman.",
+            parse_mode="HTML")
+        return
+
+    elif message.text == "📝 Video matni":
+        if not _is_admin(user_id): return
+        admin_state[user_id] = "hub_matn_video_wait"
+        await message.answer(
+            "📝 <b>Video matnini olish</b>\n\n"
+            "Video faylni yuboring, YOKI Instagram/YouTube\n"
+            "havolasini yozing — faqat matnni olib beraman\n"
+            "(tarjima/dublyaj qilmayman).",
+            parse_mode="HTML")
+        return
+
+    elif message.text == "🎵 Audio matni":
+        if not _is_admin(user_id): return
+        admin_state[user_id] = "hub_matn_audio_wait"
+        await message.answer("🎵 <b>Audio matnini olish</b>\n\nAudio faylni yuboring.",
+                             parse_mode="HTML")
+        return
+
     elif message.text == "📖 Kitob yuklash":
         if not _is_admin(user_id): return
         admin_state[user_id] = "kitob_yuklash"
@@ -7464,6 +7758,410 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     if call.data.startswith("img_"):
         from image_admin import handle_img_callback
         await handle_img_callback(call, user_id)
+        return
+
+    # ═══════════════════════════════════════════
+    # 🎥 VIDEO BIRIKTIRISH (vid_)
+    # ═══════════════════════════════════════════
+    # ═══════════════════════════════════════════
+    # 🎬 VIDEO/AUDIO TANLOVI (oddiy /video oqimi)
+    # ═══════════════════════════════════════════
+    # ═══════════════════════════════════════════
+    # 🌐 VIDEO DUBLYAJ (vidq_dub / dub_*)
+    # ═══════════════════════════════════════════
+    # ═══════════════════════════════════════════
+    # 🎨 QO'SHIMCHA IMKONIYATLAR HUB (hub_*)
+    # ═══════════════════════════════════════════
+    if call.data == "hub_rasm":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer()
+        conn2 = _get_db_conn(); cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT grade FROM (
+                SELECT DISTINCT d.grade FROM dts_tree d
+                JOIN generated_tests g ON g.topic_code=d.topic_code
+                WHERE d.is_deleted=FALSE
+            ) _g
+            ORDER BY CASE WHEN grade ~ '^[0-9]+$' THEN grade::int ELSE 99 END
+        """)
+        grades = [r[0] for r in cur2.fetchall()]
+        cur2.close(); conn2.close()
+        rows = [[InlineKeyboardButton(
+            text=f"🏫 {gr}-sinf" if str(gr).isdigit() else f"📚 {gr}",
+            callback_data=f"rasm_grade:{gr}"
+        )] for gr in grades]
+        rows.append([InlineKeyboardButton(text="✏️ O'zim tavsif beraman", callback_data="ai_rasm_custom")])
+        await call.message.answer(
+            "🎨 AI Rasm yaratish (BEPUL)\n\nSinf tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+        return
+
+    if call.data == "hub_video_link":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer()
+        admin_state[user_id] = "vid_simple_wait"
+        await call.message.answer(
+            "🎥 <b>Video yuklab olish</b>\n\n"
+            "Instagram/YouTube/TikTok havolasini yuboring —\n"
+            "video yuklab, sizga qaytarib beraman.",
+            parse_mode="HTML")
+        return
+
+    if call.data == "hub_video_upload":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer()
+        admin_state[user_id] = "hub_dub_upload_wait"
+        await call.message.answer(
+            "📤 <b>Video yuklash (fayl)</b>\n\n"
+            "Video faylni to'g'ridan-to'g'ri yuboring (havola emas).\n"
+            "Men uni matnga aylantirib, xohlagan tilga dublyaj qilib beraman.",
+            parse_mode="HTML")
+        return
+
+    if call.data == "hub_video_matn":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer()
+        admin_state[user_id] = "hub_matn_video_wait"
+        await call.message.answer(
+            "📝 <b>Video matnini olish</b>\n\n"
+            "Video faylni yuboring, YOKI Instagram/YouTube\n"
+            "havolasini yozing — faqat matnni olib beraman\n"
+            "(tarjima/dublyaj qilmayman).",
+            parse_mode="HTML")
+        return
+
+    if call.data == "hub_audio_matn":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        await call.answer()
+        admin_state[user_id] = "hub_matn_audio_wait"
+        await call.message.answer("🎵 <b>Audio matnini olish</b>\n\nAudio faylni yuboring.",
+                                  parse_mode="HTML")
+        return
+
+    if call.data == "vidq_dub":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _vd = _modul('video_admin')
+        _db_ = _modul('dublyaj')
+        if not _vd or not _db_:
+            await call.answer('⚠️ video_admin.py yoki dublyaj.py yuklanmagan', show_alert=True); return
+
+        link = temp_user.get(f"vid_link:{user_id}")
+        if not link:
+            await call.answer("⚠️ Havola topilmadi, /video ni qaytadan yuboring", show_alert=True)
+            return
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
+        import tempfile as _tf
+        papka = _tf.mkdtemp(prefix=f"dub_{user_id}_")
+        video_yol = os.path.join(papka, "video.mp4")
+        audio_yol = os.path.join(papka, "audio.mp3")
+
+        xabar = await call.message.answer("⏳ 1/4 — Video yuklanmoqda...")
+        ok, xato = await asyncio.to_thread(_vd.yukla, link, video_yol, False)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Video yuklanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
+            return
+
+        try: await xabar.edit_text("⏳ 2/4 — Audio ajratilmoqda...")
+        except Exception: pass
+        ok, xato = await asyncio.to_thread(_db_.video_dan_audio_ajrat, video_yol, audio_yol)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Audio ajratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
+            return
+
+        try: await xabar.edit_text(
+            "⏳ 3/4 — Nutq matnga aylantirilmoqda...\n"
+            "<i>(birinchi marta biroz uzoqroq — model yuklanadi)</i>", parse_mode="HTML")
+        except Exception: pass
+        segmentlar, manba_til, xato = await asyncio.to_thread(_db_.matnga_aylantir, audio_yol)
+        if not segmentlar:
+            try: await xabar.edit_text(f"❌ Matn aniqlanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
+            return
+
+        jami_uzunlik = await asyncio.to_thread(_db_.video_davomiyligi, video_yol)
+        temp_user[f"dub_ctx:{user_id}"] = {
+            "papka": papka, "video_yol": video_yol,
+            "segmentlar": segmentlar, "manba_til": manba_til,
+            "jami_uzunlik": jami_uzunlik,
+        }
+        try: await xabar.delete()
+        except Exception: pass
+
+        to_liq_matn = _db_.matn_yigindisi(segmentlar)
+        await call.message.answer(
+            f"📝 <b>Aniqlangan matn</b> ({manba_til}, {len(segmentlar)} ta gap):\n\n"
+            f"<i>{to_liq_matn[:800]}</i>\n\n"
+            f"To'g'rimi? Davom etsak, har gap o'z vaqtida tarjima qilib gapiriladi.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ To'g'ri, davom et", callback_data="dub_ok"),
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="dub_cancel"),
+            ]]))
+        return
+
+    if call.data == "dub_cancel":
+        await call.answer("❌ Bekor qilindi")
+        ctx = temp_user.pop(f"dub_ctx:{user_id}", None)
+        if ctx:
+            import shutil as _sh; _sh.rmtree(ctx["papka"], ignore_errors=True)
+        temp_user.pop(f"vid_link:{user_id}", None)
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        return
+
+    if call.data == "dub_ok":
+        await call.answer()
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await call.answer('⚠️ dublyaj.py yuklanmagan', show_alert=True); return
+        rows = []
+        qator = []
+        for kod, nom in _db_.til_royxati_tugmalar(""):
+            qator.append(InlineKeyboardButton(text=nom, callback_data=f"dub_til:{kod}"))
+            if len(qator) == 3:
+                rows.append(qator); qator = []
+        if qator: rows.append(qator)
+        rows.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="dub_cancel")])
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        await call.message.answer("🌐 Qaysi tilga dublyaj qilamiz?",
+                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return
+
+    if call.data.startswith("dub_til:"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await call.answer('⚠️ dublyaj.py yuklanmagan', show_alert=True); return
+        maqsad_til = call.data.split(":")[1]
+        ctx = temp_user.get(f"dub_ctx:{user_id}")
+        if not ctx:
+            await call.answer("⚠️ Sessiya eskirgan, /video dan qaytadan boshlang", show_alert=True)
+            return
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
+        papka = ctx["papka"]; video_yol = ctx["video_yol"]
+        segmentlar = ctx["segmentlar"]; jami_uzunlik = ctx["jami_uzunlik"]
+
+        xabar = await call.message.answer(
+            f"⏳ 1/3 — {_db_.til_nomi(maqsad_til)} tiliga tarjima qilinmoqda...\n"
+            f"<i>({len(segmentlar)} ta gap)</i>", parse_mode="HTML")
+        segmentlar_tarjima, xato = await asyncio.to_thread(
+            _db_.tarjima_qil_segmentlar, segmentlar, maqsad_til)
+        if not segmentlar_tarjima:
+            try: await xabar.edit_text(f"❌ Tarjima qilinmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        try: await xabar.edit_text(
+            f"⏳ 2/3 — {_db_.til_nomi(maqsad_til)} ovoz yaratilmoqda...\n"
+            f"<i>Har gap o'z vaqtiga moslanmoqda</i>", parse_mode="HTML")
+        except Exception: pass
+        ayol_ovoz = _db_.TILLAR.get(maqsad_til, (None, None, None))[1]
+        yangi_audio_yol, xato = await _db_.segmentlardan_ovoz_yigindisi(
+            segmentlar_tarjima, ayol_ovoz, papka, jami_uzunlik)
+        if not yangi_audio_yol:
+            try: await xabar.edit_text(f"❌ Ovoz yaratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        try: await xabar.edit_text("⏳ 3/3 — Videoga ulanmoqda...")
+        except Exception: pass
+        yakuniy_yol = os.path.join(papka, "yakuniy.mp4")
+        ok, xato = await asyncio.to_thread(_db_.videoga_ulash, video_yol, yangi_audio_yol, yakuniy_yol)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Videoga ulanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        tarjima_matn_toliq = " ".join(s[2] for s in segmentlar_tarjima)
+        try:
+            await call.message.answer_video(
+                FSInputFile(yakuniy_yol),
+                caption=f"🌐 {_db_.til_nomi(maqsad_til)} tilida dublyaj qilindi\n"
+                       f"⏱ Har gap o'z vaqtida\n\n"
+                       f"📝 {tarjima_matn_toliq[:200]}")
+            try: await xabar.delete()
+            except Exception: pass
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
+            except Exception: pass
+        finally:
+            import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
+            temp_user.pop(f"dub_ctx:{user_id}", None)
+            temp_user.pop(f"vid_link:{user_id}", None)
+        return
+
+    if call.data in ("vidq_video", "vidq_audio"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _vd = _modul('video_admin')
+        if not _vd:
+            await call.answer('⚠️ video_admin.py yuklanmagan', show_alert=True); return
+
+        link = temp_user.get(f"vid_link:{user_id}")
+        if not link:
+            await call.answer("⚠️ Havola topilmadi, /video ni qaytadan yuboring", show_alert=True)
+            return
+        faqat_audio = (call.data == "vidq_audio")
+        turi = "audio" if faqat_audio else "video"
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
+        # Kesh — shu havola shu turda avval yuklangan bo'lsa qayta yuklamaydi
+        keshdagi = _vd.link_keshi_bormi(link, turi)
+        if keshdagi:
+            try:
+                if faqat_audio:
+                    await call.message.answer_audio(keshdagi, caption="🎵 (avval yuklangan, keshdan)")
+                else:
+                    await call.message.answer_video(keshdagi, caption="🎥 (avval yuklangan, keshdan)")
+            except Exception as e:
+                await call.message.answer(f"❌ Keshdan yuborishda xato: {e}")
+            temp_user.pop(f"vid_link:{user_id}", None)
+            return
+
+        belgi = "🎵 Audio" if faqat_audio else "🎥 Video"
+        xabar = await call.message.answer(f"⏳ {belgi} yuklanmoqda... (30 soniyadan 3 daqiqagacha)")
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            kengaytma = "mp3" if faqat_audio else "mp4"
+            yol = os.path.join(tmpdir, f"fayl.{kengaytma}")
+            ok, xato = await asyncio.to_thread(_vd.yukla, link, yol, faqat_audio)
+
+            if not ok:
+                try:
+                    await xabar.edit_text(f"❌ Yuklanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+                except Exception:
+                    await call.message.answer(f"❌ Yuklanmadi:\n{xato}")
+                temp_user.pop(f"vid_link:{user_id}", None)
+                return
+
+            try:
+                if faqat_audio:
+                    yuborilgan = await call.message.answer_audio(FSInputFile(yol), caption="🎵")
+                    file_id = yuborilgan.audio.file_id
+                else:
+                    yuborilgan = await call.message.answer_video(FSInputFile(yol), caption="🎥")
+                    file_id = yuborilgan.video.file_id
+                _vd.link_keshiga_saqla(link, file_id, user_id, turi)
+                try: await xabar.delete()
+                except Exception: pass
+            except Exception as e:
+                try:
+                    await xabar.edit_text(f"❌ Telegram'ga yuklashda xato: {e}")
+                except Exception:
+                    await call.message.answer(f"❌ Telegram'ga yuklashda xato: {e}")
+        temp_user.pop(f"vid_link:{user_id}", None)
+        return
+
+    if call.data.startswith("vid_"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _vd = _modul('video_admin')
+        if not _vd:
+            await call.answer('⚠️ video_admin.py yuklanmagan', show_alert=True); return
+        _vd.jadval()
+        qism = call.data.split(":")
+        amal = qism[0]
+        await call.answer()
+
+        if amal == "vid_start":
+            conn_v = _get_db_conn(); cur_v = conn_v.cursor()
+            cur_v.execute("SELECT DISTINCT grade FROM dts_tree WHERE is_deleted=FALSE ORDER BY grade")
+            grades = [r[0] for r in cur_v.fetchall() if r[0]]
+            cur_v.close(); conn_v.close()
+            if not grades:
+                await call.message.answer("❌ Sinflar topilmadi"); return
+            rows = [[InlineKeyboardButton(text=f"{g}-sinf", callback_data=f"vid_gr:{g}")] for g in grades]
+            await call.message.answer(
+                "🎥 <b>Video biriktirish</b>\n\n"
+                "Instagram/YouTube havolasidan video yuklab,\n"
+                "mavzuga biriktirasiz. Bir marta yuklansa, keyin\n"
+                "qayta yuklanmaydi.\n\nQaysi sinf?", parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "vid_gr":
+            gr = qism[1]
+            conn_v = _get_db_conn(); cur_v = conn_v.cursor()
+            cur_v.execute("""SELECT DISTINCT subject_name FROM dts_tree
+                WHERE is_deleted=FALSE AND grade::TEXT=%s ORDER BY subject_name""", (str(gr),))
+            subs = [r[0] for r in cur_v.fetchall() if r[0]]
+            cur_v.close(); conn_v.close()
+            rows = [[InlineKeyboardButton(text=f"📚 {s}", callback_data=f"vid_subj:{gr}:{s}")] for s in subs]
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data="vid_start")])
+            await call.message.answer(f"{gr}-sinf — Fan:",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "vid_subj":
+            gr, subj = qism[1], qism[2]
+            conn_v = _get_db_conn(); cur_v = conn_v.cursor()
+            cur_v.execute("""SELECT DISTINCT topic_code, COALESCE(kichik_name, mavzu_name, topic_code)
+                FROM dts_tree WHERE is_deleted=FALSE AND grade::TEXT=%s AND subject_name=%s
+                ORDER BY topic_code LIMIT 40""", (str(gr), subj))
+            mavzular = cur_v.fetchall()
+            cur_v.close(); conn_v.close()
+            rows = []
+            for tc, nm in mavzular:
+                bor = "🎥" if _vd.video_bormi(tc) else "➕"
+                rows.append([InlineKeyboardButton(text=f"{bor} {nm[:34]}",
+                            callback_data=f"vid_tc:{tc}")])
+            rows.append([InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"vid_gr:{gr}")])
+            await call.message.answer(f"📚 {subj} — Mavzu (🎥=video bor, ➕=yo'q):",
+                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "vid_tc":
+            tc = qism[1]
+            mavjud = _vd.video_bormi(tc)
+            admin_state[user_id] = f"vid_link:{tc}"
+            rows = [[InlineKeyboardButton(text="❌ Bekor qilish", callback_data="vid_bekor")]]
+            if mavjud:
+                rows.insert(0, [InlineKeyboardButton(text="🗑 Eski videoni o'chirish",
+                                                      callback_data=f"vid_del:{tc}")])
+                await call.message.answer(
+                    f"🎥 Bu mavzuda video <b>bor</b>.\n\n"
+                    f"Yangi havola yuborsangiz — <b>almashtiriladi</b>.\n"
+                    f"Instagram/YouTube havolasini yuboring:",
+                    parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            else:
+                await call.message.answer(
+                    "🎥 Bu mavzuda hali video yo'q.\n\n"
+                    "Instagram/YouTube havolasini yuboring:",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+            return
+
+        if amal == "vid_del":
+            tc = qism[1]
+            ok = _vd.video_ochir(tc)
+            await call.message.answer("✅ Video o'chirildi" if ok else "❌ Topilmadi")
+            return
+
+        if amal == "vid_bekor":
+            admin_state.pop(user_id, None)
+            await call.message.answer("❌ Bekor qilindi")
+            return
         return
 
     if call.data == "go_home_dashboard":
