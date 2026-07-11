@@ -49,6 +49,124 @@ def til_royxati_tugmalar(callback_prefix):
     return [(kod, nom) for kod, (nom, _, _) in TILLAR.items()]
 
 
+# ═══════════════ NLLB — MUSTAQIL TARJIMA (Gemini'ga UMUMAN bog'liq emas) ═══════════════
+# Meta'ning ochiq kodli NLLB-200 modeli — serverning o'zida ishlaydi.
+# Hech qanday tashqi API, kvota yoki internet (birinchi yuklashdan keyin) kerak emas.
+# DIQQAT: og'ir — ~2-4GB RAM/disk talab qiladi, birinchi chaqiruvda modelni
+# yuklab oladi (internet kerak, keyin keshlanadi).
+
+NLLB_MODEL_NOMI = "facebook/nllb-200-distilled-600M"
+
+# Oddiy til kodidan FLORES-200 kodiga (NLLB shu formatni talab qiladi)
+FLORES_KOD = {
+    "uz": "uzn_Latn", "en": "eng_Latn", "ru": "rus_Cyrl", "fr": "fra_Latn",
+    "es": "spa_Latn", "de": "deu_Latn", "tr": "tur_Latn", "ar": "arb_Arab",
+    "zh": "zho_Hans", "ko": "kor_Hang", "ja": "jpn_Jpan", "kk": "kaz_Cyrl",
+}
+
+_NLLB_MODEL = None
+_NLLB_TOKENIZER = None
+
+
+def _nllb_ol():
+    """NLLB modelini bir marta yuklaydi (og'ir), keyin keshdan foydalanadi."""
+    global _NLLB_MODEL, _NLLB_TOKENIZER
+    if _NLLB_MODEL is None:
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+        _NLLB_TOKENIZER = AutoTokenizer.from_pretrained(NLLB_MODEL_NOMI)
+        _NLLB_MODEL = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NOMI)
+    return _NLLB_MODEL, _NLLB_TOKENIZER
+
+
+def _flores_kodga_ot(oddiy_kod):
+    """Oddiy til kodini (uz, en...) FLORES-200 kodiga o'giradi.
+    Topilmasa — inglizchaga taxmin qiladi."""
+    return FLORES_KOD.get(str(oddiy_kod or "").lower(), "eng_Latn")
+
+
+def _nllb_forced_id(tokenizer, flores_kod):
+    """transformers versiyalari orasida API farqi bor — ikkalasini ham sinaymiz."""
+    try:
+        return tokenizer.convert_tokens_to_ids(flores_kod)
+    except Exception:
+        pass
+    try:
+        return tokenizer.lang_code_to_id[flores_kod]
+    except Exception:
+        return tokenizer.convert_tokens_to_ids("eng_Latn")
+
+
+def nllb_tarjima_qil_segmentlar(segmentlar, manba_til_oddiy, maqsad_til_kod):
+    """NLLB orqali har segmentni tarjima qiladi — Gemini'ga bog'liq EMAS.
+    ([(boshlanish, tugash, tarjima), ...], xato)"""
+    try:
+        model, tokenizer = _nllb_ol()
+        manba_flores = _flores_kodga_ot(manba_til_oddiy)
+        maqsad_flores = _flores_kodga_ot(maqsad_til_kod)
+        tokenizer.src_lang = manba_flores
+        forced_id = _nllb_forced_id(tokenizer, maqsad_flores)
+
+        natija = []
+        for boshi, tugash, matn in segmentlar:
+            matn = matn.strip()
+            if not matn:
+                natija.append((boshi, tugash, matn))
+                continue
+            inputs = tokenizer(matn, return_tensors="pt", truncation=True, max_length=256)
+            tokenlar = model.generate(**inputs, forced_bos_token_id=forced_id, max_length=256)
+            tarjima = tokenizer.batch_decode(tokenlar, skip_special_tokens=True)[0]
+            natija.append((boshi, tugash, tarjima))
+        return (natija, None)
+    except Exception as e:
+        return (None, str(e)[:300])
+
+
+# ═══════════════ GOOGLE CLOUD TRANSLATION API ═══════════════
+# Gemini'dan BUTUNLAY BOSHQA xizmat/kvota. Harfi bo'yicha to'lanadi,
+# "daqiqasiga necha so'rov" chegarasi yo'q. Oyiga 500,000 harf bepul.
+# Yengil (og'ir kutubxona kerak emas), tez, sifatli.
+
+def google_tarjima_qil_segmentlar(segmentlar, manba_til_oddiy, maqsad_til_kod):
+    """Google Cloud Translation API orqali BARCHA segmentlarni BITTA
+    so'rovda tarjima qiladi. ([(boshlanish, tugash, tarjima), ...], xato)"""
+    import html as _html
+
+    api_key = os.getenv("GOOGLE_TRANSLATE_API_KEY", "")
+    if not api_key:
+        return (None, "GOOGLE_TRANSLATE_API_KEY sozlanmagan (Railway muhitida yo'q)")
+
+    # Bo'sh matnli segmentlarni API'ga yubormaymiz, keyin joyiga qaytaramiz
+    yuboriladigan = [(i, s[2]) for i, s in enumerate(segmentlar) if s[2].strip()]
+    if not yuboriladigan:
+        return (list(segmentlar), None)
+
+    try:
+        url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
+        body = json.dumps({
+            "q": [m for _, m in yuboriladigan],
+            "source": manba_til_oddiy,
+            "target": maqsad_til_kod,
+            "format": "text",
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            natija = json.loads(resp.read().decode("utf-8"))
+        tarjimalar = [_html.unescape(t["translatedText"])
+                     for t in natija["data"]["translations"]]
+
+        indeks_dan_tarjima = {idx: tarj for (idx, _), tarj in zip(yuboriladigan, tarjimalar)}
+        yakuniy = []
+        for i, (boshi, tugash, asl) in enumerate(segmentlar):
+            yakuniy.append((boshi, tugash, indeks_dan_tarjima.get(i, asl)))
+        return (yakuniy, None)
+    except urllib.error.HTTPError as e:
+        xabar = e.read().decode("utf-8", errors="ignore")[:300]
+        return (None, f"Google Translate xato ({e.code}): {xabar}")
+    except Exception as e:
+        return (None, str(e)[:300])
+
+
 # ═══════════════ 2. AUDIO AJRATISH ═══════════════
 
 def video_dan_audio_ajrat(video_yol, audio_yol):
