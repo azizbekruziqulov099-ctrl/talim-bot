@@ -193,6 +193,17 @@ def _is_admin(uid):
     _ADMIN_CACHE[uid] = natija
     return natija
 
+def _is_admin_or_teacher(uid):
+    """Admin YOKI o'qituvchi — qo'shimcha imkoniyatlar (video/rasm vositalari)
+    uchun ishlatiladi, faqat admin emas."""
+    if _is_admin(uid):
+        return True
+    try:
+        rol = (_get_user_qisqa(uid)[1] or "").lower()
+        return "qituvchi" in rol or "teacher" in rol
+    except Exception:
+        return False
+
 def _admin_qosh(uid, qoshgan):
     try:
         c = _get_db_conn(); cr = c.cursor()
@@ -1250,14 +1261,37 @@ async def show_topics_page(
 @dp.message(F.photo)
 async def save_image(message: types.Message):
     user_id = _eff_uid(message.from_user.id)
-    if not _is_admin(user_id):
-        return
 
-    # ── YANGI: 📷 Rasmdan hujjat (PDF/Word) kutilayotgan bo'lsa ──
-    _huj_holat = str(admin_state.get(user_id) or "")
-    if _huj_holat.startswith("huj_rasm_wait:"):
+    # ── Hub vositalari (skanerlash / rasmdan hujjat) — admin VA o'qituvchiga ochiq ──
+    _erta_holat = str(admin_state.get(user_id) or "")
+    if _erta_holat == "skan_wait" or _erta_holat.startswith("huj_rasm_wait:"):
+        if not _is_admin_or_teacher(user_id):
+            return
+
+        if _erta_holat == "skan_wait":
+            ctx_ = temp_user.get(f"skan_ctx:{user_id}")
+            if not ctx_:
+                admin_state.pop(user_id, None)
+                await message.answer("⚠️ Sessiya eskirgan, qaytadan boshlang."); return
+            rasm_yol = os.path.join(ctx_["papka"], f"rasm_{len(ctx_['rasmlar'])}.jpg")
+            try:
+                await message.bot.download(message.photo[-1].file_id, destination=rasm_yol)
+            except Exception as e:
+                await message.answer(f"❌ Rasm olinmadi: {e}"); return
+            ctx_["rasmlar"].append(rasm_yol)
+            admin_state.pop(user_id, None)
+            await message.answer(
+                f"✅ {len(ctx_['rasmlar'])}-rasm qabul qilindi.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="➕ Yana rasm qo'shish", callback_data="skan_yana")],[
+                    InlineKeyboardButton(text=f"🖨 Skanerlash ({len(ctx_['rasmlar'])} sahifa)",
+                                         callback_data="skan_tayyor")],[
+                    InlineKeyboardButton(text="❌ Bekor qilish", callback_data="skan_bekor")]]))
+            return
+
+        # ── 📷 Rasmdan hujjat (PDF/Word) — mavjud OCR oqimi ──
         admin_state.pop(user_id, None)
-        format_nomi = _huj_holat.split(":", 1)[1]
+        format_nomi = _erta_holat.split(":", 1)[1]
         _hj = _modul('hujjat')
         if not _hj:
             await message.answer('⚠️ hujjat.py yuklanmagan'); return
@@ -1305,6 +1339,10 @@ async def save_image(message: types.Message):
             except Exception: pass
         finally:
             _sh.rmtree(papka, ignore_errors=True)
+        return
+
+    # ── Qolgan hammasi (collage split va h.k.) — faqat admin ──
+    if not _is_admin(user_id):
         return
 
     # ── Collage rasm split handler ──
@@ -2736,7 +2774,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
     # handler_parent.py routeri handle_all dan keyin ulanadi va
     # hech qachon ishlamaydi — shuning uchun shu yerda ushlaymiz.
     # ═══════════════════════════════════════════
-    if message.text and not message.text.startswith("/"):
+    if message.text and not message.text.startswith("/") and not admin_state.get(user_id):
         _mt = message.text.strip().lower()
         _rol0 = (_get_user_qisqa(user_id)[1] or "").lower()
         _ota_mi0 = ("ota" in _rol0 or "ona" in _rol0 or "parent" in _rol0)
@@ -5450,12 +5488,15 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     elif message.text == "🎨 Qo'shimcha imkoniyatlar":
-        if not _is_admin(user_id): return
+        if not _is_admin_or_teacher(user_id): return
         await message.answer(
             "🎨 <b>Qo'shimcha imkoniyatlar</b>\n\nNimani xohlaysiz?",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🎨 Rasm chizish", callback_data="hub_rasm")],
+                [InlineKeyboardButton(text="🖨 Hujjat skanerlash (rasm→PDF)", callback_data="hub_skan")],
+                [InlineKeyboardButton(text="📄 Rasm matnini PDF qilish", callback_data="huj_pdf"),
+                 InlineKeyboardButton(text="📝 Rasm matnini Word qilish", callback_data="huj_docx")],
                 [InlineKeyboardButton(text="🎥 Video yuklash (havola)", callback_data="hub_video_link")],
                 [InlineKeyboardButton(text="📤 Video yuklash (fayl)", callback_data="hub_video_upload")],
                 [InlineKeyboardButton(text="📝 Video matnini olish", callback_data="hub_video_matn")],
@@ -7824,7 +7865,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
     # 🎨 QO'SHIMCHA IMKONIYATLAR HUB (hub_*)
     # ═══════════════════════════════════════════
     if call.data == "hub_rasm":
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         conn2 = _get_db_conn(); cur2 = conn2.cursor()
         cur2.execute("""
@@ -7848,8 +7889,80 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         )
         return
 
+    if call.data == "hub_skan":
+        if not _is_admin_or_teacher(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        import tempfile as _tf
+        papka_ = _tf.mkdtemp(prefix=f"skan_{user_id}_")
+        temp_user[f"skan_ctx:{user_id}"] = {"papka": papka_, "rasmlar": []}
+        admin_state[user_id] = "skan_wait"
+        await call.message.answer(
+            "🖨 <b>Hujjat skanerlash</b>\n\n"
+            "Rasm(lar)ni yuboring — chegarasini avtomatik topib,\n"
+            "tekislab, skaner ko'rinishiga keltiraman.\n"
+            "Bir nechta sahifa bo'lsa — ketma-ket yuboraverin.",
+            parse_mode="HTML")
+        return
+
+    if call.data == "skan_yana":
+        if not _is_admin_or_teacher(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        admin_state[user_id] = "skan_wait"
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        await call.message.answer("📷 Keyingi rasmni yuboring.")
+        return
+
+    if call.data == "skan_bekor":
+        admin_state.pop(user_id, None)
+        ctx_ = temp_user.pop(f"skan_ctx:{user_id}", None)
+        if ctx_:
+            import shutil as _sh; _sh.rmtree(ctx_["papka"], ignore_errors=True)
+        await call.answer("❌ Bekor qilindi")
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        return
+
+    if call.data == "skan_tayyor":
+        if not _is_admin_or_teacher(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        admin_state.pop(user_id, None)
+        ctx_ = temp_user.get(f"skan_ctx:{user_id}")
+        if not ctx_ or not ctx_["rasmlar"]:
+            await call.answer("⚠️ Hech qanday rasm yo'q", show_alert=True); return
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
+        _hj = _modul('hujjat')
+        if not _hj:
+            await call.message.answer('⚠️ hujjat.py yuklanmagan'); return
+
+        xabar = await call.message.answer(
+            f"⏳ {len(ctx_['rasmlar'])} ta sahifa skanerlanmoqda...")
+        chiqish_yol = os.path.join(ctx_["papka"], "skan_hujjat.pdf")
+        ok, xato = await asyncio.to_thread(_hj.rasmlardan_skan_pdf, ctx_["rasmlar"], chiqish_yol)
+
+        if not ok:
+            try: await xabar.edit_text(f"❌ Skanerlashda xato:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+        else:
+            try:
+                await call.message.answer_document(
+                    FSInputFile(chiqish_yol),
+                    caption=f"🖨 Skanerlandi — {len(ctx_['rasmlar'])} sahifa")
+                try: await xabar.delete()
+                except Exception: pass
+            except Exception as e:
+                try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
+                except Exception: pass
+
+        import shutil as _sh; _sh.rmtree(ctx_["papka"], ignore_errors=True)
+        temp_user.pop(f"skan_ctx:{user_id}", None)
+        return
+
     if call.data == "hub_video_link":
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         admin_state[user_id] = "vid_simple_wait"
         await call.message.answer(
@@ -7860,7 +7973,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "hub_video_upload":
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         admin_state[user_id] = "hub_dub_upload_wait"
         await call.message.answer(
@@ -7871,7 +7984,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "hub_video_matn":
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         admin_state[user_id] = "hub_matn_video_wait"
         await call.message.answer(
@@ -7883,7 +7996,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data == "hub_audio_matn":
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         admin_state[user_id] = "hub_matn_audio_wait"
         await call.message.answer("🎵 <b>Audio matnini olish</b>\n\nAudio faylni yuboring.",
@@ -7891,7 +8004,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         return
 
     if call.data in ("huj_pdf", "huj_docx"):
-        if not _is_admin(user_id):
+        if not _is_admin_or_teacher(user_id):
             await call.answer("❌ Ruxsat yo'q", show_alert=True); return
         format_nomi = "pdf" if call.data == "huj_pdf" else "docx"
         admin_state[user_id] = f"huj_rasm_wait:{format_nomi}"
