@@ -32,14 +32,22 @@ def jadval():
             manba TEXT,
             topic_codes TEXT[],
             savol_soni INT DEFAULT 20,
+            vaqt_limit_soniya INT,
             boshlandi TIMESTAMP,
             tugadi TIMESTAMP,
             togri INT DEFAULT 0,
             jami INT DEFAULT 0,
             foiz NUMERIC(5,2),
             sarflangan_soniya INT,
+            vaqt_tugab_tugadimi BOOLEAN DEFAULT FALSE,
             yaratildi TIMESTAMP DEFAULT NOW()
         )""")
+        # Eski qatorlarda ustun bo'lmasa qo'shamiz
+        for _ust, _tur in (("vaqt_limit_soniya","INT"), ("vaqt_tugab_tugadimi","BOOLEAN DEFAULT FALSE")):
+            try:
+                cr.execute(f"ALTER TABLE nazorat_test ADD COLUMN IF NOT EXISTS {_ust} {_tur}")
+            except Exception:
+                c.rollback()
         cr.execute("""CREATE INDEX IF NOT EXISTS idx_nz_child
             ON nazorat_test(child_id, yaratildi DESC)""")
         c.commit(); cr.close(); c.close()
@@ -104,7 +112,19 @@ def _otilgan_royxat(togarak_id):
 def manba_nomi(manba):
     return {"oxirgi": "📗 Oxirgi o'tilgan mavzu",
             "oldingi": "📙 Oldingi mavzu",
-            "oxirgi10": "📚 Oxirgi 10 ta mavzu"}.get(manba, manba)
+            "oxirgi10": "📚 Oxirgi 10 ta mavzu",
+            "tanlov": "☑️ O'zim tanlayman"}.get(manba, manba)
+
+
+def tanlangan_kodlar(togarak_id, indekslar):
+    """_otilgan_royxat() dagi berilgan indekslardagi mavzularning kodlarini qaytaradi."""
+    royxat = _otilgan_royxat(togarak_id)
+    kodlar, nomlar = [], []
+    for i in indekslar:
+        if 0 <= i < len(royxat):
+            kodlar.append(royxat[i][0])
+            nomlar.append(royxat[i][1])
+    return kodlar, nomlar
 
 
 def manba_kodlari(togarak_id, manba):
@@ -139,16 +159,35 @@ def test_soni_bor(topic_codes):
         return 0
 
 
+# ═══════════════ VAQT VARIANTLARI ═══════════════
+
+VAQT_VARIANTLARI = [
+    ("30 daq", 30*60), ("40 daq", 40*60), ("50 daq", 50*60),
+    ("1 soat", 60*60), ("1s 10 daq", 70*60), ("1s 30 daq", 90*60),
+    ("2 soat", 120*60), ("2s 30 daq", 150*60), ("3 soat", 180*60),
+]
+
+
+def vaqt_matni(soniya):
+    if not soniya:
+        return "cheklanmagan"
+    for nom, son in VAQT_VARIANTLARI:
+        if son == soniya:
+            return nom
+    daq = soniya // 60
+    return f"{daq} daq"
+
+
 # ═══════════════ YARATISH VA YUBORISH ═══════════════
 
-def yarat(parent_id, child_id, togarak_id, manba, topic_codes, savol_soni):
+def yarat(parent_id, child_id, togarak_id, manba, topic_codes, savol_soni, vaqt_limit_soniya=None):
     jadval()
     try:
         c = _db(); cr = c.cursor()
         cr.execute("""INSERT INTO nazorat_test
-            (parent_id, child_id, togarak_id, manba, topic_codes, savol_soni)
-            VALUES(%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (parent_id, child_id, togarak_id, manba, list(topic_codes), savol_soni))
+            (parent_id, child_id, togarak_id, manba, topic_codes, savol_soni, vaqt_limit_soniya)
+            VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (parent_id, child_id, togarak_id, manba, list(topic_codes), savol_soni, vaqt_limit_soniya))
         nid = cr.fetchone()[0]
         c.commit(); cr.close(); c.close()
         return nid
@@ -161,12 +200,14 @@ def ol(nz_id):
     try:
         c = _db(); cr = c.cursor()
         cr.execute("""SELECT id, parent_id, child_id, togarak_id, manba,
-                   topic_codes, savol_soni FROM nazorat_test WHERE id=%s""", (nz_id,))
+                   topic_codes, savol_soni, vaqt_limit_soniya
+            FROM nazorat_test WHERE id=%s""", (nz_id,))
         r = cr.fetchone(); cr.close(); c.close()
         if not r:
             return None
         return {"id": r[0], "parent_id": r[1], "child_id": r[2], "togarak_id": r[3],
-                "manba": r[4], "topic_codes": list(r[5] or []), "savol_soni": r[6]}
+                "manba": r[4], "topic_codes": list(r[5] or []), "savol_soni": r[6],
+                "vaqt_limit_soniya": r[7]}
     except Exception as e:
         print(f"[nz] ol: {e}")
         return None
@@ -203,9 +244,10 @@ def savol_kb(nz_id, idx, yozma=False):
     ])
 
 
-def seans_boshla(child_id, nz_id, savollar):
+def seans_boshla(child_id, nz_id, savollar, vaqt_limit_soniya=None):
     _SEANS[child_id] = {"nz_id": nz_id, "savollar": savollar, "idx": 0,
-                        "togri": 0, "boshlandi": datetime.now()}
+                        "togri": 0, "boshlandi": datetime.now(),
+                        "vaqt_limit": vaqt_limit_soniya}
     return _SEANS[child_id]
 
 
@@ -217,6 +259,24 @@ def seans_bekor(child_id):
     return _SEANS.pop(child_id, None)
 
 
+def vaqt_tugadimi(child_id):
+    """Umumiy vaqt limiti tugaganmi? Limit yo'q bo'lsa har doim False."""
+    st = _SEANS.get(child_id)
+    if not st or not st.get("vaqt_limit"):
+        return False
+    otgan = (datetime.now() - st["boshlandi"]).total_seconds()
+    return otgan >= st["vaqt_limit"]
+
+
+def qolgan_vaqt(child_id):
+    """Necha soniya qoldi. Limit yo'q bo'lsa None."""
+    st = _SEANS.get(child_id)
+    if not st or not st.get("vaqt_limit"):
+        return None
+    otgan = (datetime.now() - st["boshlandi"]).total_seconds()
+    return max(0, int(st["vaqt_limit"] - otgan))
+
+
 def _keyingi(child_id, togri):
     st = _SEANS.get(child_id)
     if not st:
@@ -224,7 +284,7 @@ def _keyingi(child_id, togri):
     if togri:
         st["togri"] += 1
     st["idx"] += 1
-    tugadi = st["idx"] >= len(st["savollar"])
+    tugadi = st["idx"] >= len(st["savollar"]) or vaqt_tugadimi(child_id)
     foiz = round(st["togri"] * 100.0 / max(1, len(st["savollar"])), 1)
     return (togri, tugadi, foiz)
 
@@ -254,22 +314,27 @@ def yakunla(child_id):
     st = _SEANS.pop(child_id, None)
     if not st:
         return None
+    vaqt_bilan_tugadi = bool(st.get("vaqt_limit")) and \
+        (datetime.now() - st["boshlandi"]).total_seconds() >= st["vaqt_limit"]
     tugadi_vaqt = datetime.now()
     sarflangan = max(1, int((tugadi_vaqt - st["boshlandi"]).total_seconds()))
     jami = len(st["savollar"]); togri = st["togri"]
+    javob_bergan = st["idx"]   # nechta savolga ulgurgan
     foiz = round(togri * 100.0 / max(1, jami), 1)
 
     try:
         c = _db(); cr = c.cursor()
         cr.execute("""UPDATE nazorat_test SET boshlandi=%s, tugadi=%s, togri=%s,
-            jami=%s, foiz=%s, sarflangan_soniya=%s WHERE id=%s""",
-            (st["boshlandi"], tugadi_vaqt, togri, jami, foiz, sarflangan, st["nz_id"]))
+            jami=%s, foiz=%s, sarflangan_soniya=%s, vaqt_tugab_tugadimi=%s WHERE id=%s""",
+            (st["boshlandi"], tugadi_vaqt, togri, jami, foiz, sarflangan,
+             vaqt_bilan_tugadi, st["nz_id"]))
         c.commit(); cr.close(); c.close()
     except Exception as e:
         print(f"[nz] yakunla: {e}")
 
     return {"nz_id": st["nz_id"], "togri": togri, "jami": jami,
-            "foiz": foiz, "sarflangan": sarflangan}
+            "foiz": foiz, "sarflangan": sarflangan,
+            "vaqt_bilan_tugadi": vaqt_bilan_tugadi, "javob_bergan": javob_bergan}
 
 
 def bekor_qil(nz_id):
