@@ -19,8 +19,8 @@ def get_main_keyboard(role=None, unread_errors=0):
         keyboard = [
             [KeyboardButton(text="🧠 Bilimni sinash"),  KeyboardButton(text="📊 Bilim darajam")],
             [KeyboardButton(text="📚 To'garaklar"),     KeyboardButton(text="📊 Imtihon")],
-            [KeyboardButton(text="🎨 Rasm chizdir"),    KeyboardButton(text="🤖 Yordamchi")],
-            [KeyboardButton(text="👤 Kabinet")],
+            [KeyboardButton(text="🎨 Rasm chizdir"),    KeyboardButton(text="🎨 Qo'shimcha imkoniyatlar")],
+            [KeyboardButton(text="🤖 Yordamchi"),       KeyboardButton(text="👤 Kabinet")],
         ]
     elif "admin" in r:
         err = f" 🔴{unread_errors}" if unread_errors > 0 else ""
@@ -32,7 +32,7 @@ def get_main_keyboard(role=None, unread_errors=0):
             [KeyboardButton(text=f"📊 Hisobotlar & Xatolar{err}"), KeyboardButton(text="👥 Foydalanuvchilar"),
              KeyboardButton(text="🧭 DTS topik boshqaruvi"), KeyboardButton(text="📚 To'garaklar")],
             [KeyboardButton(text="🤖 Yordamchi"),        KeyboardButton(text="📖 Darslar holati"),
-             KeyboardButton(text="👤 Kabinet"),          KeyboardButton(text="📷 Rasmdan hujjat")],
+             KeyboardButton(text="👤 Kabinet")],
         ]
     else:
         keyboard = [[KeyboardButton(text="🏠 Bosh menyu")]]
