@@ -1,349 +1,201 @@
-"""dublyaj.py — Video/audio DUBLYAJ qilish.
+"""video_admin.py — Mavzularga video biriktirish (Instagram/YouTube havolasidan).
 
-Bosqichlar:
-  1. Video yuklanadi (video_admin.yukla orqali)
-  2. Videodan audio ajratiladi (ffmpeg)
-  3. Audio matnga aylantiriladi (faster-whisper, mahalliy, internet shart emas)
-  4. Matn tarjima qilinadi (Gemini API)
-  5. Tarjima qilingan matndan yangi ovoz yaratiladi (edge-tts)
-  6. Yangi ovoz videoga ulanadi, asl ovoz almashtiriladi (ffmpeg)
-
-ESLATMA: bu LIP-SYNC emas — faqat ovoz almashtiriladi, lab harakati
-asl tilga mos qoladi. Whisper modeli birinchi ishlatilganda yuklab olinadi
-(internet kerak, keyin keshlanadi — qayta yuklanmaydi).
+Rasm tizimiga o'xshab ishlaydi:
+  1. Admin mavzuni tanlaydi
+  2. Instagram/YouTube havolasini yuboradi
+  3. Bot yt-dlp orqali yuklaydi, Telegram'ga yuklaydi (file_id oladi)
+  4. file_id saqlanadi — ENDI QAYTA YUKLAMAYDI, doim shu file_id dan foydalanadi
 """
 import os
 import re
-import io
-import json
 import subprocess
-import urllib.request
-import urllib.error
+import psycopg2
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 
-MAX_VAQT_SONIYA = 240
-WHISPER_MODEL_OLCHAMI = "base"     # tiny/base/small — CPU uchun muvozanat
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Til kodi -> (ko'rsatiladigan nom, ayol ovoz, erkak ovoz)
-TILLAR = {
-    "en": ("🇬🇧 Ingliz",    "en-US-JennyNeural",    "en-US-GuyNeural"),
-    "ru": ("🇷🇺 Rus",       "ru-RU-SvetlanaNeural", "ru-RU-DmitryNeural"),
-    "fr": ("🇫🇷 Fransuz",   "fr-FR-DeniseNeural",   "fr-FR-HenriNeural"),
-    "es": ("🇪🇸 Ispan",     "es-ES-ElviraNeural",   "es-ES-AlvaroNeural"),
-    "de": ("🇩🇪 Nemis",     "de-DE-KatjaNeural",    "de-DE-ConradNeural"),
-    "tr": ("🇹🇷 Turk",      "tr-TR-EmelNeural",     "tr-TR-AhmetNeural"),
-    "ar": ("🇸🇦 Arab",      "ar-SA-ZariyahNeural",  "ar-SA-HamedNeural"),
-    "zh": ("🇨🇳 Xitoy",     "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural"),
-    "ko": ("🇰🇷 Koreys",    "ko-KR-SunHiNeural",    "ko-KR-InJoonNeural"),
-    "ja": ("🇯🇵 Yapon",     "ja-JP-NanamiNeural",   "ja-JP-KeitaNeural"),
-    "kk": ("🇰🇿 Qozoq",     "kk-KZ-AigulNeural",    "kk-KZ-DauletNeural"),
-    "uz": ("🇺🇿 O'zbek",    "uz-UZ-MadinaNeural",   "uz-UZ-SardorNeural"),
-}
+VIDEO_LINK_REGEX = re.compile(
+    r'https?://(www\.)?(instagram\.com|youtu\.be|youtube\.com|tiktok\.com)/\S+', re.I)
+
+MAX_VAQT_SONIYA = 180      # yt-dlp uchun maksimal kutish
+MAX_HAJM_MB = "48M"        # Telegram bot fayl limiti ~50MB
 
 
-def til_nomi(kod):
-    return TILLAR.get(kod, (kod, None, None))[0]
+def db():
+    return psycopg2.connect(DATABASE_URL)
 
 
-def til_royxati_tugmalar(callback_prefix):
-    """[[InlineKeyboardButton...]] — chaqiruvchi Talim.py o'zi InlineKeyboardButton import qiladi."""
-    return [(kod, nom) for kod, (nom, _, _) in TILLAR.items()]
-
-
-# ═══════════════ 2. AUDIO AJRATISH ═══════════════
-
-def video_dan_audio_ajrat(video_yol, audio_yol):
-    """ffmpeg orqali video faylidan audio ajratib oladi. (muvaffaqiyat, xato)"""
+def jadval():
     try:
-        natija = subprocess.run(
-            ["ffmpeg", "-y", "-i", video_yol, "-vn", "-acodec", "libmp3lame",
-             "-q:a", "2", audio_yol],
-            capture_output=True, text=True, timeout=120)
-        if natija.returncode != 0:
-            return (False, (natija.stderr or "")[-300:])
-        if not os.path.exists(audio_yol) or os.path.getsize(audio_yol) == 0:
-            return (False, "Audio fayl yaratilmadi")
-        return (True, None)
+        c = db(); cr = c.cursor()
+        cr.execute("""CREATE TABLE IF NOT EXISTS videolar(
+            id SERIAL PRIMARY KEY,
+            kod TEXT UNIQUE,
+            file_id TEXT,
+            manba_link TEXT,
+            yuklagan BIGINT,
+            yaratildi TIMESTAMP DEFAULT NOW()
+        )""")
+        c.commit(); cr.close(); c.close()
+        return True
     except Exception as e:
-        return (False, str(e)[:300])
-
-
-def video_davomiyligi(video_yol):
-    """Videoning umumiy uzunligini soniyada qaytaradi (ffprobe)."""
-    try:
-        natija = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", video_yol],
-            capture_output=True, text=True, timeout=15)
-        return float(natija.stdout.strip())
-    except Exception:
-        return 0.0
-
-
-# ═══════════════ 3. MATNGA AYLANTIRISH (Whisper) ═══════════════
-
-_WHISPER_MODEL = None
-
-def _whisper_ol():
-    global _WHISPER_MODEL
-    if _WHISPER_MODEL is None:
-        from faster_whisper import WhisperModel
-        _WHISPER_MODEL = WhisperModel(WHISPER_MODEL_OLCHAMI, device="cpu", compute_type="int8")
-    return _WHISPER_MODEL
-
-
-def matnga_aylantir(audio_yol):
-    """Audiodan SEGMENTLAR ro'yxatini qaytaradi — har biri o'z vaqti bilan.
-    ([(boshlanish_son, tugash_son, matn), ...], til_kodi, xato)
-    Vaqt-moslashtirilgan dublyaj uchun shart — har gap o'z vaqtida gapirilishi kerak."""
-    try:
-        model = _whisper_ol()
-        segments, info = model.transcribe(audio_yol, beam_size=5)
-        natija = []
-        for s in segments:
-            matn = s.text.strip()
-            if matn:
-                natija.append((round(s.start, 2), round(s.end, 2), matn))
-        if not natija:
-            return (None, None, "Nutq aniqlanmadi (audio jim yoki tushunarsiz)")
-        return (natija, info.language, None)
-    except Exception as e:
-        return (None, None, str(e)[:300])
-
-
-def matn_yigindisi(segmentlar):
-    """Segmentlarni bitta matnga birlashtiradi — admin ko'rsatish uchun."""
-    return " ".join(s[2] for s in segmentlar)
-
-
-# ═══════════════ 4. TARJIMA (Gemini) ═══════════════
-
-def tarjima_qil(matn, maqsad_til_kod):
-    """Gemini API orqali tarjima qiladi (oddiy, bitta matn). (tarjima, xato)"""
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if not api_key:
-        return (None, "GEMINI_API_KEY sozlanmagan (Railway muhitida yo'q)")
-
-    maqsad_nom = til_nomi(maqsad_til_kod)
-    prompt = (f"Quyidagi matnni {maqsad_nom} tiliga tarjima qil. "
-              f"FAQAT tarjima qilingan matnni qaytar — izoh, tirnoq, "
-              f"boshqa hech narsa qo'shma:\n\n{matn}")
-
-    try:
-        url = ("https://generativelanguage.googleapis.com/v1beta/"
-               f"models/gemini-2.0-flash:generateContent?key={api_key}")
-        body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=body,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            natija = json.loads(resp.read().decode("utf-8"))
-        tarjima = natija["candidates"][0]["content"]["parts"][0]["text"].strip()
-        tarjima = tarjima.strip('"\'')
-        return (tarjima, None)
-    except urllib.error.HTTPError as e:
-        return (None, f"Gemini xato ({e.code}): {e.read()[:200]}")
-    except Exception as e:
-        return (None, str(e)[:300])
-
-
-def tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
-    """Barcha segmentlarni BITTA Gemini chaqiruvida tarjima qiladi,
-    tartibni saqlab. ([(boshlanish, tugash, tarjima), ...], xato)"""
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if not api_key:
-        return (None, "GEMINI_API_KEY sozlanmagan (Railway muhitida yo'q)")
-
-    maqsad_nom = til_nomi(maqsad_til_kod)
-    royxat = [{"id": i, "matn": s[2]} for i, s in enumerate(segmentlar)]
-    prompt = (
-        f"Quyida JSON ro'yxat bor — har birida \"id\" va \"matn\" maydoni bor.\n"
-        f"Har bir \"matn\"ni {maqsad_nom} tiliga tarjima qil.\n\n"
-        f"JAVOBNI FAQAT shu JSON formatda qaytar (boshqa hech narsa yozma, "
-        f"``` belgilarisiz):\n"
-        f'[{{"id": 0, "tarjima": "..."}}, {{"id": 1, "tarjima": "..."}}, ...]\n\n'
-        f"Matnlar:\n{json.dumps(royxat, ensure_ascii=False)}"
-    )
-
-    try:
-        url = ("https://generativelanguage.googleapis.com/v1beta/"
-               f"models/gemini-2.0-flash:generateContent?key={api_key}")
-        body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=body,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            natija = json.loads(resp.read().decode("utf-8"))
-        javob_matn = natija["candidates"][0]["content"]["parts"][0]["text"].strip()
-        javob_matn = re.sub(r"^```(json)?|```$", "", javob_matn.strip(), flags=re.M).strip()
-        tarjimalar = json.loads(javob_matn)
-
-        id_dan_tarjima = {t["id"]: t["tarjima"] for t in tarjimalar}
-        natija_royxat = []
-        for i, (boshi, tugash, asl) in enumerate(segmentlar):
-            tarj = id_dan_tarjima.get(i, asl)   # topilmasa aslini qoldiradi
-            natija_royxat.append((boshi, tugash, tarj))
-        return (natija_royxat, None)
-    except urllib.error.HTTPError as e:
-        return (None, f"Gemini xato ({e.code}): {e.read()[:200]}")
-    except (json.JSONDecodeError, KeyError) as e:
-        return (None, f"Gemini javobini o'qib bo'lmadi: {e}")
-    except Exception as e:
-        return (None, str(e)[:300])
-
-
-# ═══════════════ 5. YANGI OVOZ (edge-tts) ═══════════════
-
-async def matndan_ovoz_fayl(matn, ovoz_nomi, chiqish_yol):
-    """edge-tts orqali istalgan tilda ovoz yaratib, faylga yozadi. (muvaffaqiyat, xato)"""
-    try:
-        import edge_tts
-        com = edge_tts.Communicate(matn, ovoz_nomi)
-        await com.save(chiqish_yol)
-        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
-            return (False, "Ovoz fayli yaratilmadi")
-        return (True, None)
-    except Exception as e:
-        return (False, str(e)[:300])
-
-
-# ═══════════════ 6. VIDEOGA ULASH (ffmpeg) ═══════════════
-
-def videoga_ulash(video_yol, yangi_audio_yol, chiqish_yol):
-    """Videoning audiosini yangisiga almashtiradi — video kadrlari o'zgarmaydi.
-    (muvaffaqiyat, xato)"""
-    try:
-        natija = subprocess.run(
-            ["ffmpeg", "-y", "-i", video_yol, "-i", yangi_audio_yol,
-             "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0",
-             "-shortest", chiqish_yol],
-            capture_output=True, text=True, timeout=120)
-        if natija.returncode != 0:
-            return (False, (natija.stderr or "")[-300:])
-        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
-            return (False, "Yakuniy video yaratilmadi")
-        return (True, None)
-    except Exception as e:
-        return (False, str(e)[:300])
-
-
-# ═══════════════ VAQT-MOSLASHTIRILGAN YIG'ISH ═══════════════
-
-def _davomiylik_ol(audio_yol):
-    """ffprobe orqali audio faylning soniyadagi uzunligini oladi."""
-    try:
-        natija = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", audio_yol],
-            capture_output=True, text=True, timeout=15)
-        return float(natija.stdout.strip())
-    except Exception:
-        return 0.0
-
-
-def _tezlikni_moslash(kirish_yol, chiqish_yol, tezlik):
-    """ffmpeg atempo orqali audio tezligini o'zgartiradi (ohang o'zgarmaydi).
-    atempo 0.5-2.0 oralig'ida ishlaydi — chegaradan tashqarisini zanjirlaymiz."""
-    tezlik = max(0.5, min(2.0, tezlik))
-    try:
-        natija = subprocess.run(
-            ["ffmpeg", "-y", "-i", kirish_yol, "-filter:a", f"atempo={tezlik}",
-             chiqish_yol], capture_output=True, text=True, timeout=60)
-        return natija.returncode == 0 and os.path.exists(chiqish_yol)
-    except Exception:
+        print(f"[video] jadval: {e}")
         return False
 
 
-def _sukunat_yarat(soniya, chiqish_yol):
-    """Berilgan uzunlikda sukunat (jimlik) audio fayl yaratadi."""
-    if soniya <= 0:
-        return False
+# ═══════════════ LINK ANIQLASH ═══════════════
+
+def link_tanidimi(matn):
+    """Xabar ichida video havolasi bormi? Bo'lsa havolani qaytaradi."""
+    if not matn:
+        return None
+    m = VIDEO_LINK_REGEX.search(matn)
+    return m.group(0) if m else None
+
+
+# ═══════════════ SAQLASH / OLISH ═══════════════
+
+def video_bormi(kod):
+    """Bu kod uchun video allaqachon yuklanganmi? file_id qaytaradi yoki None."""
     try:
-        natija = subprocess.run(
-            ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
-             "-t", str(round(soniya, 2)), chiqish_yol],
-            capture_output=True, text=True, timeout=30)
-        return natija.returncode == 0 and os.path.exists(chiqish_yol)
-    except Exception:
+        c = db(); cr = c.cursor()
+        cr.execute("SELECT file_id FROM videolar WHERE kod=%s", (kod,))
+        r = cr.fetchone(); cr.close(); c.close()
+        return r[0] if r and r[0] else None
+    except Exception as e:
+        print(f"[video] bormi: {e}")
+        return None
+
+
+def video_saqla(kod, file_id, manba_link, yuklagan):
+    jadval()
+    try:
+        c = db(); cr = c.cursor()
+        cr.execute("""INSERT INTO videolar(kod, file_id, manba_link, yuklagan)
+            VALUES(%s,%s,%s,%s)
+            ON CONFLICT(kod) DO UPDATE SET file_id=EXCLUDED.file_id,
+                manba_link=EXCLUDED.manba_link, yuklagan=EXCLUDED.yuklagan""",
+            (kod, file_id, manba_link, yuklagan))
+        c.commit(); cr.close(); c.close()
+        return True
+    except Exception as e:
+        print(f"[video] saqla: {e}")
         return False
 
 
-async def segmentlardan_ovoz_yigindisi(segmentlar_tarjima, ovoz_nomi, papka, jami_davomiylik):
-    """Har tarjima segmentidan OVOZ yaratadi, ORIGINAL VAQTIGA moslab
-    (kerak bo'lsa tezlikni o'zgartirib), keyin BITTA uzluksiz audio faylga
-    yig'adi — video davomiyligiga teng. (chiqish_yol, xato)
+def video_ochir(kod):
+    try:
+        c = db(); cr = c.cursor()
+        cr.execute("DELETE FROM videolar WHERE kod=%s", (kod,))
+        n = cr.rowcount
+        c.commit(); cr.close(); c.close()
+        return n > 0
+    except Exception as e:
+        print(f"[video] ochir: {e}")
+        return False
 
-    segmentlar_tarjima: [(boshlanish, tugash, tarjima_matni), ...]
-    """
-    import edge_tts
 
-    parchalar = []          # concat ro'yxatiga kiradigan fayllar
-    oxirgi_joy = 0.0         # oxirgi qo'yilgan parchaning tugash vaqti
+# ═══════════════ ODDIY YUKLAB OLISH (mavzuga bog'liq emas) ═══════════════
+# Havolaning o'zi kalit — bir marta yuklangan link qayta yuklanmaydi.
 
-    for idx, (boshi, tugash, matn) in enumerate(segmentlar_tarjima):
-        if not matn.strip():
-            continue
-
-        # 1) Boshlanishgacha bo'lgan bo'shliqni sukunat bilan to'ldiramiz
-        bushliq = boshi - oxirgi_joy
-        if bushliq > 0.05:
-            suk_yol = os.path.join(papka, f"suk_{idx}.mp3")
-            if _sukunat_yarat(bushliq, suk_yol):
-                parchalar.append(suk_yol)
-
-        # 2) Ushbu segment uchun ovoz yaratamiz (oddiy tezlikda)
-        xom_yol = os.path.join(papka, f"seg_{idx}_xom.mp3")
+def link_keshi_jadval():
+    try:
+        c = db(); cr = c.cursor()
+        cr.execute("""CREATE TABLE IF NOT EXISTS video_link_kesh(
+            id SERIAL PRIMARY KEY,
+            link TEXT NOT NULL,
+            turi TEXT NOT NULL DEFAULT 'video',
+            file_id TEXT,
+            yuklagan BIGINT,
+            yaratildi TIMESTAMP DEFAULT NOW()
+        )""")
+        c.commit()
+        # Eski sxema (link PRIMARY KEY, turi ustunisiz) bo'lsa — moslashtiramiz
         try:
-            com = edge_tts.Communicate(matn, ovoz_nomi)
-            await com.save(xom_yol)
-        except Exception as e:
-            print(f"[dublyaj] segment {idx} ovoz xatosi: {e}")
-            continue
-        if not os.path.exists(xom_yol) or os.path.getsize(xom_yol) == 0:
-            continue
-
-        # 3) Uzunlikni ORIGINAL segment davomiyligiga moslaymiz
-        maqsad_davomiylik = max(0.3, tugash - boshi)
-        haqiqiy_davomiylik = _davomiylik_ol(xom_yol)
-        yakuniy_yol = os.path.join(papka, f"seg_{idx}.mp3")
-
-        if haqiqiy_davomiylik > 0.05:
-            tezlik = haqiqiy_davomiylik / maqsad_davomiylik
-            if 0.97 <= tezlik <= 1.03:
-                # deyarli bir xil — tezlikni o'zgartirish shart emas
-                os.replace(xom_yol, yakuniy_yol)
-            elif _tezlikni_moslash(xom_yol, yakuniy_yol, tezlik):
-                pass   # muvaffaqiyatli moslashtirildi
-            else:
-                os.replace(xom_yol, yakuniy_yol)   # moslay olmadik — asl holicha qoldiramiz
-        else:
-            os.replace(xom_yol, yakuniy_yol)
-
-        parchalar.append(yakuniy_yol)
-        oxirgi_joy = boshi + _davomiylik_ol(yakuniy_yol)
-
-    # 4) Video oxirigacha sukunat bilan to'ldiramiz
-    if jami_davomiylik - oxirgi_joy > 0.05:
-        suk_oxir = os.path.join(papka, "suk_oxir.mp3")
-        if _sukunat_yarat(jami_davomiylik - oxirgi_joy, suk_oxir):
-            parchalar.append(suk_oxir)
-
-    if not parchalar:
-        return (None, "Hech qanday ovoz segmenti yaratilmadi")
-
-    # 5) Barchasini BITTA audio faylga ketma-ket ulaymiz
-    royxat_yol = os.path.join(papka, "concat_royxat.txt")
-    with open(royxat_yol, "w", encoding="utf-8") as f:
-        for p in parchalar:
-            f.write(f"file '{os.path.abspath(p)}'\n")
-
-    yakuniy_audio = os.path.join(papka, "yigindi_audio.mp3")
-    try:
-        natija = subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", royxat_yol,
-             "-c:a", "libmp3lame", "-q:a", "2", yakuniy_audio],
-            capture_output=True, text=True, timeout=120)
-        if natija.returncode != 0:
-            return (None, (natija.stderr or "")[-300:])
-        if not os.path.exists(yakuniy_audio):
-            return (None, "Yig'indi audio yaratilmadi")
-        return (yakuniy_audio, None)
+            cr.execute("ALTER TABLE video_link_kesh ADD COLUMN IF NOT EXISTS turi TEXT NOT NULL DEFAULT 'video'")
+            c.commit()
+        except Exception:
+            c.rollback()
+        try:
+            cr.execute("ALTER TABLE video_link_kesh DROP CONSTRAINT IF EXISTS video_link_kesh_pkey")
+            c.commit()
+        except Exception:
+            c.rollback()
+        try:
+            cr.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_vlk_uniq
+                ON video_link_kesh(link, turi)""")
+            c.commit()
+        except Exception:
+            c.rollback()
+        cr.close(); c.close()
     except Exception as e:
-        return (None, str(e)[:300])
+        print(f"[video] link_keshi_jadval: {e}")
+
+
+def link_keshi_bormi(link, turi="video"):
+    """Bu havola (shu turda) avval yuklanganmi? file_id qaytaradi yoki None."""
+    link_keshi_jadval()
+    try:
+        c = db(); cr = c.cursor()
+        cr.execute("SELECT file_id FROM video_link_kesh WHERE link=%s AND turi=%s",
+                   (link, turi))
+        r = cr.fetchone(); cr.close(); c.close()
+        return r[0] if r and r[0] else None
+    except Exception as e:
+        print(f"[video] link_keshi_bormi: {e}")
+        return None
+
+
+def link_keshiga_saqla(link, file_id, yuklagan, turi="video"):
+    try:
+        c = db(); cr = c.cursor()
+        cr.execute("""INSERT INTO video_link_kesh(link, turi, file_id, yuklagan)
+            VALUES(%s,%s,%s,%s) ON CONFLICT(link, turi) DO UPDATE
+            SET file_id=EXCLUDED.file_id""", (link, turi, file_id, yuklagan))
+        c.commit(); cr.close(); c.close()
+    except Exception as e:
+        print(f"[video] link_keshiga_saqla: {e}")
+
+
+
+# ═══════════════ YUKLASH (yt-dlp) ═══════════════
+
+def yukla(link, chiqish_yol, faqat_audio=False):
+    """Havoladan videoni (yoki faqat audiosini) diskka yuklaydi.
+    (muvaffaqiyat, xato_matni)"""
+    try:
+        if faqat_audio:
+            buyruq = ["yt-dlp", "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                      "-o", chiqish_yol, "--no-playlist",
+                      "--max-filesize", MAX_HAJM_MB, link]
+        else:
+            buyruq = ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best",
+                      "--recode-video", "mp4",
+                      "-o", chiqish_yol, "--no-playlist",
+                      "--max-filesize", MAX_HAJM_MB, link]
+        natija = subprocess.run(buyruq, capture_output=True, text=True, timeout=MAX_VAQT_SONIYA)
+        if natija.returncode != 0:
+            xato = (natija.stderr or "").strip()
+            qatorlar = [q for q in xato.split("\n") if q.strip()]
+            qisqa = qatorlar[-1] if qatorlar else "Noma'lum xato"
+            return (False, qisqa[:300])
+        # --audio-format mp3 fayl kengaytmasini o'zi almashtirishi mumkin —
+        # chiqish_yol aynan mos kelmasa ham, papkada mp3 borligini tekshiramiz
+        if faqat_audio and not os.path.exists(chiqish_yol):
+            papka = os.path.dirname(chiqish_yol) or "."
+            nomsiz = os.path.splitext(os.path.basename(chiqish_yol))[0]
+            for f in os.listdir(papka):
+                if f.startswith(nomsiz) and f.endswith(".mp3"):
+                    chiqish_yol_topilgan = os.path.join(papka, f)
+                    if os.path.getsize(chiqish_yol_topilgan) > 0:
+                        os.replace(chiqish_yol_topilgan, chiqish_yol)
+                        break
+        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
+            return (False, "Fayl yaratilmadi (bo'sh yoki mavjud emas)")
+        return (True, None)
+    except subprocess.TimeoutExpired:
+        return (False, f"⏱ {MAX_VAQT_SONIYA} soniyada yuklanmadi (juda uzun/sekin)")
+    except FileNotFoundError:
+        return (False, "❌ yt-dlp o'rnatilmagan (requirements.txt ga qo'shing)")
+    except Exception as e:
+        return (False, str(e)[:300])
