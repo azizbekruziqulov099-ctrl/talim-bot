@@ -66,12 +66,20 @@ def _create_new_account(telegram_id, name, rol_uz, sinf_txt):
     return ok
 
 def _clear_eff_cache(tg_id):
-    """Talim.py dagi effektiv-ID keshini tozalaydi."""
+    """Talim.py dagi BARCHA effektiv-ID keshlarini tozalaydi.
+    Akkaunt almashtirilganda shart — aks holda eski akkauntning
+    ID si keshda qolib, yangisiga aralashib ketishi mumkin."""
     try:
         import sys as _s
         _t = _s.modules.get("Talim") or _s.modules.get("__main__")
-        if _t and hasattr(_t, "_EFF_CACHE"):
+        if not _t:
+            return
+        if hasattr(_t, "_EFF_CACHE"):
             _t._EFF_CACHE.pop(tg_id, None)
+        if hasattr(_t, "_TG_CACHE"):
+            _t._TG_CACHE.clear()
+        if hasattr(_t, "_ADMIN_CACHE"):
+            _t._ADMIN_CACHE.clear()
     except Exception as e:
         print(f"[eff_cache] {e}")
 
