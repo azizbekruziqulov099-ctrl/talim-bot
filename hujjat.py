@@ -40,7 +40,7 @@ def matn_ol_rasmdan(rasm_yol):
         )
 
         url = ("https://generativelanguage.googleapis.com/v1beta/"
-               f"models/gemini-2.0-flash:generateContent?key={api_key}")
+               f"models/gemini-2.5-flash:generateContent?key={api_key}")
         body = json.dumps({
             "contents": [{
                 "parts": [
@@ -135,6 +135,128 @@ def matndan_pdf(matn, chiqish_yol, sarlavha=None):
     except Exception as e:
         return (False, str(e)[:300])
 
+
+# ═══════════════ 4. HAQIQIY SKANER (chegara aniqlash + tekislash + oq-qora) ═══════════════
+# CamScanner/Adobe Scan uslubida: hujjat chegarasini AVTOMATIK topadi,
+# perspektivani tekislaydi, skaner ko'rinishiga (oq fon, aniq matn) keltiradi.
+# ESLATMA: Telegram orqali "4 burchakni qo'lda surish" TEXNIK JIHATDAN
+# IMKONSIZ (bot tugmalari bilan bunday interfeys qurib bo'lmaydi) — shuning
+# uchun avtomatik aniqlashga tayanamiz, u yetarlicha ishonchli ishlaydi.
+
+def _nuqtalarni_tartibla(nuqtalar):
+    """4 nuqtani [yuqori-chap, yuqori-o'ng, past-o'ng, past-chap] tartibiga soladi."""
+    import numpy as np
+    natija = np.zeros((4, 2), dtype="float32")
+    yigindi = nuqtalar.sum(axis=1)
+    natija[0] = nuqtalar[np.argmin(yigindi)]
+    natija[2] = nuqtalar[np.argmax(yigindi)]
+    farq = np.diff(nuqtalar, axis=1)
+    natija[1] = nuqtalar[np.argmin(farq)]
+    natija[3] = nuqtalar[np.argmax(farq)]
+    return natija
+
+
+def rasmni_skanla(rasm_yol, chiqish_yol, oq_qora=True):
+    """Hujjat chegarasini avtomatik topib kesadi, perspektivani tekislaydi,
+    skaner ko'rinishiga (oq fon) keltiradi. Chegara topilmasa — butun rasmni
+    ishlatadi (tekislashsiz, faqat rang yaxshilab). (muvaffaqiyat, xato)"""
+    try:
+        import cv2
+        import numpy as np
+
+        img = cv2.imread(rasm_yol)
+        if img is None:
+            return (False, "Rasm o'qilmadi")
+        orig = img.copy()
+        h, w = img.shape[:2]
+
+        olchov = 800 / max(h, w) if max(h, w) > 800 else 1.0
+        kichik = cv2.resize(img, None, fx=olchov, fy=olchov)
+        kulrang = cv2.cvtColor(kichik, cv2.COLOR_BGR2GRAY)
+        xira = cv2.GaussianBlur(kulrang, (5, 5), 0)
+        qirralar = cv2.Canny(xira, 50, 150)
+        qirralar = cv2.dilate(qirralar, None, iterations=2)
+
+        konturlar, _ = cv2.findContours(qirralar, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        konturlar = sorted(konturlar, key=cv2.contourArea, reverse=True)[:5]
+
+        hujjat_kontur = None
+        rasm_yuzasi = kichik.shape[0] * kichik.shape[1]
+        for k in konturlar:
+            # Juda kichik konturlarni (shovqin) e'tiborsiz qoldiramiz
+            if cv2.contourArea(k) < rasm_yuzasi * 0.15:
+                continue
+            perimetr = cv2.arcLength(k, True)
+            taxmin = cv2.approxPolyDP(k, 0.02 * perimetr, True)
+            if len(taxmin) == 4:
+                hujjat_kontur = taxmin
+                break
+
+        if hujjat_kontur is None:
+            # Chegara ishonchli topilmadi — butun rasmni ishlatamiz
+            tekislangan = orig
+        else:
+            nuqtalar = (hujjat_kontur.reshape(4, 2) / olchov).astype("float32")
+            nuqtalar = _nuqtalarni_tartibla(nuqtalar)
+            (tl, tr, br, bl) = nuqtalar
+
+            kenglik = max(int(np.linalg.norm(br - bl)), int(np.linalg.norm(tr - tl)))
+            balandlik = max(int(np.linalg.norm(tr - br)), int(np.linalg.norm(tl - bl)))
+            if kenglik < 10 or balandlik < 10:
+                tekislangan = orig
+            else:
+                maqsad = np.array([[0, 0], [kenglik - 1, 0],
+                                   [kenglik - 1, balandlik - 1], [0, balandlik - 1]],
+                                  dtype="float32")
+                matritsa = cv2.getPerspectiveTransform(nuqtalar, maqsad)
+                tekislangan = cv2.warpPerspective(orig, matritsa, (kenglik, balandlik))
+
+        if oq_qora:
+            kulrang2 = cv2.cvtColor(tekislangan, cv2.COLOR_BGR2GRAY)
+            natija_rasm = cv2.adaptiveThreshold(
+                kulrang2, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 15, 10)
+        else:
+            # Rangli, lekin yorqinlik/kontrastni yaxshilaymiz
+            lab = cv2.cvtColor(tekislangan, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            natija_rasm = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+
+        cv2.imwrite(chiqish_yol, natija_rasm)
+        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
+            return (False, "Skanlangan rasm saqlanmadi")
+        return (True, None)
+    except Exception as e:
+        return (False, str(e)[:300])
+
+
+def rasmlardan_skan_pdf(rasm_yollari, chiqish_yol, oq_qora=True):
+    """Bir yoki bir nechta rasmni SKANLAB (chegara+tekislash+oq-qora),
+    ko'p sahifali PDF yaratadi. (muvaffaqiyat, xato)"""
+    from PIL import Image
+    try:
+        if not rasm_yollari:
+            return (False, "Rasm berilmagan")
+
+        skanlangan_yollar = []
+        papka = os.path.dirname(chiqish_yol) or "."
+        for i, yol in enumerate(rasm_yollari):
+            skan_yol = os.path.join(papka, f"_skan_{i}.jpg")
+            ok, xato = rasmni_skanla(yol, skan_yol, oq_qora=oq_qora)
+            if not ok:
+                # Bitta rasm muvaffaqiyatsiz bo'lsa — asl rasmni ishlatamiz, to'xtamaymiz
+                skan_yol = yol
+            skanlangan_yollar.append(skan_yol)
+
+        rasmlar = [Image.open(y).convert("RGB") for y in skanlangan_yollar]
+        rasmlar[0].save(chiqish_yol, save_all=True, append_images=rasmlar[1:])
+        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
+            return (False, "PDF yaratilmadi")
+        return (True, None)
+    except Exception as e:
+        return (False, str(e)[:300])
 
 def matndan_docx(matn, chiqish_yol, sarlavha=None):
     """Matndan Word hujjat yaratadi. (muvaffaqiyat, xato)"""
