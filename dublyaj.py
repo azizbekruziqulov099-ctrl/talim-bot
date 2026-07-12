@@ -335,13 +335,19 @@ def _whisper_ol():
     return _WHISPER_MODEL
 
 
-def matnga_aylantir(audio_yol):
+def matnga_aylantir(audio_yol, til="uz"):
     """Audiodan SEGMENTLAR ro'yxatini qaytaradi — har biri o'z vaqti bilan.
     ([(boshlanish_son, tugash_son, matn), ...], til_kodi, xato)
-    Vaqt-moslashtirilgan dublyaj uchun shart — har gap o'z vaqtida gapirilishi kerak."""
+    Vaqt-moslashtirilgan dublyaj uchun shart — har gap o'z vaqtida gapirilishi kerak.
+
+    til: majburiy manba tili (standart "uz"). Whisper'ning AVTOMATIK til
+    aniqlashi o'zbekchani ko'pincha qozoqcha ("kk") bilan adashtiradi —
+    ikkalasi fonetik yaqin, o'zbekcha esa "kam resursli" til. Shuning uchun
+    aniq belgilab beramiz, taxmin qildirmaymiz. Boshqa til kerak bo'lsa
+    (masalan ruscha audio), til="ru" yoki til=None (avto) berish mumkin."""
     try:
         model = _whisper_ol()
-        segments, info = model.transcribe(audio_yol, beam_size=5)
+        segments, info = model.transcribe(audio_yol, beam_size=5, language=til)
         natija = []
         for s in segments:
             matn = s.text.strip()
@@ -349,7 +355,7 @@ def matnga_aylantir(audio_yol):
                 natija.append((round(s.start, 2), round(s.end, 2), matn))
         if not natija:
             return (None, None, "Nutq aniqlanmadi (audio jim yoki tushunarsiz)")
-        return (natija, info.language, None)
+        return (natija, (til or info.language), None)
     except Exception as e:
         return (None, None, str(e)[:300])
 
