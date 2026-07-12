@@ -156,10 +156,15 @@ def _nuqtalarni_tartibla(nuqtalar):
     return natija
 
 
-def rasmni_skanla(rasm_yol, chiqish_yol, oq_qora=True):
+def rasmni_skanla(rasm_yol, chiqish_yol, oq_qora=True, kesish_kengaytma=0.0):
     """Hujjat chegarasini avtomatik topib kesadi, perspektivani tekislaydi,
-    skaner ko'rinishiga (oq fon) keltiradi. Chegara topilmasa — butun rasmni
-    ishlatadi (tekislashsiz, faqat rang yaxshilab). (muvaffaqiyat, xato)"""
+    skaner ko'rinishiga (oq fon) keltiradi. HECH QACHON butunlay rad etmaydi —
+    aniq 4-burchak topilmasa, minAreaRect (eng kichik o'rovchi to'rtburchak)
+    bilan taxminiy chegara oladi; u ham bo'lmasa, butun rasmni ishlatadi.
+
+    kesish_kengaytma: -0.15..0.15 oralig'i — manfiy=torroq kesadi (chetlardan
+        ko'proq olib tashlaydi), musbat=kengroq kesadi (chetlarni ko'proq
+        qoldiradi). "Sozlamadan to'g'irlash" uchun. (muvaffaqiyat, xato)"""
     try:
         import cv2
         import numpy as np
@@ -179,27 +184,41 @@ def rasmni_skanla(rasm_yol, chiqish_yol, oq_qora=True):
 
         konturlar, _ = cv2.findContours(qirralar, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         konturlar = sorted(konturlar, key=cv2.contourArea, reverse=True)[:5]
-
-        hujjat_kontur = None
         rasm_yuzasi = kichik.shape[0] * kichik.shape[1]
+
+        nuqtalar = None
+
+        # 1-urinish: aniq 4-burchakli kontur (eng ishonchli, yaqindan olingan rasm)
         for k in konturlar:
-            # Juda kichik konturlarni (shovqin) e'tiborsiz qoldiramiz
             if cv2.contourArea(k) < rasm_yuzasi * 0.15:
                 continue
             perimetr = cv2.arcLength(k, True)
             taxmin = cv2.approxPolyDP(k, 0.02 * perimetr, True)
             if len(taxmin) == 4:
-                hujjat_kontur = taxmin
+                nuqtalar = (taxmin.reshape(4, 2) / olchov).astype("float32")
                 break
 
-        if hujjat_kontur is None:
-            # Chegara ishonchli topilmadi — butun rasmni ishlatamiz
+        # 2-urinish: aniq 4-burchak topilmasa — minAreaRect (uzoqdan olingan,
+        # kichikroq hujjat, yoki qirralar to'liq tekis chiqmagan holatlar uchun)
+        if nuqtalar is None and konturlar:
+            eng_katta = konturlar[0]
+            if cv2.contourArea(eng_katta) > rasm_yuzasi * 0.02:
+                rect = cv2.minAreaRect(eng_katta)
+                qutilar = cv2.boxPoints(rect)
+                nuqtalar = (qutilar / olchov).astype("float32")
+
+        if nuqtalar is None:
+            # Hech narsa topilmadi — butun rasmni ishlatamiz (rad ETMAYMIZ)
             tekislangan = orig
         else:
-            nuqtalar = (hujjat_kontur.reshape(4, 2) / olchov).astype("float32")
             nuqtalar = _nuqtalarni_tartibla(nuqtalar)
-            (tl, tr, br, bl) = nuqtalar
 
+            # Kesish kengaytmasi — "sozlamadan to'g'irlash" uchun
+            if kesish_kengaytma:
+                markaz = nuqtalar.mean(axis=0)
+                nuqtalar = markaz + (nuqtalar - markaz) * (1.0 + kesish_kengaytma)
+
+            (tl, tr, br, bl) = nuqtalar
             kenglik = max(int(np.linalg.norm(br - bl)), int(np.linalg.norm(tr - tl)))
             balandlik = max(int(np.linalg.norm(tr - br)), int(np.linalg.norm(tl - bl)))
             if kenglik < 10 or balandlik < 10:
@@ -232,7 +251,7 @@ def rasmni_skanla(rasm_yol, chiqish_yol, oq_qora=True):
         return (False, str(e)[:300])
 
 
-def rasmlardan_skan_pdf(rasm_yollari, chiqish_yol, oq_qora=True):
+def rasmlardan_skan_pdf(rasm_yollari, chiqish_yol, oq_qora=True, kesish_kengaytma=0.0):
     """Bir yoki bir nechta rasmni SKANLAB (chegara+tekislash+oq-qora),
     ko'p sahifali PDF yaratadi. (muvaffaqiyat, xato)"""
     from PIL import Image
@@ -244,7 +263,8 @@ def rasmlardan_skan_pdf(rasm_yollari, chiqish_yol, oq_qora=True):
         papka = os.path.dirname(chiqish_yol) or "."
         for i, yol in enumerate(rasm_yollari):
             skan_yol = os.path.join(papka, f"_skan_{i}.jpg")
-            ok, xato = rasmni_skanla(yol, skan_yol, oq_qora=oq_qora)
+            ok, xato = rasmni_skanla(yol, skan_yol, oq_qora=oq_qora,
+                                     kesish_kengaytma=kesish_kengaytma)
             if not ok:
                 # Bitta rasm muvaffaqiyatsiz bo'lsa — asl rasmni ishlatamiz, to'xtamaymiz
                 skan_yol = yol
