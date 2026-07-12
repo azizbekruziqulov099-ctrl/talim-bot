@@ -2980,6 +2980,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             ]]))
 
         xabar = (f"📊 <b>Imtihon natijasi</b>\n\n"
+                 f"👤 {ism}\n"
                  f"📝 {imt['nomi'] if imt else '—'}\n"
                  f"🎯 Baho: <b>{foiz:.0f}%</b>\n🎖 {d}")
         for kim in [uid2] + otalar:
@@ -3032,6 +3033,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (uid2,))
             otalar = [r[0] for r in cr.fetchall()]
             xabar = (f"📊 <b>Imtihon natijasi</b>\n\n"
+                     f"👤 {ism}\n"
                      f"📝 {imt['nomi']}\n🎯 Baho: <b>{foiz:.0f}%</b>\n🎖 {d}")
             for kim in [uid2] + otalar:
                 try: await bot.send_message(_tg_id(kim), xabar, parse_mode="HTML")
@@ -4927,6 +4929,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         papka = ctx["papka"]; video_yol = ctx["video_yol"]
         segmentlar = ctx["segmentlar"]; jami_uzunlik = ctx["jami_uzunlik"]
         maqsad_til = ctx.get("maqsad_til", "en")
+        jins = ctx.get("jins", "ayol")
 
         excel_yol = os.path.join(papka, "toldirilgan.xlsx")
         xabar = await message.answer("⏳ 1/3 — Jadval o'qilmoqda...")
@@ -4948,9 +4951,11 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             f"⏳ 2/3 — {_db_.til_nomi(maqsad_til)} ovoz yaratilmoqda...\n"
             f"<i>Har gap o'z vaqtiga moslanmoqda</i>", parse_mode="HTML")
         except Exception: pass
-        ayol_ovoz = _db_.TILLAR.get(maqsad_til, (None, None, None))[1]
+        # TILLAR[kod] = (nom, ayol_ovoz, ogil_ovoz) — jinsga qarab to'g'ri indeksni olamiz
+        _til_tuple = _db_.TILLAR.get(maqsad_til, (None, None, None))
+        tanlangan_ovoz = _til_tuple[2] if jins == "ogil" else _til_tuple[1]
         yangi_audio_yol, xato = await _db_.segmentlardan_ovoz_yigindisi(
-            segmentlar_tarjima, ayol_ovoz, papka, jami_uzunlik)
+            segmentlar_tarjima, tanlangan_ovoz, papka, jami_uzunlik)
         if not yangi_audio_yol:
             try: await xabar.edit_text(f"❌ Ovoz yaratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
             except Exception: pass
@@ -4982,6 +4987,72 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             _sh.rmtree(papka, ignore_errors=True)
             temp_user.pop(f"dub_ctx:{user_id}", None)
             temp_user.pop(f"vid_link:{user_id}", None)
+        return
+
+    if (
+        admin_state.get(user_id) == "baho_jadval_wait"
+        and message.document
+    ):
+        admin_state.pop(user_id, None)
+        _bh = _modul('baholash')
+        if not _bh:
+            await message.answer('⚠️ baholash.py yuklanmagan'); return
+
+        ctx = temp_user.pop(f"baho_jadval_ctx:{user_id}", None)
+        if not ctx:
+            await message.answer("⚠️ Sessiya eskirgan, qaytadan boshlang.")
+            return
+
+        import shutil as _sh
+        iid = ctx["iid"]; papka = ctx["papka"]
+        excel_yol = os.path.join(papka, "toldirilgan.xlsx")
+
+        xabar = await message.answer("⏳ Jadval o'qilmoqda...")
+        try:
+            await message.bot.download(message.document.file_id, destination=excel_yol)
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Fayl olinmadi: {e}")
+            except Exception: pass
+            _sh.rmtree(papka, ignore_errors=True); return
+
+        natija, xato = await asyncio.to_thread(_bh.excel_dan_baholar, excel_yol)
+        _sh.rmtree(papka, ignore_errors=True)
+        if not natija:
+            try: await xabar.edit_text(f"❌ Jadval o'qilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        imt = _bh.imtihon_ol(iid)
+        if not imt:
+            try: await xabar.edit_text("❌ Imtihon topilmadi")
+            except Exception: pass
+            return
+
+        c = _get_db_conn(); cr = c.cursor()
+        ismlar = []
+        for uid2, foiz in natija:
+            _bh.baho_qoy(iid, uid2, foiz, manba="teacher")
+            d = _bh.daraja(foiz)
+            cr.execute("SELECT full_name FROM users WHERE user_id=%s", (uid2,))
+            ism = (cr.fetchone() or ["—"])[0]
+            ismlar.append(f"{ism} — {foiz:.0f}%")
+
+            cr.execute("SELECT parent_id FROM parent_child WHERE child_id=%s", (uid2,))
+            otalar = [r[0] for r in cr.fetchall()]
+            xabar_matn = (f"📊 <b>Imtihon natijasi</b>\n\n"
+                         f"👤 {ism}\n"
+                         f"📝 {imt['nomi']}\n🎯 Baho: <b>{foiz:.0f}%</b>\n🎖 {d}")
+            for kim in [uid2] + otalar:
+                try: await bot.send_message(_tg_id(kim), xabar_matn, parse_mode="HTML")
+                except Exception: pass
+        cr.close(); c.close()
+
+        royxat = "\n".join(f"  • {n}" for n in ismlar)
+        try: await xabar.delete()
+        except Exception: pass
+        await message.answer(
+            f"✅ <b>{len(ismlar)} ta o'quvchi baholandi</b>\n\n{royxat}",
+            parse_mode="HTML")
         return
 
     if (
@@ -8202,7 +8273,34 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.edit_reply_markup(reply_markup=None)
         except Exception: pass
 
+        ctx["maqsad_til"] = maqsad_til
+        temp_user[f"dub_ctx:{user_id}"] = ctx
+
+        await call.message.answer(
+            f"🎙 {_db_.til_nomi(maqsad_til)} tilida qanday ovoz bo'lsin?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🚺 Ayol ovoz", callback_data="dub_ovoz:ayol"),
+                InlineKeyboardButton(text="🚹 Erkak ovoz", callback_data="dub_ovoz:ogil"),
+            ]]))
+        return
+
+    if call.data.startswith("dub_ovoz:"):
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await call.answer('⚠️ dublyaj.py yuklanmagan', show_alert=True); return
+        jins = call.data.split(":")[1]
+        ctx = temp_user.get(f"dub_ctx:{user_id}")
+        if not ctx or "maqsad_til" not in ctx:
+            await call.answer("⚠️ Sessiya eskirgan, /video dan qaytadan boshlang", show_alert=True)
+            return
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+
         papka = ctx["papka"]; segmentlar = ctx["segmentlar"]
+        maqsad_til = ctx["maqsad_til"]
 
         excel_yol = os.path.join(papka, "tarjima.xlsx")
         ok, xato = await asyncio.to_thread(_db_.segmentlar_excelga, segmentlar, excel_yol)
@@ -8210,14 +8308,16 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             await call.message.answer(f"❌ Jadval yaratilmadi:\n{xato}")
             return
 
-        ctx["maqsad_til"] = maqsad_til
+        ctx["jins"] = jins
         admin_state[user_id] = "dub_excel_wait"
         temp_user[f"dub_ctx:{user_id}"] = ctx
 
+        jins_belgi = "🚺 Ayol" if jins == "ayol" else "🚹 Erkak"
         await call.message.answer_document(
             FSInputFile(excel_yol),
             caption=(
-                f"📊 <b>Jadval tayyor — {len(segmentlar)} ta gap</b>\n\n"
+                f"📊 <b>Jadval tayyor — {len(segmentlar)} ta gap</b>\n"
+                f"🎙 Ovoz: {jins_belgi} ({_db_.til_nomi(maqsad_til)})\n\n"
                 f"Oxirgi ustunga ({_db_.til_nomi(maqsad_til)} tiliga) "
                 f"tarjimangizni yozing.\n\n"
                 f"Tayyor bo'lgach — shu faylni menga qaytarib yuboring."
@@ -9495,8 +9595,46 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="👤 Bittalab", callback_data=f"im_bbir:{iid}")],
                     [InlineKeyboardButton(text="👥 Guruh — bir xil baho", callback_data=f"im_bgrp:{iid}")],
+                    [InlineKeyboardButton(text="📊 Jadval orqali — har biriga alohida",
+                                          callback_data=f"im_bjadval:{iid}")],
                     [InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"im_ko:{iid}")],
                 ]))
+            return
+
+        if amal == "im_bjadval":
+            iid = int(qism[1])
+            imt = _bh.imtihon_ol(iid)
+            if not imt: return
+            c = _get_db_conn(); cr = c.cursor()
+            cr.execute("""SELECT a.user_id, COALESCE(u.full_name,'—')
+                FROM togarak_azolar a LEFT JOIN users u ON u.user_id=a.user_id
+                WHERE a.togarak_id=%s AND a.aktiv=TRUE ORDER BY u.full_name""",
+                (imt["togarak_id"],))
+            azolar = cr.fetchall(); cr.close(); c.close()
+            if not azolar:
+                await call.answer("❌ A'zo yo'q", show_alert=True); return
+
+            mavjud = {r[0]: float(r[2]) for r in _bh.natijalar(iid)}
+            import tempfile as _tf
+            papka = _tf.mkdtemp(prefix=f"baho_{user_id}_")
+            excel_yol = os.path.join(papka, "baholash.xlsx")
+            ok, xato = await asyncio.to_thread(
+                _bh.baholash_excelga, azolar, mavjud, excel_yol)
+            if not ok:
+                await call.message.answer(f"❌ Jadval yaratilmadi: {xato}")
+                import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
+                return
+
+            temp_user[f"baho_jadval_ctx:{user_id}"] = {"iid": iid, "papka": papka}
+            admin_state[user_id] = "baho_jadval_wait"
+            await call.message.answer_document(
+                FSInputFile(excel_yol),
+                caption=(
+                    f"📊 <b>{imt['nomi']}</b> — {len(azolar)} ta o'quvchi\n\n"
+                    f"Har kimga alohida foiz yozing (1-100).\n"
+                    f"Bo'sh qoldirsangiz — o'sha o'quvchiga baho qo'yilmaydi.\n\n"
+                    f"Tayyor bo'lgach — shu faylni qaytarib yuboring."
+                ), parse_mode="HTML")
             return
 
         if amal == "im_bbir":
