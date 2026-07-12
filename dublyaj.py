@@ -126,6 +126,82 @@ def nllb_tarjima_qil_segmentlar(segmentlar, manba_til_oddiy, maqsad_til_kod):
 # "daqiqasiga necha so'rov" chegarasi yo'q. Oyiga 500,000 harf bepul.
 # Yengil (og'ir kutubxona kerak emas), tez, sifatli.
 
+# ═══════════════ QO'LDA TARJIMA — EXCEL JADVAL ═══════════════
+# Avtomatik tarjima sifatidan qat'iy nazar — foydalanuvchi o'zi tarjima
+# qiladi. Bot faqat vaqt-tuzilmani (segmentlarni) jadvalga chiqaradi va
+# to'ldirilgan jadvalni qayta o'qiydi.
+
+def segmentlar_excelga(segmentlar, chiqish_yol):
+    """Segmentlarni Excel jadvaliga chiqaradi — Tarjima ustuni bo'sh,
+    foydalanuvchi to'ldiradi. (muvaffaqiyat, xato)"""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Tarjima"
+
+        sarlavhalar = ["#", "Boshlanish (s)", "Tugash (s)", "Original matn",
+                       "Tarjima (shu yerga yozing)"]
+        boshliq_fon = PatternFill(start_color="4A5568", end_color="4A5568", fill_type="solid")
+        for col, sarlavha in enumerate(sarlavhalar, 1):
+            c = ws.cell(row=1, column=col, value=sarlavha)
+            c.font = Font(name="Arial", bold=True, color="FFFFFF")
+            c.fill = boshliq_fon
+
+        sariq = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
+        for i, (boshi, tugash, matn) in enumerate(segmentlar, start=2):
+            ws.cell(row=i, column=1, value=i - 1).font = Font(name="Arial")
+            ws.cell(row=i, column=2, value=round(boshi, 2)).font = Font(name="Arial")
+            ws.cell(row=i, column=3, value=round(tugash, 2)).font = Font(name="Arial")
+            ws.cell(row=i, column=4, value=matn).font = Font(name="Arial")
+            tj = ws.cell(row=i, column=5, value="")
+            tj.font = Font(name="Arial")
+            tj.fill = sariq
+
+        ws.column_dimensions["A"].width = 5
+        ws.column_dimensions["B"].width = 14
+        ws.column_dimensions["C"].width = 14
+        ws.column_dimensions["D"].width = 40
+        ws.column_dimensions["E"].width = 40
+        ws.freeze_panes = "A2"
+
+        wb.save(chiqish_yol)
+        if not os.path.exists(chiqish_yol):
+            return (False, "Excel fayli yaratilmadi")
+        return (True, None)
+    except Exception as e:
+        return (False, str(e)[:300])
+
+
+def excel_dan_segmentlar(excel_yol, asl_segmentlar):
+    """Foydalanuvchi to'ldirgan Excel'dan tarjimalarni o'qib, segmentlarga
+    joylashtiradi. Qator tartibi eksport qilingandagi bilan bir xil deb
+    hisoblanadi. ([(boshlanish, tugash, tarjima), ...], xato)"""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(excel_yol, data_only=True)
+        ws = wb.active
+
+        natija = []
+        bosh_tarjima = 0
+        for i, (boshi, tugash, asl) in enumerate(asl_segmentlar):
+            satr = i + 2   # 1-qator sarlavha
+            xujayra = ws.cell(row=satr, column=5).value
+            tarjima = str(xujayra).strip() if xujayra else ""
+            if tarjima:
+                bosh_tarjima += 1
+            natija.append((boshi, tugash, tarjima or asl))
+
+        if bosh_tarjima == 0:
+            return (None, "Tarjima ustuni bo'sh — hech qanday gap to'ldirilmagan")
+        return (natija, None)
+    except Exception as e:
+        return (None, str(e)[:300])
+
+
+
 def google_tarjima_qil_segmentlar(segmentlar, manba_til_oddiy, maqsad_til_kod):
     """Google Cloud Translation API orqali BARCHA segmentlarni BITTA
     so'rovda tarjima qiladi. ([(boshlanish, tugash, tarjima), ...], xato)"""
