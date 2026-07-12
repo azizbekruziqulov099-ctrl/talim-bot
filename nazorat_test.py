@@ -74,9 +74,34 @@ def _ustunlar(jadval_nom):
 
 # ═══════════════ MAVZU MANBASI ═══════════════
 
+def _haqiqiy_kod(qiymat):
+    """togarak_reja/togarak_dars_log.topic_code ustuni ba'zan HAQIQIY KOD
+    o'rniga MAVZU NOMI matnini saqlaydi (avtomatik to'ldirilganda). Bu
+    funksiya bunday holatni aniqlab, dts_tree'dan haqiqiy kodni topadi.
+    Aks holda qiymatning o'zini qaytaradi."""
+    if not qiymat:
+        return qiymat
+    qiymat = str(qiymat)
+    # Haqiqiy topic_code odatda "5-01-MATH-003" kabi — ichida '-' va raqam bor
+    if "-" in qiymat and any(ch.isdigit() for ch in qiymat):
+        return qiymat
+    # Aks holda — bu mavzu NOMI bo'lishi mumkin, kodni qidiramiz
+    try:
+        c = _db(); cr = c.cursor()
+        cr.execute("SELECT topic_code FROM dts_tree WHERE mavzu_name=%s LIMIT 1", (qiymat,))
+        r = cr.fetchone(); cr.close(); c.close()
+        if r and r[0]:
+            return r[0]
+    except Exception:
+        pass
+    return qiymat
+
+
 def _otilgan_royxat(togarak_id):
     """[(topic_code, mavzu_name)] — o'tilgan mavzular, ENG YANGISI birinchi.
-    togarak_dars_log da vaqt ustuni bo'lsa shundan, bo'lmasa reja tartibidan."""
+    togarak_dars_log da vaqt ustuni bo'lsa shundan, bo'lmasa reja tartibidan.
+    DIQQAT: topic_code ustuni ba'zan mavzu nomi matnini saqlaydi — shuning
+    uchun har bir qiymat _haqiqiy_kod() orqali tekshiriladi."""
     try:
         c = _db(); cr = c.cursor()
         dl_kols = _ustunlar("togarak_dars_log")
@@ -92,7 +117,7 @@ def _otilgan_royxat(togarak_id):
                 GROUP BY l.topic_code, d.mavzu_name
                 ORDER BY oxirgi DESC
             """, (togarak_id,))
-            r = [(tc, nm) for tc, nm, _ in cr.fetchall()]
+            xom = [(tc, nm) for tc, nm, _ in cr.fetchall()]
         else:
             cr.execute("""
                 SELECT r.topic_code, COALESCE(d.mavzu_name, r.topic_code)
@@ -101,9 +126,15 @@ def _otilgan_royxat(togarak_id):
                 WHERE r.togarak_id=%s AND r.completed=TRUE
                 ORDER BY r.tartib DESC
             """, (togarak_id,))
-            r = cr.fetchall()
+            xom = cr.fetchall()
         cr.close(); c.close()
-        return r
+
+        # Har bir qatordagi kodni tekshirib, kerak bo'lsa haqiqiy kodga almashtiramiz
+        natija = []
+        for tc, nm in xom:
+            haqiqiy = _haqiqiy_kod(tc)
+            natija.append((haqiqiy, nm))
+        return natija
     except Exception as e:
         print(f"[nz] otilgan: {e}")
         return []
