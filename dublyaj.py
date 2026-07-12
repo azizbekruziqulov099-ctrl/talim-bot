@@ -19,6 +19,53 @@ import json
 import subprocess
 import urllib.request
 import urllib.error
+import psycopg2
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+
+def _db():
+    return psycopg2.connect(DATABASE_URL)
+
+
+def klon_ovoz_jadval():
+    try:
+        c = _db(); cr = c.cursor()
+        cr.execute("""CREATE TABLE IF NOT EXISTS klon_ovoz(
+            user_id BIGINT PRIMARY KEY,
+            voice_id TEXT NOT NULL,
+            yaratildi TIMESTAMP DEFAULT NOW()
+        )""")
+        c.commit(); cr.close(); c.close()
+    except Exception as e:
+        print(f"[dublyaj] klon_ovoz_jadval: {e}")
+
+
+def klon_ovoz_saqla(user_id, voice_id):
+    klon_ovoz_jadval()
+    try:
+        c = _db(); cr = c.cursor()
+        cr.execute("""INSERT INTO klon_ovoz(user_id, voice_id) VALUES(%s,%s)
+            ON CONFLICT(user_id) DO UPDATE SET voice_id=EXCLUDED.voice_id,
+            yaratildi=NOW()""", (user_id, voice_id))
+        c.commit(); cr.close(); c.close()
+        return True
+    except Exception as e:
+        print(f"[dublyaj] klon_ovoz_saqla: {e}")
+        return False
+
+
+def klon_ovoz_ol(user_id):
+    """Bu foydalanuvchining klonlangan ovoz_id'sini qaytaradi, yo'q bo'lsa None."""
+    klon_ovoz_jadval()
+    try:
+        c = _db(); cr = c.cursor()
+        cr.execute("SELECT voice_id FROM klon_ovoz WHERE user_id=%s", (user_id,))
+        r = cr.fetchone(); cr.close(); c.close()
+        return r[0] if r else None
+    except Exception as e:
+        print(f"[dublyaj] klon_ovoz_ol: {e}")
+        return None
 
 MAX_VAQT_SONIYA = 240
 WHISPER_MODEL_OLCHAMI = "base"     # tiny/base/small — CPU uchun muvozanat
@@ -383,7 +430,7 @@ def tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
         return (None, str(e)[:300])
 
 
-# ═══════════════ 5. YANGI OVOZ (edge-tts) ═══════════════
+# ═══════════════ 5. YANGI OVOZ (edge-tts — jinsga qarab, umumiy ovoz) ═══════════════
 
 async def matndan_ovoz_fayl(matn, ovoz_nomi, chiqish_yol):
     """edge-tts orqali istalgan tilda ovoz yaratib, faylga yozadi. (muvaffaqiyat, xato)"""
@@ -394,6 +441,92 @@ async def matndan_ovoz_fayl(matn, ovoz_nomi, chiqish_yol):
         if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
             return (False, "Ovoz fayli yaratilmadi")
         return (True, None)
+    except Exception as e:
+        return (False, str(e)[:300])
+
+
+# ═══════════════ 5b. OVOZ KLONLASH (ElevenLabs) ═══════════════
+# Foydalanuvchi o'z ovozidan namuna beradi -> shu ovozda dublyaj qilinadi.
+
+def elevenlabs_ovoz_klonla(namuna_audio_yol, ovoz_nomi, user_id):
+    """Foydalanuvchi ovoz namunasidan klonlangan ovoz yaratadi.
+    (voice_id, xato)"""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not api_key:
+        return (None, "ELEVENLABS_API_KEY sozlanmagan (Railway muhitida yo'q)")
+    try:
+        import urllib.request as _ur
+
+        chegara = f"----samtm{user_id}"
+        with open(namuna_audio_yol, "rb") as f:
+            audio_bayt = f.read()
+
+        qismlar = []
+        qismlar.append(f"--{chegara}\r\n"
+                       f'Content-Disposition: form-data; name="name"\r\n\r\n'
+                       f"{ovoz_nomi}\r\n".encode("utf-8"))
+        qismlar.append(f"--{chegara}\r\n"
+                       f'Content-Disposition: form-data; name="files"; filename="namuna.ogg"\r\n'
+                       f"Content-Type: audio/ogg\r\n\r\n".encode("utf-8"))
+        qismlar.append(audio_bayt)
+        qismlar.append(f"\r\n--{chegara}--\r\n".encode("utf-8"))
+        tana = b"".join(qismlar)
+
+        req = _ur.Request(
+            "https://api.elevenlabs.io/v1/voices/add",
+            data=tana,
+            headers={
+                "xi-api-key": api_key,
+                "Content-Type": f"multipart/form-data; boundary={chegara}",
+            })
+        with _ur.urlopen(req, timeout=60) as resp:
+            natija = json.loads(resp.read().decode("utf-8"))
+        voice_id = natija.get("voice_id")
+        if not voice_id:
+            return (None, f"voice_id qaytmadi: {natija}")
+        return (voice_id, None)
+    except urllib.error.HTTPError as e:
+        xabar = e.read().decode("utf-8", errors="ignore")[:300]
+        return (None, f"ElevenLabs xato ({e.code}): {xabar}")
+    except Exception as e:
+        return (None, str(e)[:300])
+
+
+async def elevenlabs_ovoz_fayl(matn, voice_id, chiqish_yol, barqarorlik=0.5, jonlilik=0.5):
+    """Klonlangan ovozda matndan audio yaratadi.
+    barqarorlik (stability): 0=juda ekspressiv/o'zgaruvchan, 1=juda barqaror/monoton
+    jonlilik (style): 0=neytral, 1=kuchli uslub/ohang
+    (muvaffaqiyat, xato)"""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not api_key:
+        return (False, "ELEVENLABS_API_KEY sozlanmagan (Railway muhitida yo'q)")
+    try:
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        body = json.dumps({
+            "text": matn,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": barqarorlik,
+                "similarity_boost": 0.75,
+                "style": jonlilik,
+                "use_speaker_boost": True,
+            }
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        })
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            audio_bayt = resp.read()
+        with open(chiqish_yol, "wb") as f:
+            f.write(audio_bayt)
+        if not os.path.exists(chiqish_yol) or os.path.getsize(chiqish_yol) == 0:
+            return (False, "Ovoz fayli yaratilmadi")
+        return (True, None)
+    except urllib.error.HTTPError as e:
+        xabar = e.read().decode("utf-8", errors="ignore")[:300]
+        return (False, f"ElevenLabs xato ({e.code}): {xabar}")
     except Exception as e:
         return (False, str(e)[:300])
 
@@ -446,7 +579,8 @@ def _tezlikni_moslash(kirish_yol, chiqish_yol, tezlik):
 
 
 def _sukunat_yarat(soniya, chiqish_yol):
-    """Berilgan uzunlikda sukunat (jimlik) audio fayl yaratadi."""
+    """Berilgan uzunlikda sukunat (jimlik) audio fayl yaratadi.
+    Faqat asl fon olinmagan/muvaffaqiyatsiz bo'lganda ZAXIRA sifatida ishlatiladi."""
     if soniya <= 0:
         return False
     try:
@@ -459,34 +593,80 @@ def _sukunat_yarat(soniya, chiqish_yol):
         return False
 
 
-async def segmentlardan_ovoz_yigindisi(segmentlar_tarjima, ovoz_nomi, papka, jami_davomiylik):
+def _asl_fon_ol(asl_audio_yol, boshlanish, davomiylik, chiqish_yol):
+    """ASL videodagi shu vaqt oralig'ini kesib oladi — bu 'gapirmagan'
+    joylarga tabiiy fon (xona shovqini, muhit tovushi) sifatida ishlatiladi,
+    mutlaq raqamli sukunat o'rniga. Bu ovozni ANCHA tabiiyroq qiladi."""
+    if davomiylik <= 0 or not asl_audio_yol or not os.path.exists(asl_audio_yol):
+        return False
+    try:
+        natija = subprocess.run(
+            ["ffmpeg", "-y", "-i", asl_audio_yol,
+             "-ss", str(max(0, round(boshlanish, 2))),
+             "-t", str(round(davomiylik, 2)),
+             "-acodec", "libmp3lame", chiqish_yol],
+            capture_output=True, text=True, timeout=30)
+        return (natija.returncode == 0 and os.path.exists(chiqish_yol)
+                and os.path.getsize(chiqish_yol) > 0)
+    except Exception:
+        return False
+
+
+async def segmentlardan_ovoz_yigindisi(segmentlar_tarjima, ovoz_nomi, papka, jami_davomiylik,
+                                       dvigatel="edge", tezlik_moljal=1.0,
+                                       barqarorlik=0.5, jonlilik=0.5, asl_audio_yol=None):
     """Har tarjima segmentidan OVOZ yaratadi, ORIGINAL VAQTIGA moslab
     (kerak bo'lsa tezlikni o'zgartirib), keyin BITTA uzluksiz audio faylga
     yig'adi — video davomiyligiga teng. (chiqish_yol, xato)
 
     segmentlar_tarjima: [(boshlanish, tugash, tarjima_matni), ...]
+    dvigatel: "edge" (umumiy ovoz, ovoz_nomi=edge-tts nomi) yoki
+              "elevenlabs" (klonlangan ovoz, ovoz_nomi=voice_id)
+    tezlik_moljal: 1.0=oddiy, <1.0=sekinroq, >1.0=tezroq.
+        DIQQAT: 1.0 dan farqli qiymat videoga MUKAMMAL sinxronlikni
+        biroz buzishi mumkin — tezlik ustunligi beriladi.
+    asl_audio_yol: berilsa, gapirmagan joylar ASL VIDEODAGI fon bilan
+        to'ldiriladi (mutlaq sukunat o'rniga) — ovoz TABIIYROQ chiqadi.
+        Berilmasa yoki kesib ololmasa — sukunatga tushadi (zaxira).
     """
-    import edge_tts
-
     parchalar = []          # concat ro'yxatiga kiradigan fayllar
     oxirgi_joy = 0.0         # oxirgi qo'yilgan parchaning tugash vaqti
+
+    def _bushliqni_toldir(boshlanish, davomiylik, nom):
+        """Asl fon bilan (bo'lsa) yoki sukunat bilan (zaxira) to'ldiradi.
+        Muvaffaqiyatli bo'lsa fayl yo'lini, aks holda None qaytaradi."""
+        yol = os.path.join(papka, f"{nom}.mp3")
+        if asl_audio_yol and _asl_fon_ol(asl_audio_yol, boshlanish, davomiylik, yol):
+            return yol
+        yol2 = os.path.join(papka, f"{nom}_suk.mp3")
+        if _sukunat_yarat(davomiylik, yol2):
+            return yol2
+        return None
 
     for idx, (boshi, tugash, matn) in enumerate(segmentlar_tarjima):
         if not matn.strip():
             continue
 
-        # 1) Boshlanishgacha bo'lgan bo'shliqni sukunat bilan to'ldiramiz
+        # 1) Boshlanishgacha bo'lgan bo'shliqni ASL FON bilan to'ldiramiz
+        #    (mutlaq sukunat emas — shu sabab tabiiyroq chiqadi)
         bushliq = boshi - oxirgi_joy
         if bushliq > 0.05:
-            suk_yol = os.path.join(papka, f"suk_{idx}.mp3")
-            if _sukunat_yarat(bushliq, suk_yol):
+            suk_yol = _bushliqni_toldir(oxirgi_joy, bushliq, f"fon_{idx}")
+            if suk_yol:
                 parchalar.append(suk_yol)
 
         # 2) Ushbu segment uchun ovoz yaratamiz (oddiy tezlikda)
         xom_yol = os.path.join(papka, f"seg_{idx}_xom.mp3")
         try:
-            com = edge_tts.Communicate(matn, ovoz_nomi)
-            await com.save(xom_yol)
+            if dvigatel == "elevenlabs":
+                ok, _ = await elevenlabs_ovoz_fayl(matn, ovoz_nomi, xom_yol,
+                                                    barqarorlik, jonlilik)
+                if not ok:
+                    continue
+            else:
+                import edge_tts
+                com = edge_tts.Communicate(matn, ovoz_nomi)
+                await com.save(xom_yol)
         except Exception as e:
             print(f"[dublyaj] segment {idx} ovoz xatosi: {e}")
             continue
@@ -494,7 +674,8 @@ async def segmentlardan_ovoz_yigindisi(segmentlar_tarjima, ovoz_nomi, papka, jam
             continue
 
         # 3) Uzunlikni ORIGINAL segment davomiyligiga moslaymiz
-        maqsad_davomiylik = max(0.3, tugash - boshi)
+        #    (foydalanuvchi tezlik moljali bilan birga)
+        maqsad_davomiylik = max(0.3, (tugash - boshi) / max(0.5, min(2.0, tezlik_moljal)))
         haqiqiy_davomiylik = _davomiylik_ol(xom_yol)
         yakuniy_yol = os.path.join(papka, f"seg_{idx}.mp3")
 
@@ -513,10 +694,10 @@ async def segmentlardan_ovoz_yigindisi(segmentlar_tarjima, ovoz_nomi, papka, jam
         parchalar.append(yakuniy_yol)
         oxirgi_joy = boshi + _davomiylik_ol(yakuniy_yol)
 
-    # 4) Video oxirigacha sukunat bilan to'ldiramiz
+    # 4) Video oxirigacha ASL FON bilan to'ldiramiz
     if jami_davomiylik - oxirgi_joy > 0.05:
-        suk_oxir = os.path.join(papka, "suk_oxir.mp3")
-        if _sukunat_yarat(jami_davomiylik - oxirgi_joy, suk_oxir):
+        suk_oxir = _bushliqni_toldir(oxirgi_joy, jami_davomiylik - oxirgi_joy, "fon_oxir")
+        if suk_oxir:
             parchalar.append(suk_oxir)
 
     if not parchalar:
