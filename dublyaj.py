@@ -68,10 +68,8 @@ def klon_ovoz_ol(user_id):
         return None
 
 MAX_VAQT_SONIYA = 240
-WHISPER_MODEL_OLCHAMI = "medium"   # "base" ingliz tiliga moslashgan, o'zbekcha
-                                    # kabi kam-resursli tillarni deyarli tanimaydi —
-                                    # tadqiqotlar "nomingliz tillar uchun medium/large"
-                                    # deb tavsiya qiladi. Ko'proq RAM/vaqt talab qiladi.
+WHISPER_MODEL_OLCHAMI = "medium"    # "large-v3" $22 xarajat sabab bo'ldi —
+                                     # qaytarildi. "medium" — muvozanatli o'lcham.
 
 # Til kodi -> (ko'rsatiladigan nom, ayol ovoz, erkak ovoz)
 TILLAR = {
