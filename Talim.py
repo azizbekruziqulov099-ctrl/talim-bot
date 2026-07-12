@@ -4999,18 +4999,10 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             f"<i>Har gap o'z vaqtiga moslanmoqda</i>", parse_mode="HTML")
         except Exception: pass
 
-        if jins == "klon":
-            dvigatel = "elevenlabs"
-            tanlangan_ovoz = _db_.klon_ovoz_ol(user_id)
-            if not tanlangan_ovoz:
-                try: await xabar.edit_text("❌ Klonlangan ovoz topilmadi, qaytadan klonlang.")
-                except Exception: pass
-                return
-        else:
-            dvigatel = "edge"
-            # TILLAR[kod] = (nom, ayol_ovoz, ogil_ovoz) — jinsga qarab to'g'ri indeksni olamiz
-            _til_tuple = _db_.TILLAR.get(maqsad_til, (None, None, None))
-            tanlangan_ovoz = _til_tuple[2] if jins == "ogil" else _til_tuple[1]
+        dvigatel = "edge"
+        # TILLAR[kod] = (nom, ayol_ovoz, ogil_ovoz) — jinsga qarab to'g'ri indeksni olamiz
+        _til_tuple = _db_.TILLAR.get(maqsad_til, (None, None, None))
+        tanlangan_ovoz = _til_tuple[2] if jins == "ogil" else _til_tuple[1]
 
         yangi_audio_yol, xato = await _db_.segmentlardan_ovoz_yigindisi(
             segmentlar_tarjima, tanlangan_ovoz, papka, jami_uzunlik,
@@ -5706,7 +5698,6 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
                 [InlineKeyboardButton(text="📤 Video yuklash (fayl)", callback_data="hub_video_upload")],
                 [InlineKeyboardButton(text="📝 Video matnini olish", callback_data="hub_video_matn")],
                 [InlineKeyboardButton(text="🎵 Audio matnini olish", callback_data="hub_audio_matn")],
-                [InlineKeyboardButton(text="🎙 Ovozimni klonlash", callback_data="hub_klon")],
             ])
         )
         return
@@ -8355,10 +8346,6 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
             InlineKeyboardButton(text="🚺 Ayol ovoz", callback_data="dub_ovoz:ayol"),
             InlineKeyboardButton(text="🚹 Erkak ovoz", callback_data="dub_ovoz:ogil"),
         ]]
-        klon_voice_id = _db_.klon_ovoz_ol(user_id)
-        if klon_voice_id:
-            rows.append([InlineKeyboardButton(text="🎙 Mening ovozim (klonlangan)",
-                                              callback_data="dub_ovoz:klon")])
         await call.message.answer(
             f"🎙 {_db_.til_nomi(maqsad_til)} tilida qanday ovoz bo'lsin?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -8422,7 +8409,7 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         admin_state[user_id] = "dub_excel_wait"
         temp_user[f"dub_ctx:{user_id}"] = ctx
 
-        jins_belgi = {"ayol": "🚺 Ayol", "ogil": "🚹 Erkak", "klon": "🎙 Mening ovozim"}.get(jins, jins)
+        jins_belgi = {"ayol": "🚺 Ayol", "ogil": "🚹 Erkak"}.get(jins, jins)
         tez_belgi = {0.85: "🐢 Sekin", 1.0: "🚶 Oddiy", 1.15: "🏃 Tez"}.get(tezlik_moljal, "Oddiy")
         await call.message.answer_document(
             FSInputFile(excel_yol),
