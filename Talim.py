@@ -4910,6 +4910,81 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         return
 
     if (
+        admin_state.get(user_id) == "dub_excel_wait"
+        and message.document
+    ):
+        admin_state.pop(user_id, None)
+        _db_ = _modul('dublyaj')
+        if not _db_:
+            await message.answer('⚠️ dublyaj.py yuklanmagan'); return
+
+        ctx = temp_user.get(f"dub_ctx:{user_id}")
+        if not ctx:
+            await message.answer("⚠️ Sessiya eskirgan, /video dan qaytadan boshlang")
+            return
+
+        import shutil as _sh
+        papka = ctx["papka"]; video_yol = ctx["video_yol"]
+        segmentlar = ctx["segmentlar"]; jami_uzunlik = ctx["jami_uzunlik"]
+        maqsad_til = ctx.get("maqsad_til", "en")
+
+        excel_yol = os.path.join(papka, "toldirilgan.xlsx")
+        xabar = await message.answer("⏳ 1/3 — Jadval o'qilmoqda...")
+        try:
+            await message.bot.download(message.document.file_id, destination=excel_yol)
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Fayl olinmadi: {e}")
+            except Exception: pass
+            return
+
+        segmentlar_tarjima, xato = await asyncio.to_thread(
+            _db_.excel_dan_segmentlar, excel_yol, segmentlar)
+        if not segmentlar_tarjima:
+            try: await xabar.edit_text(f"❌ Jadval o'qilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        try: await xabar.edit_text(
+            f"⏳ 2/3 — {_db_.til_nomi(maqsad_til)} ovoz yaratilmoqda...\n"
+            f"<i>Har gap o'z vaqtiga moslanmoqda</i>", parse_mode="HTML")
+        except Exception: pass
+        ayol_ovoz = _db_.TILLAR.get(maqsad_til, (None, None, None))[1]
+        yangi_audio_yol, xato = await _db_.segmentlardan_ovoz_yigindisi(
+            segmentlar_tarjima, ayol_ovoz, papka, jami_uzunlik)
+        if not yangi_audio_yol:
+            try: await xabar.edit_text(f"❌ Ovoz yaratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        try: await xabar.edit_text("⏳ 3/3 — Videoga ulanmoqda...")
+        except Exception: pass
+        yakuniy_yol = os.path.join(papka, "yakuniy.mp4")
+        ok, xato = await asyncio.to_thread(
+            _db_.videoga_ulash, video_yol, yangi_audio_yol, yakuniy_yol)
+        if not ok:
+            try: await xabar.edit_text(f"❌ Videoga ulanmadi:\n<code>{xato}</code>", parse_mode="HTML")
+            except Exception: pass
+            return
+
+        tarjima_matn_toliq = " ".join(s[2] for s in segmentlar_tarjima)
+        try:
+            await message.answer_video(
+                FSInputFile(yakuniy_yol),
+                caption=f"🌐 {_db_.til_nomi(maqsad_til)} tilida dublyaj qilindi\n"
+                       f"⏱ Har gap o'z vaqtida — sizning tarjimangiz\n\n"
+                       f"📝 {tarjima_matn_toliq[:200]}")
+            try: await xabar.delete()
+            except Exception: pass
+        except Exception as e:
+            try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
+            except Exception: pass
+        finally:
+            _sh.rmtree(papka, ignore_errors=True)
+            temp_user.pop(f"dub_ctx:{user_id}", None)
+            temp_user.pop(f"vid_link:{user_id}", None)
+        return
+
+    if (
         admin_state.get(user_id) == "dts_import"
         and message.document
     ):
@@ -8127,58 +8202,31 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         try: await call.message.edit_reply_markup(reply_markup=None)
         except Exception: pass
 
-        papka = ctx["papka"]; video_yol = ctx["video_yol"]
-        segmentlar = ctx["segmentlar"]; jami_uzunlik = ctx["jami_uzunlik"]
-        manba_til = ctx.get("manba_til", "uz")
+        papka = ctx["papka"]; segmentlar = ctx["segmentlar"]
 
-        xabar = await call.message.answer(
-            f"⏳ 1/3 — {_db_.til_nomi(maqsad_til)} tiliga tarjima qilinmoqda...\n"
-            f"<i>({len(segmentlar)} ta gap)</i>", parse_mode="HTML")
-        segmentlar_tarjima, xato = await asyncio.to_thread(
-            _db_.google_tarjima_qil_segmentlar, segmentlar, manba_til, maqsad_til)
-        if not segmentlar_tarjima:
-            try: await xabar.edit_text(f"❌ Tarjima qilinmadi:\n<code>{xato}</code>", parse_mode="HTML")
-            except Exception: pass
-            return
-
-        try: await xabar.edit_text(
-            f"⏳ 2/3 — {_db_.til_nomi(maqsad_til)} ovoz yaratilmoqda...\n"
-            f"<i>Har gap o'z vaqtiga moslanmoqda</i>", parse_mode="HTML")
-        except Exception: pass
-        ayol_ovoz = _db_.TILLAR.get(maqsad_til, (None, None, None))[1]
-        yangi_audio_yol, xato = await _db_.segmentlardan_ovoz_yigindisi(
-            segmentlar_tarjima, ayol_ovoz, papka, jami_uzunlik)
-        if not yangi_audio_yol:
-            try: await xabar.edit_text(f"❌ Ovoz yaratilmadi:\n<code>{xato}</code>", parse_mode="HTML")
-            except Exception: pass
-            return
-
-        try: await xabar.edit_text("⏳ 3/3 — Videoga ulanmoqda...")
-        except Exception: pass
-        yakuniy_yol = os.path.join(papka, "yakuniy.mp4")
-        ok, xato = await asyncio.to_thread(_db_.videoga_ulash, video_yol, yangi_audio_yol, yakuniy_yol)
+        excel_yol = os.path.join(papka, "tarjima.xlsx")
+        ok, xato = await asyncio.to_thread(_db_.segmentlar_excelga, segmentlar, excel_yol)
         if not ok:
-            try: await xabar.edit_text(f"❌ Videoga ulanmadi:\n<code>{xato}</code>", parse_mode="HTML")
-            except Exception: pass
+            await call.message.answer(f"❌ Jadval yaratilmadi:\n{xato}")
             return
 
-        tarjima_matn_toliq = " ".join(s[2] for s in segmentlar_tarjima)
-        try:
-            await call.message.answer_video(
-                FSInputFile(yakuniy_yol),
-                caption=f"🌐 {_db_.til_nomi(maqsad_til)} tilida dublyaj qilindi\n"
-                       f"⏱ Har gap o'z vaqtida\n\n"
-                       f"📝 {tarjima_matn_toliq[:200]}")
-            try: await xabar.delete()
-            except Exception: pass
-        except Exception as e:
-            try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
-            except Exception: pass
-        finally:
-            import shutil as _sh; _sh.rmtree(papka, ignore_errors=True)
-            temp_user.pop(f"dub_ctx:{user_id}", None)
-            temp_user.pop(f"vid_link:{user_id}", None)
+        ctx["maqsad_til"] = maqsad_til
+        admin_state[user_id] = "dub_excel_wait"
+        temp_user[f"dub_ctx:{user_id}"] = ctx
+
+        await call.message.answer_document(
+            FSInputFile(excel_yol),
+            caption=(
+                f"📊 <b>Jadval tayyor — {len(segmentlar)} ta gap</b>\n\n"
+                f"Oxirgi ustunga ({_db_.til_nomi(maqsad_til)} tiliga) "
+                f"tarjimangizni yozing.\n\n"
+                f"Tayyor bo'lgach — shu faylni menga qaytarib yuboring."
+            ),
+            parse_mode="HTML")
         return
+
+    # ═══ Dublyaj: to'ldirilgan Excel qabul qilinishi — pastda,
+    # message.document handleri ichida (bu yerda emas) ═══
 
     if call.data in ("vidq_video", "vidq_audio"):
         if not _is_admin(user_id):
