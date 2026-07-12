@@ -8145,32 +8145,27 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
         await call.answer()
         try: await call.message.edit_reply_markup(reply_markup=None)
         except Exception: pass
+        await _skan_natija_chiqar(call.message, user_id, ctx_, kesish_kengaytma=0.0)
+        return
 
-        _hj = _modul('hujjat')
-        if not _hj:
-            await call.message.answer('⚠️ hujjat.py yuklanmagan'); return
+    if call.data.startswith("skan_sozla:"):
+        if not _is_admin_or_teacher(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        ctx_ = temp_user.get(f"skan_ctx:{user_id}")
+        if not ctx_ or not ctx_["rasmlar"]:
+            await call.answer("⚠️ Sessiya eskirgan", show_alert=True); return
+        await call.answer()
+        kesish_kengaytma = float(call.data.split(":")[1])
+        await _skan_natija_chiqar(call.message, user_id, ctx_, kesish_kengaytma)
+        return
 
-        xabar = await call.message.answer(
-            f"⏳ {len(ctx_['rasmlar'])} ta sahifa skanerlanmoqda...")
-        chiqish_yol = os.path.join(ctx_["papka"], "skan_hujjat.pdf")
-        ok, xato = await asyncio.to_thread(_hj.rasmlardan_skan_pdf, ctx_["rasmlar"], chiqish_yol)
-
-        if not ok:
-            try: await xabar.edit_text(f"❌ Skanerlashda xato:\n<code>{xato}</code>", parse_mode="HTML")
-            except Exception: pass
-        else:
-            try:
-                await call.message.answer_document(
-                    FSInputFile(chiqish_yol),
-                    caption=f"🖨 Skanerlandi — {len(ctx_['rasmlar'])} sahifa")
-                try: await xabar.delete()
-                except Exception: pass
-            except Exception as e:
-                try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
-                except Exception: pass
-
-        import shutil as _sh; _sh.rmtree(ctx_["papka"], ignore_errors=True)
-        temp_user.pop(f"skan_ctx:{user_id}", None)
+    if call.data == "skan_yakunla":
+        await call.answer("✅ Yakunlandi")
+        ctx_ = temp_user.pop(f"skan_ctx:{user_id}", None)
+        if ctx_:
+            import shutil as _sh; _sh.rmtree(ctx_["papka"], ignore_errors=True)
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
         return
 
     if call.data == "hub_video_link":
@@ -10230,6 +10225,50 @@ async def _javob(source, matn, kb=None):
             await source.answer(matn, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         print(f"[ota_ekran] {e}")
+
+
+async def _skan_natija_chiqar(message, user_id, ctx_, kesish_kengaytma=0.0):
+    """Skanerlash natijasini (berilgan kesish kengaytmasi bilan) yaratib,
+    sozlash tugmalari bilan yuboradi. Xotira/papka tozalanmaydi — foydalanuvchi
+    ✅ Yakunlash bosgunicha qayta sozlash mumkin."""
+    _hj = _modul('hujjat')
+    if not _hj:
+        await message.answer('⚠️ hujjat.py yuklanmagan'); return
+
+    xabar = await message.answer(
+        f"⏳ {len(ctx_['rasmlar'])} ta sahifa skanerlanmoqda...")
+    chiqish_yol = os.path.join(ctx_["papka"], "skan_hujjat.pdf")
+    ok, xato = await asyncio.to_thread(
+        _hj.rasmlardan_skan_pdf, ctx_["rasmlar"], chiqish_yol,
+        kesish_kengaytma=kesish_kengaytma)
+
+    if not ok:
+        try: await xabar.edit_text(f"❌ Skanerlashda xato:\n<code>{xato}</code>", parse_mode="HTML")
+        except Exception: pass
+        return
+
+    kengaytma_matn = (f" ({kesish_kengaytma:+.0%})" if kesish_kengaytma else "")
+    try:
+        await message.answer_document(
+            FSInputFile(chiqish_yol),
+            caption=f"🖨 Skanerlandi — {len(ctx_['rasmlar'])} sahifa{kengaytma_matn}")
+        try: await xabar.delete()
+        except Exception: pass
+    except Exception as e:
+        try: await xabar.edit_text(f"❌ Yuborishda xato: {e}")
+        except Exception: pass
+        return
+
+    yangi_keng = round(min(0.3, kesish_kengaytma + 0.08), 2)
+    yangi_tor = round(max(-0.3, kesish_kengaytma - 0.08), 2)
+    await message.answer(
+        "Ramka to'g'ri chiqdimi? Kerak bo'lsa sozlang:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔍 Kengroq kesish", callback_data=f"skan_sozla:{yangi_keng}"),
+            InlineKeyboardButton(text="🔎 Torroq kesish", callback_data=f"skan_sozla:{yangi_tor}"),
+        ], [
+            InlineKeyboardButton(text="✅ Yaxshi, tugatish", callback_data="skan_yakunla"),
+        ]]))
 
 
 async def _nz_vaqt_sorash(call):
