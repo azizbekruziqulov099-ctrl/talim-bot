@@ -4681,6 +4681,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
         rows2 += [
             [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
             [InlineKeyboardButton(text="📱 Akkauntlar / ko'chirish", callback_data="ak_menu")],
+            [InlineKeyboardButton(text="🔗 Saytga ulanish kodi", callback_data="kb_veb_kod")],
         ]
         try:
             import akkaunt as _ak0
