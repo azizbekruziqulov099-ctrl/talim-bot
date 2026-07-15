@@ -253,6 +253,28 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer("✏️ Yangi ismingizni yozing:")
         return True
 
+    if call.data == "kb_veb_kod":
+        await call.answer()
+        import random, string
+        kod = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        try:
+            conn3 = _get_db_conn(); cur3 = conn3.cursor()
+            cur3.execute("""CREATE TABLE IF NOT EXISTS veb_ulash_kod(
+                kod TEXT PRIMARY KEY, user_id BIGINT REFERENCES users(user_id),
+                yaratildi TIMESTAMP DEFAULT NOW(), ishlatildi BOOLEAN DEFAULT FALSE)""")
+            cur3.execute("INSERT INTO veb_ulash_kod(kod, user_id) VALUES(%s,%s)", (kod, user_id))
+            conn3.commit(); cur3.close(); conn3.close()
+        except Exception as e:
+            await call.message.answer(f"❌ Xato: {e}")
+            return True
+        await call.message.answer(
+            f"🔗 <b>Saytga ulanish kodi</b>\n\n"
+            f"<code>{kod}</code>\n\n"
+            f"Saytda shu kodni kiriting — hisobingiz ulanadi.\n"
+            f"⏱ Kod <b>15 daqiqa</b> amal qiladi, faqat <b>bir marta</b> ishlatiladi.",
+            parse_mode="HTML")
+        return True
+
     if call.data == "kb_change_role" or call.data.startswith("kb_set_role:"):
         await call.answer()
         await _rol_ogohlantirish(call, tg_id)
