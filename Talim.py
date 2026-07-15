@@ -4090,6 +4090,64 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             await message.answer(f"✅ {labels.get(field,field)} yangilandi: {val}")
         return
 
+    if user_state.get(user_id) == "sayt_ulash_kod_kutilmoqda" and message.text:
+        user_state.pop(user_id, None)
+        kod = message.text.strip().upper()
+
+        conn9 = _get_db_conn(); cur9 = conn9.cursor()
+        try:
+            cur9.execute("""CREATE TABLE IF NOT EXISTS sayt_ulash_kod(
+                kod TEXT PRIMARY KEY, web_user_id BIGINT REFERENCES users(user_id),
+                yaratildi TIMESTAMP DEFAULT NOW(), ishlatildi BOOLEAN DEFAULT FALSE)""")
+            cur9.execute("""
+                SELECT web_user_id, ishlatildi,
+                       (yaratildi > NOW() - INTERVAL '15 minutes') AS hali_yangi
+                FROM sayt_ulash_kod WHERE kod=%s
+            """, (kod,))
+            row9 = cur9.fetchone()
+
+            if not row9:
+                await message.answer("❌ Kod topilmadi. Saytda qaytadan kod oling.")
+                cur9.close(); conn9.close(); return
+            web_id, ishlatildi9, hali_yangi9 = row9
+            if ishlatildi9:
+                await message.answer("❌ Bu kod allaqachon ishlatilgan.")
+                cur9.close(); conn9.close(); return
+            if not hali_yangi9:
+                await message.answer("❌ Kod muddati tugagan (15 daqiqa). Saytda qaytadan kod oling.")
+                cur9.close(); conn9.close(); return
+            if web_id == user_id:
+                await message.answer("ℹ️ Bu — sizning o'zingizning kodingiz.")
+                cur9.close(); conn9.close(); return
+
+            # ── Ma'lumotni web_id dan HAQIQIY Telegram user_id ga ko'chiramiz ──
+            # learned_topics: eski yozuv bo'lsa TO'QNASHMASLIGI uchun avval
+            # mavjud (user_id, topic_code) juftlarini o'chiramiz, keyin ko'chiramiz
+            cur9.execute("""
+                DELETE FROM learned_topics WHERE user_id=%s AND topic_code IN
+                    (SELECT topic_code FROM learned_topics WHERE user_id=%s)
+            """, (user_id, web_id))
+            cur9.execute("UPDATE learned_topics SET user_id=%s WHERE user_id=%s", (user_id, web_id))
+            cur9.execute("UPDATE google_hisob SET user_id=%s WHERE user_id=%s", (user_id, web_id))
+            cur9.execute("UPDATE parent_child SET parent_id=%s WHERE parent_id=%s", (user_id, web_id))
+            cur9.execute("UPDATE parent_child SET child_id=%s WHERE child_id=%s", (user_id, web_id))
+            cur9.execute("UPDATE sayt_ulash_kod SET ishlatildi=TRUE WHERE kod=%s", (kod,))
+            # ESKI (vaqtinchalik, veb) hisobni o'chirmaymiz — faqat "egasiz" qoldiramiz.
+            # Sabab: uni o'chirishga urinish sayt_ulash_kod jadvali bilan FOREIGN KEY
+            # to'qnashuviga olib keladi. Ma'lumoti allaqachon ko'chgani uchun bu
+            # qator endi hech kimga ko'rinmaydi, zararsiz "arvoh" yozuv bo'lib qoladi.
+            conn9.commit()
+            await message.answer(
+                "✅ <b>Muvaffaqiyatli ulandi!</b>\n\n"
+                "Saytdagi barcha ma'lumotingiz shu bot hisobingizga ko'chirildi.",
+                parse_mode="HTML")
+        except Exception as e:
+            conn9.rollback()
+            await message.answer(f"❌ Xato: {e}")
+        finally:
+            cur9.close(); conn9.close()
+        return
+
     if user_state.get(user_id) == "parent_link_id" and message.text:
         user_state.pop(user_id, None)
         _oo = _modul('ota_ona')
@@ -4682,6 +4740,7 @@ async def _handle_all_inner(message: Message, state: FSMContext, user_id: int):
             [InlineKeyboardButton(text=f"🔄 Akkaunt almashtirish ({acc_count})",callback_data="kb_switch_acc")],
             [InlineKeyboardButton(text="📱 Akkauntlar / ko'chirish", callback_data="ak_menu")],
             [InlineKeyboardButton(text="🔗 Saytga ulanish kodi", callback_data="kb_veb_kod")],
+            [InlineKeyboardButton(text="🌐 Saytdan ulash", callback_data="kb_sayt_ulash")],
         ]
         try:
             import akkaunt as _ak0
