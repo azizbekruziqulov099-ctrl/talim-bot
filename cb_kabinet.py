@@ -275,6 +275,16 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
             parse_mode="HTML")
         return True
 
+    if call.data == "kb_sayt_ulash":
+        await call.answer()
+        user_state[user_id] = "sayt_ulash_kod_kutilmoqda"
+        await call.message.answer(
+            "🌐 <b>Saytdan ulash</b>\n\n"
+            "Agar saytda \"Botga ulash\" tugmasini bosgan bo'lsangiz, "
+            "u yerda ko'rsatilgan kodni shu yerga yozing:",
+            parse_mode="HTML")
+        return True
+
     if call.data == "kb_change_role" or call.data.startswith("kb_set_role:"):
         await call.answer()
         await _rol_ogohlantirish(call, tg_id)
