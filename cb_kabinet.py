@@ -253,36 +253,14 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         await call.message.answer("✏️ Yangi ismingizni yozing:")
         return True
 
-    if call.data == "kb_veb_kod":
+    if call.data in ("kb_veb_kod", "kb_sayt_ulash"):
+        # Only link identity from an authenticated website session; never move records.
         await call.answer()
-        import random, string
-        kod = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        try:
-            conn3 = _get_db_conn(); cur3 = conn3.cursor()
-            cur3.execute("""CREATE TABLE IF NOT EXISTS veb_ulash_kod(
-                kod TEXT PRIMARY KEY, user_id BIGINT REFERENCES users(user_id),
-                yaratildi TIMESTAMP DEFAULT NOW(), ishlatildi BOOLEAN DEFAULT FALSE)""")
-            cur3.execute("INSERT INTO veb_ulash_kod(kod, user_id) VALUES(%s,%s)", (kod, user_id))
-            conn3.commit(); cur3.close(); conn3.close()
-        except Exception as e:
-            await call.message.answer(f"❌ Xato: {e}")
-            return True
+        user_state.pop(user_id, None)
         await call.message.answer(
-            f"🔗 <b>Saytga ulanish kodi</b>\n\n"
-            f"<code>{kod}</code>\n\n"
-            f"Saytda shu kodni kiriting — hisobingiz ulanadi.\n"
-            f"⏱ Kod <b>15 daqiqa</b> amal qiladi, faqat <b>bir marta</b> ishlatiladi.",
-            parse_mode="HTML")
-        return True
-
-    if call.data == "kb_sayt_ulash":
-        await call.answer()
-        user_state[user_id] = "sayt_ulash_kod_kutilmoqda"
-        await call.message.answer(
-            "🌐 <b>Saytdan ulash</b>\n\n"
-            "Agar saytda \"Botga ulash\" tugmasini bosgan bo'lsangiz, "
-            "u yerda ko'rsatilgan kodni shu yerga yozing:",
-            parse_mode="HTML")
+            "Kabutar saytini ochib «Telegram orqali kirish»ni bosing. "
+            "Mavjud Google hisobingizga Telegram ulash uchun avval o'sha "
+            "hisobga kirib, profilidan ulang. Eski ko'chirish kodi o'chirilgan.")
         return True
 
     if call.data == "kb_change_role" or call.data.startswith("kb_set_role:"):
