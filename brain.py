@@ -5,6 +5,7 @@ brain.py — O'z-o'zini o'qituvchi ta'lim yordamchisi
 3. Keyingi safar DB dan javob beradi (mustaqil)
 """
 import re, os, psycopg2, asyncio, aiohttp, json
+from paid_ai_policy import paid_ai_enabled
 from difflib import SequenceMatcher
 
 DATABASE_URL = os.getenv("DATABASE_URL","")
@@ -140,7 +141,7 @@ Savol: {question}"""
         except: pass
 
     # GPT zaxira
-    if OPENAI_KEY and not answer:
+    if paid_ai_enabled() and OPENAI_KEY and not answer:
         try:
             async with aiohttp.ClientSession() as s:
                 async with s.post("https://api.openai.com/v1/chat/completions",
@@ -275,7 +276,7 @@ async def process_message(text: str, user_id: int,
         return result
 
     # DB da yo'q → Gemini/GPT
-    if GEMINI_KEY or OPENAI_KEY:
+    if GEMINI_KEY or (paid_ai_enabled() and OPENAI_KEY):
         ai_ans = await ask_ai_and_save(text, lang, yosh)
         if ai_ans:
             result["message"] = f"🤖 {ai_ans}\n\n_(Bu javob saqlanadi — keyingi safar tezroq javob beraman)_"

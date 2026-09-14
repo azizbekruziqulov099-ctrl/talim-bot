@@ -5,13 +5,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from openai import AsyncOpenAI
+from openai_client import async_client as client
+from paid_ai_policy import paid_ai_enabled
 import edge_tts
 from pydub import AudioSegment
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 # ─────────────────────────────────────────
@@ -83,6 +82,9 @@ async def latex_to_uzbek(latex_text: str) -> str:
     """
 
     formula = re.sub(r'\[/?latex\]', '', latex_text).strip()
+
+    if not paid_ai_enabled():
+        return latex_simple_read(formula)
 
     prompt = f"""Siz matematik formula o'qituvchisisiz.
 Quyidagi LaTeX formulasini o'zbek tilida oddiy, tushunarli so'zlar bilan o'qing.

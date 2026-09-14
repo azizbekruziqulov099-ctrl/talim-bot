@@ -3,6 +3,7 @@ auto_trainer.py — Avtomatik o'rganish tizimi
 Gemini + GPT → DB → Mustaqil ekspert bot
 """
 import os, asyncio, psycopg2, json, re, aiohttp
+from paid_ai_policy import paid_ai_enabled
 from datetime import datetime
 
 DATABASE_URL = os.getenv("DATABASE_URL","")
@@ -73,7 +74,7 @@ async def ask_gemini(prompt: str) -> str:
     return ""
 
 async def ask_gpt(prompt: str) -> str:
-    if not OPENAI_KEY: return ""
+    if not paid_ai_enabled() or not OPENAI_KEY: return ""
     try:
         url = "https://api.openai.com/v1/chat/completions"
         headers = {"Authorization":f"Bearer {OPENAI_KEY}","Content-Type":"application/json"}

@@ -1,0 +1,103 @@
+{
+  "release": "REV52",
+  "component": "BOT",
+  "baseline_archive": "talim-bot-main (2).zip",
+  "files": [
+    {
+      "path": "AI_XARAJAT_SOZLAMASI_REV52.md",
+      "sha256": "d056648018a063ac3c8f48b81ed51aeae6b3f2853ea1e0f10b59fd73e41f743c",
+      "bytes": 1648,
+      "previous_sha256": null
+    },
+    {
+      "path": "KABUTAR_BOT_KIRISH_SOZLAMALARI.md",
+      "sha256": "f51f979116818c6c4b7aff48389d4ba08c7341620ae932ecf381e9bdc0077845",
+      "bytes": 5541,
+      "previous_sha256": "47f0a005de282106650aee8a7c156b2ed06ef177dba0c3a1cc8a20c8fa0a29ad"
+    },
+    {
+      "path": "Talim.py",
+      "sha256": "20bbe9c7209a74f520012f264d6e5898b5dced87d3fd009437ae9fa8c237e151",
+      "bytes": 448782,
+      "previous_sha256": "1026cc9aeb7d50c52d48b8cfa95d43080cb8d7e8f2db302f9c5adf8ff34818d7"
+    },
+    {
+      "path": "ai_generatori.py",
+      "sha256": "d2e6dcb2fcb38fe7be4baf084101d7bd9fb5fc1e91e56dc6eed3e3af724f1424",
+      "bytes": 35895,
+      "previous_sha256": "72f2bae5c6e579b67f4b86b93eb40bb6b87d0863f910c985c10c84c0c66c2112"
+    },
+    {
+      "path": "auto_trainer.py",
+      "sha256": "39f9e9056c9d9752f1cb5ef229d23d3999ddec17c3955ca75895d38e6e5f42bb",
+      "bytes": 9274,
+      "previous_sha256": "0c4168de9ba0eb9284ce2226ff26fa1438ad788ea2bbf09386d4a79cad4e14e3"
+    },
+    {
+      "path": "brain.py",
+      "sha256": "90deeaaa376426b7c1d6a804e278ebd4d8a780d977529068137c3612c717e801",
+      "bytes": 17488,
+      "previous_sha256": "ff675acf0840a3a5cca9da6fe7d6f62e9cf7f7607452346033bf147c2986cf33"
+    },
+    {
+      "path": "cb_test_nav.py",
+      "sha256": "b0c015a372753d2048146cc5c9d59990c88059f851d2328b892ceca8e16736c1",
+      "bytes": 27937,
+      "previous_sha256": "81eeea81c409717d96d57328cbdbf772d17520b6c65cb49d2df28561474d3cec"
+    },
+    {
+      "path": "kabutar_web_auth.py",
+      "sha256": "0700c892cdb2ae0ab37221ef64c4c82831dd527740824bffda1747987d67c69c",
+      "bytes": 24616,
+      "previous_sha256": "d3fa90a19c6dafa0ca1b690bfe45b279aa540ad90e3fadcdc1c05512c6bfd47e"
+    },
+    {
+      "path": "latex_utils.py",
+      "sha256": "b6ba63904f7b24bb291fd37ca96651fb9c2e528c3f00986e942b0064a9e4d76b",
+      "bytes": 9912,
+      "previous_sha256": "147a41abd9750997167d696f510f94299e9e9d3033520e7b113841bbaab07764"
+    },
+    {
+      "path": "openai_client.py",
+      "sha256": "810d350914ff6164ec02ae6fcc285443bc6afaa89aae5fa084ae01eaeb42f22c",
+      "bytes": 1632,
+      "previous_sha256": "723dc79f8d3238f8550670669dddc91781a5908a03803cfac1b64c8e4557c6bf"
+    },
+    {
+      "path": "paid_ai_policy.py",
+      "sha256": "f1b319ba59673c8ae1570a5fdf31731b1b2ae9dba5d57791f6268f586e15a5df",
+      "bytes": 696,
+      "previous_sha256": null
+    },
+    {
+      "path": "pedagog_trainer.py",
+      "sha256": "1b4a61ce083062f8b0710721184c5512a02bfcaeb9b62fdad8b1f1e593b7d625",
+      "bytes": 16577,
+      "previous_sha256": "7145a9e47e1d3685823f569c0e05adf98e073ed583723baa9de93de25f5d5253"
+    },
+    {
+      "path": "rasim_generator.py",
+      "sha256": "b99e638d49c51256b42ec4275c1d5ee39bd3130ae3c191d0491e80a5994756c8",
+      "bytes": 16485,
+      "previous_sha256": "05b72cc76b00be28d0b221fa0f953c8780305939f32c6820169ff3ba1aa57ffb"
+    },
+    {
+      "path": "test_generator.py",
+      "sha256": "c7ffe9a1aebe554caa3fecd44f02e1d313cfcee35265767627f4a0bf1ebc72c6",
+      "bytes": 7465,
+      "previous_sha256": "2db8595dafbe7c5eb39c683e24d9d7ffb400b204c538fe3f0eeb02351c4c25fd"
+    },
+    {
+      "path": "tests/test_kabutar_web_auth.py",
+      "sha256": "eabc598ffd0e67702516d17ddd945798a7c89330cd9bd90a13626c8ffb4f0f23",
+      "bytes": 18172,
+      "previous_sha256": "d568c31236d81b0d00340aa0d368ee15af84ff9a2cf3d9924d562df76a9c01f0"
+    },
+    {
+      "path": "tests/test_paid_ai_policy.py",
+      "sha256": "1e7b863f39e7b38f4926be51ef123479f11b8b0c6d9f9b86d018623a61b8cb6a",
+      "bytes": 14135,
+      "previous_sha256": null
+    }
+  ]
+}

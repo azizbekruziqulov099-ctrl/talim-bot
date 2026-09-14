@@ -3,6 +3,7 @@ pedagog_trainer.py — Ko'p AI dan o'rganib bilim bazasi to'ldirish
 Gemini, GPT, Claude — kimidan yaxshi kelsa shu saqlanadi
 """
 import os, re, asyncio, psycopg2, json, hashlib
+from paid_ai_policy import paid_ai_enabled
 from typing import Optional
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -80,7 +81,7 @@ async def ask_gemini(prompt: str) -> Optional[str]:
 
 async def ask_gpt(prompt: str) -> Optional[str]:
     """OpenAI GPT dan javob olish."""
-    if not OPENAI_KEY: return None
+    if not paid_ai_enabled() or not OPENAI_KEY: return None
     try:
         import aiohttp
         url  = "https://api.openai.com/v1/chat/completions"

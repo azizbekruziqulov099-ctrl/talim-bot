@@ -67,14 +67,24 @@ def callback_parts(data):
 
 
 def safe_origin(value, allow_internal=False):
-    parts = urlsplit(str(value or ""))
-    host = parts.hostname or ""
+    parts = urlsplit(str(value or "").strip())
+    host = (parts.hostname or "").lower()
+    port = parts.port  # Reject invalid ports while checking configuration.
     internal = allow_internal and (host.endswith(".railway.internal") or host in ("localhost", "127.0.0.1"))
-    if (parts.scheme != "https" and not (parts.scheme == "http" and internal)) or not host:
+    if (parts.scheme != "https" and not (parts.scheme == "http" and internal)) or not host or re.search(r"[\s*]", host):
         raise ValueError("Kabutar URL HTTPS bo'lishi kerak")
     if parts.username or parts.password or parts.query or parts.fragment or parts.path not in ("", "/"):
         raise ValueError("Kabutar URL faqat origin bo'lishi kerak")
-    return f"{parts.scheme}://{parts.netloc}"
+    authority = f"[{host}]" if ":" in host else host
+    if port is not None and port != (443 if parts.scheme == "https" else 80):
+        authority += f":{port}"
+    return f"{parts.scheme}://{authority}"
+
+
+def is_site_command(message):
+    """Only a standalone command; lesson messages and normal /start stay intact."""
+    return bool(re.fullmatch(r"/(?:sayt|kabutar)(?:@[A-Za-z0-9_]+)?\s*",
+                             str(getattr(message, "text", "") or "")))
 
 
 @dataclass(frozen=True)
@@ -83,6 +93,7 @@ class Settings:
     secret: str
     database: str
     site: str
+    site_urls: str = ""
 
     @classmethod
     def environment(cls):
@@ -91,12 +102,40 @@ class Settings:
             secret=os.getenv("KABUTAR_BOT_AUTH_SECRET", "").strip(),
             database=os.getenv("DATABASE_URL", "").strip(),
             site=os.getenv("KABUTAR_SITE_URL", "https://talimkabutar.uz").strip(),
+            site_urls=os.getenv("KABUTAR_SITE_URLS", "").strip(),
         )
 
+    def allowed_sites(self):
+        origins = {safe_origin(self.site)}
+        if self.site_urls:
+            # Explicit origins only: no suffix matching, wildcard or URLs learned
+            # from a backend response. Empty entries are configuration mistakes.
+            origins.update(safe_origin(value) for value in self.site_urls.split(","))
+        return origins
+
+    def validation_errors(self):
+        """Safe field names for deployment logs; never return configuration values."""
+        errors = []
+        for name, value, internal in (("KABUTAR_AUTH_API_URL", self.api, True),
+                                      ("KABUTAR_SITE_URL", self.site, False)):
+            try:
+                safe_origin(value, allow_internal=internal)
+            except (ValueError, UnicodeError):
+                errors.append(name)
+        if self.site_urls:
+            try:
+                for value in self.site_urls.split(","):
+                    safe_origin(value)
+            except (ValueError, UnicodeError):
+                errors.append("KABUTAR_SITE_URLS")
+        if len(self.secret) < 32:
+            errors.append("KABUTAR_BOT_AUTH_SECRET")
+        if not self.database:
+            errors.append("DATABASE_URL")
+        return errors
+
     def validate(self):
-        safe_origin(self.api, allow_internal=True)
-        safe_origin(self.site)
-        if len(self.secret) < 32 or not self.database:
+        if self.validation_errors():
             raise ValueError("Kabutar kirishining server sozlamalari yetishmayapti")
 
 
@@ -108,7 +147,7 @@ class AuthError(Exception):
 
 ERROR_TEXT = {
     400: "Kirish so'rovi yaroqsiz. Saytdan yangi kirish so'rovi oching.",
-    401: "Kirish xizmati sozlamasi tekshirilishi kerak. Hozircha Google orqali kiring.",
+    401: "Bot va saytning kirish sozlamalari mos emas. Administrator tekshirishi kerak. Saytda boshqa mavjud kirish usulini tanlashingiz mumkin.",
     403: "Bu so'rovni tasdiqlab bo'lmaydi. Saytda yangidan kirishni boshlang.",
     404: "Kirish so'rovi topilmadi. Saytdan yangi so'rov oching.",
     409: "Hisoblar o'rtasida mos kelmaslik bor. Hech qanday hisob ko'chirilmadi. Avval eski hisobingizga kirib Telegramni profilidan ulang.",
@@ -166,6 +205,9 @@ class PendingStore:
             conn = self._connect()
             try:
                 with conn, conn.cursor() as cur:
+                    # A Python lock only guards this process. Two newly deployed
+                    # replicas must not create the PostgreSQL type/table together.
+                    cur.execute("SELECT pg_advisory_xact_lock(%s)", (31093110,))
                     cur.execute("""CREATE TABLE IF NOT EXISTS kabutar_bot_login_state (
                         telegram_id BIGINT PRIMARY KEY,
                         challenge VARCHAR(32) NOT NULL,
@@ -243,11 +285,11 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
     settings = settings or Settings.environment()
     store = store or PendingStore(settings.database)
     client = client or BackendClient(settings)
-    try:
-        settings.validate()
-        configured = True
-    except ValueError:
-        configured = False
+    configuration_errors = settings.validation_errors()
+    configured = not configuration_errors
+    if configuration_errors:
+        LOGGER.warning("Kabutar web login configuration needs checking: %s",
+                       ", ".join(configuration_errors))
 
     def contact_keyboard():
         return ReplyKeyboardMarkup(keyboard=[
@@ -261,8 +303,21 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         except ValueError:
             site = "https://talimkabutar.uz"
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🌐 Kabutarni ochish", url=site)
+            InlineKeyboardButton(text="🌐 Telegram orqali saytga kirish", url=site + "/#telegram")
         ]])
+
+    async def open_site(message):
+        if not private_sender(message):
+            await message.answer("Saytga kirish uchun botning shaxsiy chatida /sayt buyrug'ini yuboring.")
+            return
+        await message.answer(
+            "Kabutar saytiga kirish\n\n"
+            "1. Pastdagi tugma bilan saytni oching.\n"
+            "2. Saytda «Telegram orqali kirish»ni bosing.\n"
+            "3. Botda raqamingizni ulashing va kirishni tasdiqlang.\n"
+            "4. Kirishni boshlagan o'sha brauzer oynasiga qayting.\n\n"
+            "Muassasaga qo'shilish uchun administrator bergan parol sayt ichida kiritiladi.",
+            reply_markup=website_keyboard())
 
     async def fail(message, exc):
         status = exc.status if isinstance(exc, AuthError) else 503
@@ -279,6 +334,12 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         if not challenge:
             await message.answer("Kirish havolasi yaroqsiz. Kabutar saytida «Telegram orqali kirish»ni qayta bosing.")
             return
+        if not configured:
+            await message.answer(
+                "Bot orqali saytga kirish hali to'liq sozlanmagan. Administrator bot va backenddagi "
+                "kirish sozlamalarini tekshirishi kerak. Saytda boshqa mavjud kirish usulidan foydalaning.",
+                reply_markup=website_keyboard())
+            return
         try:
             data = await client.post("inspect", {"challenge": challenge})
             if data.get("status") == "confirmed":
@@ -288,14 +349,14 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             ttl = max(0, min(300, int(data.get("expires_in", 0))))
             if data.get("status") != "pending" or not re.fullmatch(r"\d{6}", code) or ttl <= 0:
                 raise AuthError(410)
-            if safe_origin(data.get("site")) != safe_origin(settings.site):
+            if safe_origin(data.get("site")) not in settings.allowed_sites():
                 raise AuthError(403)
             mode = "link" if data.get("mode") == "link" else "login"
             await store.run("put", message.from_user.id, challenge=challenge,
                             verification_code=code, ttl=ttl, mode=mode)
             title = "Telegramni mavjud Kabutar hisobingizga ulash" if mode == "link" else "Kabutar saytiga kirish"
             await message.answer(
-                f"{title}\n\nSayt: {safe_origin(settings.site)}\nTekshiruv belgisi: {code}\n\n"
+                f"{title}\n\nSayt: {safe_origin(data['site'])}\nTekshiruv belgisi: {code}\n\n"
                 "Shu olti raqam siz O'ZINGIZ ochgan Kabutar kirish oynasida ham bir xil bo'lishi kerak. "
                 "Birov yuborgan havola, rasm yoki kod orqali tasdiqlamang.\n\n"
                 "Belgilar mos bo'lsa, pastdagi tugma bilan o'z raqamingizni ulashing. "
@@ -420,14 +481,23 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             LOGGER.warning("Kabutar pending login could not be cleared; it expires automatically")
 
     async def old_link(call):
+        if (not call.message or not is_private(call.message.chat)
+                or call.message.chat.id != call.from_user.id or call.from_user.is_bot):
+            await call.answer("Kirishni botning shaxsiy chatida boshlang.", show_alert=True)
+            return
         await call.answer()
-        if call.message and is_private(call.message.chat):
-            await call.message.answer("Kabutarga kirish uchun saytni ochib «Telegram orqali kirish»ni bosing. Eski ulash kodi bilan ma'lumotlarni ko'chirish o'chirilgan.", reply_markup=website_keyboard())
+        # callback.message.from_user belongs to the bot. Reuse the explanatory
+        # content via a private message proxy with the actual requesting user.
+        from types import SimpleNamespace
+        await open_site(SimpleNamespace(from_user=call.from_user, chat=call.message.chat,
+                                        answer=call.message.answer))
 
     # These handlers are deliberately registered before imported/general handlers.
     dp.message.register(begin, is_web_start)
+    dp.message.register(open_site, is_site_command)
     dp.message.register(cancel, lambda message: getattr(message, "text", None) == CANCEL_TEXT)
     dp.message.register(contact, PendingContact())
     dp.callback_query.register(button, lambda call: str(call.data or "").startswith("kbweb:"))
     dp.callback_query.register(old_link, lambda call: call.data in ("kb_sayt_ulash", "kb_veb_kod"))
-    return {"begin": begin, "contact": contact, "button": button, "cancel": cancel, "clear_pending": clear_pending}
+    return {"begin": begin, "contact": contact, "button": button, "cancel": cancel,
+            "clear_pending": clear_pending, "open_site": open_site, "old_link": old_link}

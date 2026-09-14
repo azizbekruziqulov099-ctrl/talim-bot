@@ -5,6 +5,7 @@ OpenAI GPT-4o-mini orqali har mavzu uchun 20 ta savol
 import psycopg2, os, json, asyncio
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from openai_client import client
+from paid_ai_policy import paid_ai_enabled, require_paid_ai, DISABLED_MESSAGE
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -286,6 +287,9 @@ async def run_generator(call, user_id):
         return
 
     # AI bilan to'ldirish — shablon YOQILMAGAN
+    if not paid_ai_enabled():
+        await call.message.answer(DISABLED_MESSAGE + "\nShablonni yuklab, o‘zingiz to‘ldirishingiz mumkin.")
+        return
 
     conn = db(); cur = conn.cursor()
     total_saved = 0
@@ -632,6 +636,7 @@ async def _export_to_excel(selected, topics_list, grade, subject):
 
 async def _generate_questions(grade, subject, mavzu, kichik, topic_code, groups=None):
     """OpenAI API orqali savol yaratish — sozlamalar bo'yicha"""
+    require_paid_ai()
     if groups is None:
         groups = [
             {"diff":"oson",    "type":"single_choice","count":5},

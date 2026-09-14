@@ -1,5 +1,9 @@
-"""rasim_generator.py — Gemini tarjima (bepul) + Cloudflare FLUX (bepul)"""
+"""Gemini prompt preparation and image providers with explicit paid opt-in.
+
+Provider quotas and account billing are configured outside the bot.
+"""
 import os, aiohttp, base64
+from paid_ai_policy import paid_ai_enabled
 
 CF_ACCOUNT = os.getenv("CF_ACCOUNT_ID", "")
 CF_TOKEN = os.getenv("CF_API_TOKEN", "")
@@ -19,7 +23,7 @@ STYLE_MAP = {
 
 
 async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
-    """Gemini 2.5 Flash tarjima — BEPUL (1500/kun)."""
+    """Gemini 2.5 Flash tarjima; xizmatning joriy kvotasi amal qiladi."""
     if not GEMINI_KEY:
         return None
     try:
@@ -95,7 +99,7 @@ async def _gemini_prompt(tavsif, mavzu="", grade="", style_desc=""):
 
 async def _openai_prompt(tavsif, mavzu="", grade="", style_desc=""):
     """GPT-4o-mini — zaxira tarjima."""
-    if not OPENAI_KEY:
+    if not paid_ai_enabled() or not OPENAI_KEY:
         return None
     try:
         async with aiohttp.ClientSession() as s:
@@ -124,7 +128,7 @@ async def _openai_prompt(tavsif, mavzu="", grade="", style_desc=""):
 
 
 async def _tavsif_to_prompt(tavsif, mavzu="", grade="", style="realistik"):
-    """Tarjima: Gemini (bepul) -> GPT (zaxira) -> oddiy."""
+    """Gemini -> ruxsat bo‘lsa pullik GPT -> oddiy tavsif."""
     style_desc = STYLE_MAP.get(style, "high quality, detailed, sharp focus")
     p = await _gemini_prompt(tavsif, mavzu, grade, style_desc)
     if not p:
@@ -256,8 +260,8 @@ async def generate_pollinations(prompt, width=1024, height=1024, model="flux"):
 
 
 async def generate_together_flux(prompt, steps=4):
-    """Together FLUX — zaxira (agar kalit bo'lsa)."""
-    if not TOGETHER_KEY:
+    """Together FLUX — faqat pullik xizmatga aniq ruxsat berilganda."""
+    if not paid_ai_enabled() or not TOGETHER_KEY:
         return None
     for m in ("black-forest-labs/FLUX.1-schnell-Free", "black-forest-labs/FLUX.1-schnell"):
         try:
@@ -284,7 +288,7 @@ async def generate_together_flux(prompt, steps=4):
 
 async def generate_dalle(prompt, size="1024x1024", quality="standard"):
     """DALL-E 3 — oxirgi zaxira (pullik)."""
-    if not OPENAI_KEY:
+    if not paid_ai_enabled() or not OPENAI_KEY:
         return None
     try:
         async with aiohttp.ClientSession() as s:
@@ -317,9 +321,10 @@ async def generate_flux(prompt, width=1024, height=1024, steps=4, model=None):
 
 async def generate_smart(tavsif, mavzu="", grade="", style="realistik", hd=False, is_admin=False):
     """Rasm yaratish — rolga qarab.
-    ADMIN  : ☁️ Cloudflare FLUX 8 qadam (eng sifatli) -> Pollinations -> DALL-E
-    BOSHQA : 🌻 Pollinations (bepul, cheksiz)         -> Cloudflare -> Together
-    Shunday qilib Cloudflare neuronlari admin uchun saqlanadi."""
+    ADMIN  : Cloudflare FLUX -> Pollinations -> ixtiyoriy pullik zaxira.
+    BOSHQA : Pollinations -> Cloudflare -> ixtiyoriy pullik Together.
+    Pullik zaxiralar ALLOW_PAID_AI yoqilmaguncha ishlatilmaydi.
+    Boshqa provayderlarning ham xizmat kvotalari va tariflari amal qiladi."""
     prompt = await _tavsif_to_prompt(tavsif, mavzu, grade, style)
 
     if is_admin:
@@ -330,11 +335,11 @@ async def generate_smart(tavsif, mavzu="", grade="", style="realistik", hd=False
             img = await generate_pollinations(prompt, width=1024, height=1024)
         if not img:
             img = await generate_together_flux(prompt, steps=8)
-        if not img and OPENAI_KEY:
+        if not img and paid_ai_enabled() and OPENAI_KEY:
             print("[smart] admin: -> DALL-E HD")
             img = await generate_dalle(prompt, quality="hd")
     else:
-        # O'quvchi / o'qituvchi / ota-ona — cheksiz bepul
+        # O'quvchi / o'qituvchi / ota-ona — provayder kvotalari doirasida
         img = await generate_pollinations(prompt, width=1024, height=1024)
         if not img:
             print("[smart] user: Pollinations ishlamadi -> CF")

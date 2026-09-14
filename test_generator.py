@@ -6,6 +6,7 @@ from topic_generation import get_next_topic, increase_count
 from topic_info import get_topic_info
 from prompt_builder import build_prompt
 from openai_client import client
+from paid_ai_policy import paid_ai_enabled, DISABLED_MESSAGE
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("1-BOSQICH")
 def is_similar(new_question, old_questions):
@@ -125,6 +126,9 @@ def save_test(test_data):
     conn.close()
     return "saved"
 def generate_tests():
+    if not paid_ai_enabled():
+        print(DISABLED_MESSAGE)
+        return
     input("START bosish uchun Enter bosing...")
     for i in range(10):
         print(i+1)

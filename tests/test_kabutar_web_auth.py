@@ -1,16 +1,19 @@
 """Bot security/state contract tests; no Telegram token/network/database required."""
 import asyncio
+import ast
 import copy
 import sys
 import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from kabutar_web_auth import (
     AuthError, CANCEL_TEXT, Settings, callback_parts, install_kabutar_auth,
-    is_web_start, own_contact_phone, private_sender, safe_origin, start_challenge,
+    is_site_command, is_web_start, own_contact_phone, private_sender, safe_origin,
+    start_challenge, PendingStore,
 )
 
 TOKEN = "b" * 32
@@ -124,11 +127,74 @@ class PureSecurityTests(unittest.TestCase):
 
     def test_origin_and_callback_validation(self):
         self.assertEqual(safe_origin("https://talimkabutar.uz/"), SETTINGS.site)
+        self.assertEqual(safe_origin(" https://TalimKabutar.uz:443/ "), SETTINGS.site)
         self.assertEqual(safe_origin("http://api.railway.internal:8080", True), "http://api.railway.internal:8080")
         for invalid in ("javascript:bad", "http://example.com", "https://user:pass@host", "https://host/path", "https://host?next=evil", "https://host#bad"):
             with self.assertRaises(ValueError): safe_origin(invalid, True)
         self.assertEqual(callback_parts("kbweb:confirm:" + TOKEN), ("confirm", TOKEN))
         self.assertIsNone(callback_parts("kbweb:confirm:short"))
+
+    def test_site_command_does_not_capture_lessons_or_start(self):
+        for value in ("/sayt", "/kabutar", "/sayt@my_bot", "/kabutar "):
+            self.assertTrue(is_site_command(message(value)))
+        for value in ("/start", "/sayt extra", "sayt", "Kabutar haqida", "/kabutar_other"):
+            self.assertFalse(is_site_command(message(value)))
+
+    def test_configuration_diagnostic_returns_only_names(self):
+        settings = Settings("https://user:private@bad", "sensitive", "", "http://bad")
+        self.assertEqual(settings.validation_errors(), ["KABUTAR_AUTH_API_URL", "KABUTAR_SITE_URL",
+                                                       "KABUTAR_BOT_AUTH_SECRET", "DATABASE_URL"])
+        self.assertNotIn("sensitive", repr(settings.validation_errors()))
+        with self.assertRaises(ValueError):
+            settings.validate()
+        for value in ("https://api.example:bad", "https://api.example:99999"):
+            with self.assertRaises(ValueError):
+                safe_origin(value)
+
+    def test_site_allowlist_is_explicit_and_rejects_malformed_origins(self):
+        configured = Settings(SETTINGS.api, SETTINGS.secret, SETTINGS.database, SETTINGS.site,
+                              "https://WWW.talimkabutar.uz:443/, https://frontend.up.railway.app")
+        self.assertEqual(configured.allowed_sites(), {SETTINGS.site, "https://www.talimkabutar.uz",
+                                                     "https://frontend.up.railway.app"})
+        self.assertEqual(configured.validation_errors(), [])
+        self.assertEqual(SETTINGS.allowed_sites(), {SETTINGS.site})
+        for invalid in ("http://www.talimkabutar.uz", "https://*.talimkabutar.uz",
+                        "https://www.talimkabutar.uz,", "https://www.talimkabutar.uz/path",
+                        "https://user:password@www.talimkabutar.uz"):
+            settings = Settings(SETTINGS.api, SETTINGS.secret, SETTINGS.database, SETTINGS.site, invalid)
+            self.assertEqual(settings.validation_errors(), ["KABUTAR_SITE_URLS"])
+            with self.assertRaises(ValueError):
+                settings.validate()
+
+    def test_pending_schema_creation_serializes_replicas(self):
+        queries = []
+        class Cursor:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def execute(self, query, values=None): queries.append((query, values))
+        class Connection:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def cursor(self): return Cursor()
+            def close(self): pass
+        store = PendingStore("unused")
+        with patch.object(store, "_connect", return_value=Connection()):
+            store.ensure()
+        self.assertIn("pg_advisory_xact_lock", queries[0][0])
+        self.assertIn("CREATE TABLE", queries[1][0])
+        self.assertTrue(store.ready)
+
+    def test_bot_login_handlers_are_registered_before_imported_handlers(self):
+        source = (Path(__file__).resolve().parents[1] / "Talim.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        install = next(i for i, node in enumerate(tree.body) if isinstance(node, ast.Assign)
+                       and isinstance(node.value, ast.Call)
+                       and isinstance(node.value.func, ast.Name)
+                       and node.value.func.id == "install_kabutar_auth")
+        imported = next(i for i, node in enumerate(tree.body) if isinstance(node, ast.ImportFrom)
+                        and node.module == "admin_handlers")
+        self.assertLess(install, imported)
+        self.assertNotIn('text="🔗 Saytga ulanish kodi"', source)
 
 
 class FlowTests(unittest.IsolatedAsyncioTestCase):
@@ -217,6 +283,62 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.client.site = "https://attacker.example"
         await self.begin()
         self.assertFalse(self.store.rows)
+
+    async def test_equivalent_canonical_site_is_accepted(self):
+        self.client.site = "https://TalimKabutar.uz:443/"
+        await self.begin()
+        self.assertIn(42, self.store.rows)
+
+    async def test_www_origin_works_only_when_explicitly_allowed(self):
+        self.client.site = "https://www.talimkabutar.uz"
+        await self.begin()
+        self.assertFalse(self.store.rows)
+        settings = Settings(SETTINGS.api, SETTINGS.secret, SETTINGS.database, SETTINGS.site,
+                            "https://www.talimkabutar.uz")
+        dp = NS(message=FakeObserver(), callback_query=FakeObserver())
+        self.handlers = install_kabutar_auth(dp, settings, self.store, self.client)
+        msg = await self.begin()
+        self.assertIn(42, self.store.rows)
+        self.assertIn("Sayt: https://www.talimkabutar.uz", msg.answers[-1][0])
+        self.store.rows.clear()
+        for origin in ("https://attacker.example", "https://www.talimkabutar.uz.attacker.example"):
+            self.client.site = origin
+            await self.begin()
+            self.assertFalse(self.store.rows)
+        entry = message("/sayt")
+        await self.handlers["open_site"](entry)
+        self.assertEqual(entry.answers[-1][1]["reply_markup"].inline_keyboard[0][0].url,
+                         SETTINGS.site + "/#telegram")
+
+    async def test_unconfigured_bot_explains_setup_without_consuming_challenge(self):
+        dp = NS(message=FakeObserver(), callback_query=FakeObserver())
+        with self.assertLogs("kabutar_web_auth", level="WARNING") as logs:
+            handlers = install_kabutar_auth(dp, Settings("", "", "", SETTINGS.site), self.store, self.client)
+        msg = message("/start kb_" + TOKEN)
+        await handlers["begin"](msg)
+        self.assertFalse(self.client.calls)
+        self.assertFalse(self.store.rows)
+        self.assertIn("to'liq sozlanmagan", msg.answers[-1][0])
+        self.assertIn("KABUTAR_AUTH_API_URL", logs.output[0])
+
+    async def test_old_cabinet_buttons_and_site_command_use_same_usable_entry(self):
+        msg = message("/sayt")
+        await self.handlers["open_site"](msg)
+        expected = msg.answers[-1]
+        self.assertIn("administrator bergan parol", expected[0])
+        self.assertEqual(expected[1]["reply_markup"].inline_keyboard[0][0].url,
+                         SETTINGS.site + "/#telegram")
+        for data in ("kb_veb_kod", "kb_sayt_ulash"):
+            call = callback(data)
+            await self.handlers["old_link"](call)
+            self.assertEqual(call.message.answers[-1][0], expected[0])
+        self.assertFalse(self.client.calls)
+
+    async def test_site_entry_callback_rejects_other_private_chat(self):
+        call = callback("kb_sayt_ulash", uid=9, chat_id=42)
+        await self.handlers["old_link"](call)
+        self.assertTrue(call.answers[-1][1]["show_alert"])
+        self.assertFalse(call.message.answers)
 
     async def test_pending_contact_survives_handler_reinstallation(self):
         await self.begin()

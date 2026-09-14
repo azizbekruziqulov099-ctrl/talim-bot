@@ -1,5 +1,6 @@
 """cb_test_nav.py — Test navigator callback handlerlari"""
 import psycopg2, asyncio, os, re
+from paid_ai_policy import paid_ai_enabled
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, FSInputFile
 from storage import user_state, admin_state, temp_user
 DATABASE_URL = os.getenv("DATABASE_URL","")
@@ -561,8 +562,8 @@ async def handle_test_nav(call, user_id, admin_state, user_state, temp_user, bot
 
     if call.data == "menu_ai_train":
         await call.answer()
-        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")):
-            await call.message.answer("❌ GEMINI_API_KEY yoki OPENAI_API_KEY kerak!\nRailway → Variables ga qo'shing.")
+        if not (os.getenv("GEMINI_API_KEY") or (paid_ai_enabled() and os.getenv("OPENAI_API_KEY"))):
+            await call.message.answer("❌ AI o‘qitish xizmati sozlanmagan. Pullik OpenAI sukut bo‘yicha o‘chirilgan.")
             return True
         status_at = await call.message.answer(
             "🤖 Universal ekspert o'qitish boshlandi...\n"
