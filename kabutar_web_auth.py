@@ -218,6 +218,19 @@ class PendingStore:
                         expires_at TIMESTAMPTZ NOT NULL,
                         sending_at TIMESTAMPTZ
                     )""")
+                    # Eski revizsiyada yaratilgan jadvalda bu ustunlar/kenglik bo'lmasa
+                    # INSERT yiqiladi va foydalanuvchi "Kirish xizmatidan javob olinmadi"
+                    # ko'radi. Sxemani joyida moslaymiz — ma'lumot yo'qolmaydi.
+                    for statement in (
+                        "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS mode VARCHAR(8) NOT NULL DEFAULT 'login'",
+                        "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS phase VARCHAR(16) NOT NULL DEFAULT 'contact'",
+                        "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS phone VARCHAR(16)",
+                        "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS sending_at TIMESTAMPTZ",
+                        "ALTER TABLE kabutar_bot_login_state ALTER COLUMN challenge TYPE VARCHAR(64)",
+                        "ALTER TABLE kabutar_bot_login_state ALTER COLUMN verification_code TYPE VARCHAR(12)",
+                        "ALTER TABLE kabutar_bot_login_state ALTER COLUMN phone TYPE VARCHAR(32)",
+                    ):
+                        cur.execute(statement)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_kabutar_bot_login_expiry ON kabutar_bot_login_state(expires_at)")
                 self.ready = True
             finally:
@@ -321,10 +334,13 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
 
     async def fail(message, exc):
         status = exc.status if isinstance(exc, AuthError) else 503
-        LOGGER.warning("Kabutar web login unavailable (status=%s)", status)
-        await message.answer(ERROR_TEXT.get(status,
-            "Kirish xizmatidan javob olinmadi. Saytdagi oynani tekshiring, birozdan keyin qayta urinib ko'ring."),
-            reply_markup=ReplyKeyboardRemove())
+        # Sabab logda to'liq ko'rinadi (sir, telefon yoki challenge yozilmaydi);
+        # foydalanuvchiga esa kod beriladi — administrator shu kod bo'yicha topadi.
+        LOGGER.warning("Kabutar web login unavailable (status=%s, error=%s)", status,
+                       type(exc).__name__ if not isinstance(exc, AuthError) else "AuthError")
+        matn = ERROR_TEXT.get(status,
+            "Kirish xizmatidan javob olinmadi. Saytdagi oynani tekshiring, birozdan keyin qayta urinib ko'ring.")
+        await message.answer(f"{matn}\n\n(Xato kodi: {status})", reply_markup=ReplyKeyboardRemove())
 
     async def begin(message):
         if not private_sender(message):
