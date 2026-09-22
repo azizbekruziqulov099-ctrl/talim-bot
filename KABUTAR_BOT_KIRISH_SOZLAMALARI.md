@@ -1,4 +1,4 @@
-# Kabutar bot orqali saytga kirish — REV52
+# Kabutar bot orqali saytga kirish — REV53
 
 Bot kabinetidagi **«Kabutar saytiga kirish»** tugmasi yoki `/sayt` buyrug'i saytning Telegram kirish oynasini ochadi. `/kabutar` ham ishlaydi.
 Eski xabarlardagi «Saytga ulanish kodi» va «Saytdan ulash» tugmalari ham shu yangi yo'lni ko'rsatadi. Eski kod orqali hisoblarni ko'chirish qayta yoqilmagan.
@@ -22,17 +22,20 @@ Backenddagi `FRONTEND_URL=https://talimkabutar.uz` va `FRONTEND_URLS` ichida shu
 Bot uchun `KABUTAR_AUTH_API_URL` frontend saytga emas, **backend servisiga** qarashi kerak. Bot va backenddagi `KABUTAR_BOT_AUTH_SECRET` bir xil bo'lishi shart; Gemini/Groq kaliti bundan boshqa narsa.
 `KABUTAR_SITE_URLS` bo'sh bo'lsa, bot faqat `KABUTAR_SITE_URL`ni qabul qiladi. `www` bilan kirish ishlashi uchun `https://www.talimkabutar.uz`ni qo'shimcha ro'yxatga aniq kiriting. Tugmalar har doim asosiy `KABUTAR_SITE_URL`ni ochadi.
 
-REV52 backend yangi so'rovda kirishni boshlagan, ruxsat etilgan sayt manzilini saqlaydi. Shu sabab eski Railway manzili bilan yangi domen aralashib ketishi oldi olinadi. Bot begona sayt manzilini baribir rad etadi.
+REV53 backend yangi so'rovda kirishni boshlagan, ruxsat etilgan sayt manzilini saqlaydi. Shu sabab eski Railway manzili bilan yangi domen aralashib ketishi oldi olinadi. Bot begona sayt manzilini baribir rad etadi.
 
 ## Ish tartibi
 
-1. Sayt bir martalik, brauzerga bog'langan, 5 daqiqalik so'rov yaratadi.
-2. `/start kb_...` havolasi botga olib keladi. Bot va saytda bir xil olti raqam ko'rinadi.
-3. Foydalanuvchi belgilarni solishtirib, Telegramning o'z kontaktini ulashish tugmasini bosadi.
-4. Faqat haqiqiy yuboruvchi IDsi bilan mos keladigan, uzatilmagan kontakt qabul qilinadi.
-5. Foydalanuvchi «Ha, shu brauzerda kiraman»ni bosadi.
-6. Bot backendga xizmat siri bilan tasdiq yuboradi. Sessiyani faqat boshlang'ich brauzer oladi. Telegram ichida boshqa sayt oynasini yangidan ochish o'rniga **kirishni boshlagan oynaga qayting**.
-7. Botda tanlangan bola yoki boshqa virtual profil telefon egasining identifikatori sifatida yuborilmaydi.
+1. Saytda «Telegram orqali kirish» bosiladi. Besh daqiqalik brauzer so‘rovi va bot havolasi ochiladi.
+2. «Telegram botini ochish» bosiladi, botda Start orqali davom etiladi.
+3. Foydalanuvchi o‘z telefon raqamini Telegram kontakt tugmasi bilan ulashadi.
+4. Botda O‘quvchi, Talaba, O‘qituvchi yoki Ota-ona tanlanadi. Mavjud tasdiqlangan profil roli o‘zboshimchalik bilan almashtirilmaydi.
+5. Bot saytga kirish uchun alohida 6 xonali bir martalik kod beradi.
+6. Foydalanuvchi kirishni boshlagan brauzerga qaytadi va «Botdan olingan kod» maydoniga kodni yozadi.
+7. To‘g‘ri kod va brauzer siri tekshirilgach, hisob shu rolda ochiladi. Besh xato urinishdan so‘ng yangi so‘rov kerak.
+8. Profil → Telegramni ulash amali mavjud hisobni saqlaydigan avvalgi tasdiqlash tartibidan foydalanadi.
+
+Saytdagi «So‘rov belgisi» kirish kodi emas. Kirish kodini faqat bot yuboradi.
 
 Bu SMS xizmati emas. Telegram bot foydalanuvchining o'zi botni ochganidan keyin ishlaydi.
 Google orqali ochilgan hisobga Telegramni biriktirish foydalanuvchi o'sha hisobga kirgan holda boshlanadi.

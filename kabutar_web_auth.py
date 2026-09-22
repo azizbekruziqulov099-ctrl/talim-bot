@@ -1,7 +1,8 @@
 """Kabutar web sign-in bridge; independent from selected bot/child profiles.
 
-The browser and this bot compare a six-digit label. It is NOT a login code.
-Only the backend can consume a challenge and issue a browser session.
+The bot verifies an own contact, asks for a role, then delivers a login code.
+A separate six-digit request label remains available for link verification.
+Only the browser with its original secret can exchange the code for a session.
 """
 from __future__ import annotations
 
@@ -17,7 +18,8 @@ from urllib.parse import urlsplit
 LOGGER = logging.getLogger(__name__)
 CANCEL_TEXT = "❌ Kabutar kirishini bekor qilish"
 CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
-CALLBACK_RE = re.compile(r"^kbweb:(confirm|cancel):([A-Za-z0-9_-]{32})$")
+CALLBACK_RE = re.compile(r"^kbweb:(confirm|cancel|role_oquvchi|role_talaba|role_oqituvchi|role_ota-ona):([A-Za-z0-9_-]{32})$")
+ROLE_LABELS = {'oquvchi':'📚 O‘quvchi', 'talaba':'🎓 Talaba', 'oqituvchi':'👩‍🏫 O‘qituvchi', 'ota-ona':'👨‍👩‍👧 Ota-ona', 'admin':'Administrator'}
 CONTACT_FIELDS = ("forward_origin", "forward_from", "forward_sender_name")
 
 
@@ -140,8 +142,9 @@ class Settings:
 
 
 class AuthError(Exception):
-    def __init__(self, status=503):
+    def __init__(self, status=503, detail=None):
         self.status = status
+        self.detail = detail
         super().__init__(f"Kabutar auth HTTP {status}")
 
 
@@ -172,7 +175,11 @@ class BackendClient:
                     allow_redirects=False,
                 ) as response:
                     if response.status != 200:
-                        raise AuthError(response.status)
+                        detail = None
+                        if response.status in (409, 422):
+                            data = await response.json()
+                            if isinstance(data.get('detail'), str): detail = data['detail'][:300]
+                        raise AuthError(response.status, detail)
                     result = await response.json()
                     if not isinstance(result, dict):
                         raise AuthError()
@@ -226,6 +233,7 @@ class PendingStore:
                         "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS phase VARCHAR(16) NOT NULL DEFAULT 'contact'",
                         "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS phone VARCHAR(16)",
                         "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS sending_at TIMESTAMPTZ",
+                        "ALTER TABLE kabutar_bot_login_state ADD COLUMN IF NOT EXISTS delivery TEXT NOT NULL DEFAULT 'approval'",
                         "ALTER TABLE kabutar_bot_login_state ALTER COLUMN challenge TYPE VARCHAR(64)",
                         "ALTER TABLE kabutar_bot_login_state ALTER COLUMN verification_code TYPE VARCHAR(12)",
                         "ALTER TABLE kabutar_bot_login_state ALTER COLUMN phone TYPE VARCHAR(32)",
@@ -247,23 +255,23 @@ class PendingStore:
                     self.last_cleanup = now
                 if operation == "put":
                     cur.execute("""INSERT INTO kabutar_bot_login_state
-                        (telegram_id, challenge, verification_code, mode, phase, expires_at)
-                        VALUES (%s,%s,%s,%s,'contact',NOW() + %s * INTERVAL '1 second')
+                        (telegram_id, challenge, verification_code, mode, phase, expires_at, delivery)
+                        VALUES (%s,%s,%s,%s,'contact',NOW() + %s * INTERVAL '1 second',%s)
                         ON CONFLICT(telegram_id) DO UPDATE SET challenge=EXCLUDED.challenge,
                         verification_code=EXCLUDED.verification_code, mode=EXCLUDED.mode,
-                        phase='contact', phone=NULL, sending_at=NULL, expires_at=EXCLUDED.expires_at""",
-                        (telegram_id, values["challenge"], values["verification_code"], values["mode"], values["ttl"]))
+                        phase='contact', phone=NULL, sending_at=NULL, expires_at=EXCLUDED.expires_at, delivery=EXCLUDED.delivery""",
+                        (telegram_id, values["challenge"], values["verification_code"], values["mode"], values["ttl"], values.get('delivery','approval')))
                     return True
                 if operation == "delete":
                     cur.execute("DELETE FROM kabutar_bot_login_state WHERE telegram_id=%s AND challenge=%s", (telegram_id, values["challenge"]))
                     return cur.rowcount > 0
-                cur.execute("""SELECT challenge,verification_code,mode,phase,phone,
+                cur.execute("""SELECT challenge,verification_code,mode,phase,phone,delivery,
                     (sending_at IS NOT NULL AND sending_at > NOW() - INTERVAL '30 seconds') AS busy
                     FROM kabutar_bot_login_state WHERE telegram_id=%s AND expires_at>NOW() FOR UPDATE""", (telegram_id,))
                 row = cur.fetchone()
                 if not row:
                     return None
-                result = dict(zip(("challenge", "verification_code", "mode", "phase", "phone", "busy"), row))
+                result = dict(zip(("challenge", "verification_code", "mode", "phase", "phone", "delivery", "busy"), row))
                 if operation == "get":
                     return result
                 if values.get("challenge", row[0]) != row[0]:
@@ -327,8 +335,8 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             "Kabutar saytiga kirish\n\n"
             "1. Pastdagi tugma bilan saytni oching.\n"
             "2. Saytda «Telegram orqali kirish»ni bosing.\n"
-            "3. Botda raqamingizni ulashing va kirishni tasdiqlang.\n"
-            "4. Kirishni boshlagan o'sha brauzer oynasiga qayting.\n\n"
+            "3. Botda raqamingizni ulashing va rolingizni tanlang.\n"
+            "4. Bot bergan 6 xonali kodni saytdagi kirish oynasiga yozing.\n\n"
             "Muassasaga qo'shilish uchun administrator bergan parol sayt ichida kiritiladi.",
             reply_markup=website_keyboard())
 
@@ -338,7 +346,7 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         # foydalanuvchiga esa kod beriladi — administrator shu kod bo'yicha topadi.
         LOGGER.warning("Kabutar web login unavailable (status=%s, error=%s)", status,
                        type(exc).__name__ if not isinstance(exc, AuthError) else "AuthError")
-        matn = ERROR_TEXT.get(status,
+        matn = (exc.detail if isinstance(exc, AuthError) and exc.detail else None) or ERROR_TEXT.get(status,
             "Kirish xizmatidan javob olinmadi. Saytdagi oynani tekshiring, birozdan keyin qayta urinib ko'ring.")
         await message.answer(f"{matn}\n\n(Xato kodi: {status})", reply_markup=ReplyKeyboardRemove())
 
@@ -358,25 +366,26 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             return
         try:
             data = await client.post("inspect", {"challenge": challenge})
-            if data.get("status") == "confirmed":
+            delivery = data.get('delivery', 'approval')
+            if data.get("status") == "confirmed" and delivery != 'code':
                 await message.answer("Bu kirish so'rovi allaqachon tasdiqlangan. Kirishni boshlagan sayt oynasiga qayting.", reply_markup=ReplyKeyboardRemove())
                 return
             code = str(data.get("verification_code", ""))
             ttl = max(0, min(300, int(data.get("expires_in", 0))))
-            if data.get("status") != "pending" or not re.fullmatch(r"\d{6}", code) or ttl <= 0:
+            if data.get("status") not in ("pending", "confirmed") or not re.fullmatch(r"\d{6}", code) or ttl <= 0:
                 raise AuthError(410)
             if safe_origin(data.get("site")) not in settings.allowed_sites():
                 raise AuthError(403)
             mode = "link" if data.get("mode") == "link" else "login"
             await store.run("put", message.from_user.id, challenge=challenge,
-                            verification_code=code, ttl=ttl, mode=mode)
+                            verification_code=code, ttl=ttl, mode=mode, delivery=delivery)
             title = "Telegramni mavjud Kabutar hisobingizga ulash" if mode == "link" else "Kabutar saytiga kirish"
             await message.answer(
                 f"{title}\n\nSayt: {safe_origin(data['site'])}\nTekshiruv belgisi: {code}\n\n"
                 "Shu olti raqam siz O'ZINGIZ ochgan Kabutar kirish oynasida ham bir xil bo'lishi kerak. "
                 "Birov yuborgan havola, rasm yoki kod orqali tasdiqlamang.\n\n"
                 "Belgilar mos bo'lsa, pastdagi tugma bilan o'z raqamingizni ulashing. "
-                "Keyingi qadamda kirishni alohida tasdiqlaysiz. "
+                "Keyingi qadamda rolingizni tanlaysiz va sayt uchun kod olasiz. "
                 "Bu SMS yoki Telegram akkauntingizga kirish kodi emas.",
                 reply_markup=contact_keyboard())
         except Exception as exc:
@@ -407,6 +416,14 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             if not pending:
                 raise AuthError(410)
             challenge = pending["challenge"]
+            if pending.get('delivery') == 'code':
+                await message.answer('Telefon tasdiqlandi. Saytga qaysi rolda kirasiz?', reply_markup=ReplyKeyboardRemove())
+                await message.answer('Rolni tanlang — bot saytga kirish uchun bir martalik kod beradi.',
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text=ROLE_LABELS[role], callback_data=f'kbweb:role_{role}:{challenge}')]
+                        for role in ('oquvchi','talaba','oqituvchi','ota-ona')
+                    ] + [[InlineKeyboardButton(text='❌ Bekor qilish', callback_data=f'kbweb:cancel:{challenge}')]]))
+                return
             await message.answer("Telefon tasdiqlandi. Kirishni tasdiqlash qolgan.", reply_markup=ReplyKeyboardRemove())
             await message.answer(
                 f"Sayt: {safe_origin(settings.site)}\nTekshiruv belgisi: {pending['verification_code']}\n"
@@ -443,6 +460,10 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                 await message.edit_reply_markup(reply_markup=None)
                 await message.answer("Kabutar kirishi bekor qilindi. Yangi kirish uchun saytdan boshlang.", reply_markup=ReplyKeyboardRemove())
                 return
+            role = action.removeprefix('role_') if action.startswith('role_') else None
+            if pending.get('delivery') == 'code' and role not in ROLE_LABELS:
+                await message.answer('Yuqoridagi tugmalardan rolingizni tanlang.')
+                return
             pending = await store.run("claim", uid, challenge=challenge)
             if not pending:
                 await message.answer("Tasdiqlash allaqachon yuborilmoqda yoki so'rov eskirgan. Saytdagi oynani tekshiring.")
@@ -454,9 +475,19 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                     "contact_user_id": uid,
                     "phone": pending["phone"],
                     "full_name": " ".join(filter(None, [call.from_user.first_name, call.from_user.last_name]))[:150],
+                    **({'role':role} if role else {}),
                 })
                 if result.get("status") != "confirmed":
                     raise AuthError()
+                if pending.get('delivery') == 'code':
+                    code = str(result.get('code') or '')
+                    if not re.fullmatch(r'\d{6}', code): raise AuthError(410)
+                    await message.answer(
+                        f"✅ {ROLE_LABELS.get(result.get('role'), ROLE_LABELS.get(role, 'Profil'))}\n\n"
+                        f"Saytga kirish kodi: <code>{code}</code>\n\n"
+                        "Shu kodni o‘zingiz kirishni boshlagan saytdagi «Botdan olingan kod» maydoniga kiriting. "
+                        "Kod faqat shu kirish so‘rovi uchun amal qiladi. Boshqalarga bermang.",
+                        parse_mode='HTML', reply_markup=ReplyKeyboardRemove())
             except Exception:
                 await store.run("retry", uid, challenge=challenge)
                 raise
@@ -467,7 +498,8 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                 await message.edit_reply_markup(reply_markup=None)
             except Exception:
                 LOGGER.warning("Kabutar approved login cleanup deferred")
-            await message.answer("✅ Tasdiqlandi. Kirishni boshlagan Kabutar brauzer oynasiga qayting — o'sha yerda hisobingiz ochiladi.", reply_markup=ReplyKeyboardRemove())
+            if pending.get('delivery') != 'code':
+                await message.answer("✅ Tasdiqlandi. Kirishni boshlagan Kabutar brauzer oynasiga qayting — o'sha yerda hisobingiz ochiladi.", reply_markup=ReplyKeyboardRemove())
         except Exception as exc:
             await fail(message, exc)
 
