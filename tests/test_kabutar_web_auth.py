@@ -73,11 +73,12 @@ class FakeClient:
         self.calls = []
         self.fail_status = None
         self.site = SETTINGS.site
+        self.mode = 'login'
         self.confirm_event = None
     async def post(self, op, payload):
         self.calls.append((op, payload))
         if op == "inspect":
-            return dict(status="pending", verification_code="013245", mode="login", expires_in=300, site=self.site)
+            return dict(status="pending", verification_code="013245", mode=self.mode, expires_in=300, site=self.site)
         if self.confirm_event:
             await self.confirm_event.wait()
         if self.fail_status:
@@ -190,7 +191,7 @@ class PureSecurityTests(unittest.TestCase):
         install = next(i for i, node in enumerate(tree.body) if isinstance(node, ast.Assign)
                        and isinstance(node.value, ast.Call)
                        and isinstance(node.value.func, ast.Name)
-                       and node.value.func.id == "install_kabutar_auth")
+                       and node.value.func.id == "ensure_kabutar_auth")
         imported = next(i for i, node in enumerate(tree.body) if isinstance(node, ast.ImportFrom)
                         and node.module == "admin_handlers")
         self.assertLess(install, imported)
@@ -201,6 +202,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         fake_aiogram()
         self.store, self.client = MemoryStore(), FakeClient()
+        # Browser approvals now apply only to authenticated legacy linking.
+        self.client.mode = 'link'
         self.dp = NS(message=FakeObserver(), callback_query=FakeObserver())
         self.handlers = install_kabutar_auth(self.dp, SETTINGS, self.store, self.client)
 
@@ -307,8 +310,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.store.rows)
         entry = message("/sayt")
         await self.handlers["open_site"](entry)
-        self.assertEqual(entry.answers[-1][1]["reply_markup"].inline_keyboard[0][0].url,
-                         SETTINGS.site + "/#telegram")
+        self.assertTrue(entry.answers[-1][1]["reply_markup"].keyboard[0][0].request_contact)
+        self.assertEqual(self.store.rows[42]['delivery'],'portable')
 
     async def test_unconfigured_bot_explains_setup_without_consuming_challenge(self):
         dp = NS(message=FakeObserver(), callback_query=FakeObserver())
@@ -325,9 +328,9 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         msg = message("/sayt")
         await self.handlers["open_site"](msg)
         expected = msg.answers[-1]
-        self.assertIn("administrator bergan parol", expected[0])
-        self.assertEqual(expected[1]["reply_markup"].inline_keyboard[0][0].url,
-                         SETTINGS.site + "/#telegram")
+        self.assertIn("kodini shu botdan", expected[0])
+        self.assertTrue(expected[1]["reply_markup"].keyboard[0][0].request_contact)
+        self.assertEqual(self.store.rows[42]['delivery'],'portable')
         for data in ("kb_veb_kod", "kb_sayt_ulash"):
             call = callback(data)
             await self.handlers["old_link"](call)

@@ -254,13 +254,11 @@ async def handle_kb(call, user_id, admin_state, user_state, temp_user, bot):
         return True
 
     if call.data in ("kb_veb_kod", "kb_sayt_ulash"):
-        # Only link identity from an authenticated website session; never move records.
-        await call.answer()
+        # Older cabinet routers also enter the same code flow; no site loop.
+        from loader import dp
+        from kabutar_web_auth import ensure_kabutar_auth
         user_state.pop(user_id, None)
-        await call.message.answer(
-            "Kabutar saytini ochib «Telegram orqali kirish»ni bosing. "
-            "Mavjud Google hisobingizga Telegram ulash uchun avval o'sha "
-            "hisobga kirib, profilidan ulang. Eski ko'chirish kodi o'chirilgan.")
+        await ensure_kabutar_auth(dp)['old_link'](call)
         return True
 
     if call.data == "kb_change_role" or call.data.startswith("kb_set_role:"):

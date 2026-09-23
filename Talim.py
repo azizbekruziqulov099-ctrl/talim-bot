@@ -1,7 +1,7 @@
 # Kabutar web login must precede imported and general bot handlers.
 from loader import dp as _kabutar_dp
-from kabutar_web_auth import install_kabutar_auth
-_kabutar_web_handlers = install_kabutar_auth(_kabutar_dp)
+from kabutar_web_auth import ensure_kabutar_auth
+_kabutar_web_handlers = ensure_kabutar_auth(_kabutar_dp)
 
 try:
     from auto_trainer import auto_train_scheduler, train_all_profiles

@@ -1,8 +1,8 @@
 """Kabutar web sign-in bridge; independent from selected bot/child profiles.
 
 The bot verifies an own contact, asks for a role, then delivers a login code.
-A separate six-digit request label remains available for link verification.
-Only the browser with its original secret can exchange the code for a session.
+All login entrances issue a phone-bound code inside the bot. Only an explicit,
+authenticated legacy account-link request retains browser-bound approval.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import re
+import secrets
 import time
 import threading
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from urllib.parse import urlsplit
 LOGGER = logging.getLogger(__name__)
 CANCEL_TEXT = "❌ Kabutar kirishini bekor qilish"
 CHALLENGE_RE = re.compile(r"^[A-Za-z0-9_-]{32}$")
-CALLBACK_RE = re.compile(r"^kbweb:(confirm|cancel|role_oquvchi|role_talaba|role_oqituvchi|role_ota-ona):([A-Za-z0-9_-]{32})$")
+CALLBACK_RE = re.compile(r"^kbweb:(confirm|cancel|role_google|role_oquvchi|role_talaba|role_oqituvchi|role_ota-ona):([A-Za-z0-9_-]{32})$")
 ROLE_LABELS = {'oquvchi':'📚 O‘quvchi', 'talaba':'🎓 Talaba', 'oqituvchi':'👩‍🏫 O‘qituvchi', 'ota-ona':'👨‍👩‍👧 Ota-ona', 'admin':'Administrator'}
 CONTACT_FIELDS = ("forward_origin", "forward_from", "forward_sender_name")
 
@@ -149,13 +150,13 @@ class AuthError(Exception):
 
 
 ERROR_TEXT = {
-    400: "Kirish so'rovi yaroqsiz. Saytdan yangi kirish so'rovi oching.",
+    400: "Kirish so'rovi yaroqsiz. Botda /sayt orqali yangi kod oling.",
     401: "Bot va saytning kirish sozlamalari mos emas. Administrator tekshirishi kerak. Saytda boshqa mavjud kirish usulini tanlashingiz mumkin.",
-    403: "Bu so'rovni tasdiqlab bo'lmaydi. Saytda yangidan kirishni boshlang.",
-    404: "Kirish so'rovi topilmadi. Saytdan yangi so'rov oching.",
+    403: "Bu so'rovni tasdiqlab bo'lmaydi. Botda /sayt orqali yangi kod oling.",
+    404: "Kirish so'rovi topilmadi. Botda /sayt orqali yangi kod oling.",
     409: "Hisoblar o'rtasida mos kelmaslik bor. Hech qanday hisob ko'chirilmadi. Avval eski hisobingizga kirib Telegramni profilidan ulang.",
-    410: "So'rov muddati tugagan yoki ishlatilgan. Saytdagi oynani tekshiring; kerak bo'lsa yangidan kirishni boshlang.",
-    429: "So'rovlar ko'paydi. Bir ozdan keyin saytdan qayta urinib ko'ring.",
+    410: "So'rov muddati tugagan yoki ishlatilgan. Botda /sayt orqali yangi kod oling.",
+    429: "So'rovlar ko'paydi. Bir ozdan keyin botda /sayt orqali qayta urinib ko'ring.",
 }
 
 
@@ -176,6 +177,8 @@ class BackendClient:
                 ) as response:
                     if response.status != 200:
                         detail = None
+                        if operation == 'code/issue' and response.status == 404:
+                            raise AuthError(404, 'Bot ulangan backendda yangi kirish xizmati yo‘q. Backendga REV59 ni joylang va botdagi KABUTAR_AUTH_API_URL shu backend manziliga tengligini tekshiring.')
                         if response.status in (409, 422):
                             data = await response.json()
                             if isinstance(data.get('detail'), str): detail = data['detail'][:300]
@@ -331,14 +334,48 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         if not private_sender(message):
             await message.answer("Saytga kirish uchun botning shaxsiy chatida /sayt buyrug'ini yuboring.")
             return
-        await message.answer(
-            "Kabutar saytiga kirish\n\n"
-            "1. Pastdagi tugma bilan saytni oching.\n"
-            "2. Saytda «Telegram orqali kirish»ni bosing.\n"
-            "3. Botda raqamingizni ulashing va rolingizni tanlang.\n"
-            "4. Bot bergan 6 xonali kodni saytdagi kirish oynasiga yozing.\n\n"
-            "Muassasaga qo'shilish uchun administrator bergan parol sayt ichida kiritiladi.",
-            reply_markup=website_keyboard())
+        if not configured:
+            await message.answer("Telegram kirishi sozlanmagan. Administrator quyidagi sozlamalarni tekshirsin: "
+                                 + ', '.join(configuration_errors) + ".", reply_markup=ReplyKeyboardRemove())
+            return
+        try:
+            pending = await store.run('get', message.from_user.id)
+            if pending and pending.get('busy'):
+                await message.answer('Kod tayyorlanmoqda. Bir oz kuting.')
+                return
+            if pending and (pending.get('delivery') != 'portable' or is_site_command(message)):
+                # Explicit /sayt or the new entry replaces an old browser-only
+                # request, so its code cannot be confused with the new form.
+                await store.run('delete',message.from_user.id,challenge=pending['challenge'])
+                pending = None
+            if pending and pending.get('phone'):
+                await show_roles(message,pending)
+                return
+            if not pending:
+                await store.run('put',message.from_user.id,challenge=secrets.token_urlsafe(24),
+                    verification_code='000000',ttl=300,mode='login',delivery='portable')
+            await message.answer(
+                "Saytga kirish kodini shu botdan olasiz.\n\n"
+                "1. Pastdagi tugma bilan o‘z telefon raqamingizni ulashing.\n"
+                "2. Rolingizni tanlang.\n"
+                "3. Bot bergan kodni saytda kiriting.\n\n"
+                "Botning bosh menyusi: /menu",reply_markup=contact_keyboard())
+        except Exception as exc:
+            await fail(message,exc)
+
+    async def show_roles(message,pending):
+        challenge = pending['challenge']
+        if pending.get('delivery') not in ('code','portable'):
+            await message.answer('Telegramni mavjud hisobingizga ulashni tasdiqlang.',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text='✅ Telegramni ulash',callback_data=f'kbweb:confirm:{challenge}')]]))
+            return
+        await message.answer('Saytga qaysi rolda kirasiz? Mavjud hisobingizning roli saqlanadi.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=ROLE_LABELS[role],callback_data=f'kbweb:role_{role}:{challenge}')]
+                for role in ('oquvchi','talaba','oqituvchi','ota-ona')
+            ] + [[InlineKeyboardButton(text='📧 Oldin Gmail bilan kirganman',callback_data=f'kbweb:role_google:{challenge}')],
+                 [InlineKeyboardButton(text='❌ Bekor qilish',callback_data=f'kbweb:cancel:{challenge}')]]))
 
     async def fail(message, exc):
         status = exc.status if isinstance(exc, AuthError) else 503
@@ -347,16 +384,19 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         LOGGER.warning("Kabutar web login unavailable (status=%s, error=%s)", status,
                        type(exc).__name__ if not isinstance(exc, AuthError) else "AuthError")
         matn = (exc.detail if isinstance(exc, AuthError) and exc.detail else None) or ERROR_TEXT.get(status,
-            "Kirish xizmatidan javob olinmadi. Saytdagi oynani tekshiring, birozdan keyin qayta urinib ko'ring.")
+            "Kod xizmatidan javob olinmadi. Birozdan keyin botda /sayt orqali qayta urinib ko'ring.")
         await message.answer(f"{matn}\n\n(Xato kodi: {status})", reply_markup=ReplyKeyboardRemove())
 
     async def begin(message):
         if not private_sender(message):
             await message.answer("Kabutarga kirishni botning shaxsiy chatida boshlang.")
             return
+        if re.fullmatch(r'/start(?:@[A-Za-z0-9_]+)?\s+kb_login\s*', str(message.text or '')):
+            await open_site(message)
+            return
         challenge = start_challenge(message.text)
         if not challenge:
-            await message.answer("Kirish havolasi yaroqsiz. Kabutar saytida «Telegram orqali kirish»ni qayta bosing.")
+            await open_site(message)
             return
         if not configured:
             await message.answer(
@@ -366,6 +406,11 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             return
         try:
             data = await client.post("inspect", {"challenge": challenge})
+            # Old login URLs must not reopen the retired wait/return-to-site
+            # loop. A new code belongs to this Telegram user, not that browser.
+            if data.get('mode') != 'link':
+                await open_site(message)
+                return
             delivery = data.get('delivery', 'approval')
             if data.get("status") == "confirmed" and delivery != 'code':
                 await message.answer("Bu kirish so'rovi allaqachon tasdiqlangan. Kirishni boshlagan sayt oynasiga qayting.", reply_markup=ReplyKeyboardRemove())
@@ -389,6 +434,9 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                 "Bu SMS yoki Telegram akkauntingizga kirish kodi emas.",
                 reply_markup=contact_keyboard())
         except Exception as exc:
+            if isinstance(exc, AuthError) and exc.status in (400, 404, 410):
+                await open_site(message)
+                return
             await fail(message, exc)
 
     class PendingContact(BaseFilter):
@@ -416,13 +464,9 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             if not pending:
                 raise AuthError(410)
             challenge = pending["challenge"]
-            if pending.get('delivery') == 'code':
+            if pending.get('delivery') in ('code','portable'):
                 await message.answer('Telefon tasdiqlandi. Saytga qaysi rolda kirasiz?', reply_markup=ReplyKeyboardRemove())
-                await message.answer('Rolni tanlang — bot saytga kirish uchun bir martalik kod beradi.',
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text=ROLE_LABELS[role], callback_data=f'kbweb:role_{role}:{challenge}')]
-                        for role in ('oquvchi','talaba','oqituvchi','ota-ona')
-                    ] + [[InlineKeyboardButton(text='❌ Bekor qilish', callback_data=f'kbweb:cancel:{challenge}')]]))
+                await show_roles(message,pending)
                 return
             await message.answer("Telefon tasdiqlandi. Kirishni tasdiqlash qolgan.", reply_markup=ReplyKeyboardRemove())
             await message.answer(
@@ -458,10 +502,21 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                     return
                 await store.run("delete", uid, challenge=challenge)
                 await message.edit_reply_markup(reply_markup=None)
-                await message.answer("Kabutar kirishi bekor qilindi. Yangi kirish uchun saytdan boshlang.", reply_markup=ReplyKeyboardRemove())
+                await message.answer("Kabutar kirishi bekor qilindi. Yangi kod uchun /sayt bosing.", reply_markup=ReplyKeyboardRemove())
+                return
+            if pending.get('mode') != 'link' and pending.get('delivery') != 'portable':
+                from types import SimpleNamespace
+                await open_site(SimpleNamespace(from_user=call.from_user,chat=message.chat,answer=message.answer))
                 return
             role = action.removeprefix('role_') if action.startswith('role_') else None
-            if pending.get('delivery') == 'code' and role not in ROLE_LABELS:
+            if role == 'google':
+                if not pending.get('phone'):
+                    await message.answer('Avval o‘z telefon raqamingizni ulashing.',reply_markup=contact_keyboard())
+                    return
+                # The site authenticates Google before this code can link accounts.
+                # The fallback selection never replaces an existing account's role.
+                role = 'oquvchi'
+            if pending.get('delivery') in ('code','portable') and role not in ROLE_LABELS:
                 await message.answer('Yuqoridagi tugmalardan rolingizni tanlang.')
                 return
             pending = await store.run("claim", uid, challenge=challenge)
@@ -469,25 +524,41 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                 await message.answer("Tasdiqlash allaqachon yuborilmoqda yoki so'rov eskirgan. Saytdagi oynani tekshiring.")
                 return
             try:
-                result = await client.post("confirm", {
+                operation = 'code/issue' if pending.get('delivery') == 'portable' else 'confirm'
+                result = await client.post(operation, {
                     "challenge": challenge,
                     "telegram_user_id": uid,
                     "contact_user_id": uid,
                     "phone": pending["phone"],
                     "full_name": " ".join(filter(None, [call.from_user.first_name, call.from_user.last_name]))[:150],
                     **({'role':role} if role else {}),
+                    **({'purpose':'link' if action == 'role_google' else 'login'} if operation == 'code/issue' else {}),
                 })
                 if result.get("status") != "confirmed":
                     raise AuthError()
-                if pending.get('delivery') == 'code':
+                if operation == 'code/issue' and action == 'role_google' and result.get('purpose') != 'link':
+                    raise AuthError(503, 'Backenddagi Gmailga ulash xizmati yangilanmagan. Backendni yangilab, /sayt orqali yangi kod oling.')
+                if pending.get('delivery') in ('code','portable'):
                     code = str(result.get('code') or '')
                     if not re.fullmatch(r'\d{6}', code): raise AuthError(410)
+                    portable = pending.get('delivery') == 'portable'
+                    google = action == 'role_google'
+                    from urllib.parse import urlencode
+                    return_url = safe_origin(settings.site) + '/#' + urlencode({
+                        'telegram_phone':pending['phone'], **({'telegram_link':'1'} if google else {})})
+                    title = ('✅ Gmail hisobiga ulash kodi' if google else '✅ Saytga kirish kodi tayyor') if portable else f"✅ {ROLE_LABELS.get(result.get('role'), ROLE_LABELS.get(role, 'Profil'))}"
                     await message.answer(
-                        f"✅ {ROLE_LABELS.get(result.get('role'), ROLE_LABELS.get(role, 'Profil'))}\n\n"
+                        f"{title}\n\n"
                         f"Saytga kirish kodi: <code>{code}</code>\n\n"
-                        "Shu kodni o‘zingiz kirishni boshlagan saytdagi «Botdan olingan kod» maydoniga kiriting. "
-                        "Kod faqat shu kirish so‘rovi uchun amal qiladi. Boshqalarga bermang.",
+                        + (f"Telefon: <code>{pending['phone']}</code>\nKod {int(result.get('expires_in', 300))} soniya amal qiladi. "
+                           "Saytda shu telefon raqami va kodni kiriting. Boshqalarga bermang."
+                           if portable else "Shu kodni kirishni boshlagan saytdagi «Botdan olingan kod» maydoniga kiriting."),
                         parse_mode='HTML', reply_markup=ReplyKeyboardRemove())
+                    if portable:
+                        await message.answer(
+                            'Avval o‘sha Gmail hisobingiz bilan kiring, so‘ng shu kod bilan Telegramni ulang.' if google else 'Kodni oldingiz. Endi saytga kiring:',
+                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                InlineKeyboardButton(text='🌐 Saytni ochish',url=return_url)]]))
             except Exception:
                 await store.run("retry", uid, challenge=challenge)
                 raise
@@ -498,7 +569,7 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
                 await message.edit_reply_markup(reply_markup=None)
             except Exception:
                 LOGGER.warning("Kabutar approved login cleanup deferred")
-            if pending.get('delivery') != 'code':
+            if pending.get('delivery') not in ('code','portable'):
                 await message.answer("✅ Tasdiqlandi. Kirishni boshlagan Kabutar brauzer oynasiga qayting — o'sha yerda hisobingiz ochiladi.", reply_markup=ReplyKeyboardRemove())
         except Exception as exc:
             await fail(message, exc)
@@ -542,10 +613,22 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
 
     # These handlers are deliberately registered before imported/general handlers.
     dp.message.register(begin, is_web_start)
+    # A bare Start is also a valid entrance. Losing a deep-link parameter must
+    # never clear the request or send the person into registration by accident.
+    dp.message.register(open_site, lambda message: private_sender(message) and bool(
+        re.fullmatch(r'/start(?:@[A-Za-z0-9_]+)?\s*', str(getattr(message,'text','') or ''))))
     dp.message.register(open_site, is_site_command)
     dp.message.register(cancel, lambda message: getattr(message, "text", None) == CANCEL_TEXT)
     dp.message.register(contact, PendingContact())
     dp.callback_query.register(button, lambda call: str(call.data or "").startswith("kbweb:"))
     dp.callback_query.register(old_link, lambda call: call.data in ("kb_sayt_ulash", "kb_veb_kod"))
-    return {"begin": begin, "contact": contact, "button": button, "cancel": cancel,
+    handlers = {"begin": begin, "contact": contact, "button": button, "cancel": cancel,
             "clear_pending": clear_pending, "open_site": open_site, "old_link": old_link}
+    dp._kabutar_web_handlers = handlers
+    return handlers
+
+
+def ensure_kabutar_auth(dp):
+    """One registration, before any bot entry point imports general handlers."""
+    handlers = getattr(dp, '_kabutar_web_handlers', None)
+    return handlers if handlers is not None else install_kabutar_auth(dp)
