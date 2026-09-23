@@ -141,6 +141,22 @@ class Settings:
         if self.validation_errors():
             raise ValueError("Kabutar kirishining server sozlamalari yetishmayapti")
 
+    def setup_message(self):
+        """Explain the failing service/field without disclosing any values."""
+        errors = self.validation_errors()
+        details = {
+            'KABUTAR_AUTH_API_URL': 'KABUTAR_AUTH_API_URL — bot xizmatida backendning to‘liq HTTPS manzilini kiriting; oxiriga /auth qo‘shmang.',
+            'KABUTAR_BOT_AUTH_SECRET': 'KABUTAR_BOT_AUTH_SECRET — bot va backend xizmatlarida bir xil, kamida 32 belgili qiymat bo‘lsin.',
+            'DATABASE_URL': 'DATABASE_URL — bot xizmatiga PostgreSQL ulanishini biriktiring.',
+            'KABUTAR_SITE_URL': 'KABUTAR_SITE_URL — saytning to‘liq HTTPS manzilini kiriting.',
+            'KABUTAR_SITE_URLS': 'KABUTAR_SITE_URLS — faqat to‘liq HTTPS sayt manzillarini vergul bilan ajrating.',
+        }
+        return ('Telegram kodi berilmadi: bot ishlayotgan xizmatning sozlamalari to‘liq emas.\n\n'
+                + '\n'.join(details[name] for name in errors)
+                + '\n\nRailway’da aynan BOT ishlayotgan xizmat → Variables bo‘limini oching. '
+                'Backendga qo‘shilgan Variable botga avtomatik o‘tmaydi. '
+                'O‘zgarishlarni Deploy qiling, so‘ng botda /start bosing.')
+
 
 class AuthError(Exception):
     def __init__(self, status=503, detail=None):
@@ -321,22 +337,12 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             [KeyboardButton(text=CANCEL_TEXT)],
         ], resize_keyboard=True, one_time_keyboard=True)
 
-    def website_keyboard():
-        try:
-            site = safe_origin(settings.site)
-        except ValueError:
-            site = "https://talimkabutar.uz"
-        return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🌐 Telegram orqali saytga kirish", url=site + "/#telegram")
-        ]])
-
     async def open_site(message):
         if not private_sender(message):
             await message.answer("Saytga kirish uchun botning shaxsiy chatida /sayt buyrug'ini yuboring.")
             return
         if not configured:
-            await message.answer("Telegram kirishi sozlanmagan. Administrator quyidagi sozlamalarni tekshirsin: "
-                                 + ', '.join(configuration_errors) + ".", reply_markup=ReplyKeyboardRemove())
+            await message.answer(settings.setup_message(), reply_markup=ReplyKeyboardRemove())
             return
         try:
             pending = await store.run('get', message.from_user.id)
@@ -399,10 +405,7 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             await open_site(message)
             return
         if not configured:
-            await message.answer(
-                "Bot orqali saytga kirish hali to'liq sozlanmagan. Administrator bot va backenddagi "
-                "kirish sozlamalarini tekshirishi kerak. Saytda boshqa mavjud kirish usulidan foydalaning.",
-                reply_markup=website_keyboard())
+            await open_site(message)
             return
         try:
             data = await client.post("inspect", {"challenge": challenge})

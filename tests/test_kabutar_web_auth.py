@@ -152,6 +152,17 @@ class PureSecurityTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 safe_origin(value)
 
+    def test_setup_message_matches_screenshot_and_identifies_bot_service(self):
+        settings = Settings('', 'short-secret', SETTINGS.database, SETTINGS.site)
+        self.assertEqual(settings.validation_errors(), ['KABUTAR_AUTH_API_URL', 'KABUTAR_BOT_AUTH_SECRET'])
+        message = settings.setup_message()
+        self.assertIn('aynan BOT', message)
+        self.assertIn('backendning to‘liq HTTPS', message)
+        self.assertIn('kamida 32', message)
+        self.assertIn('Deploy', message)
+        self.assertNotIn('short-secret', message)
+        self.assertNotIn('DATABASE_URL —', message)
+
     def test_site_allowlist_is_explicit_and_rejects_malformed_origins(self):
         configured = Settings(SETTINGS.api, SETTINGS.secret, SETTINGS.database, SETTINGS.site,
                               "https://WWW.talimkabutar.uz:443/, https://frontend.up.railway.app")
@@ -321,7 +332,9 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         await handlers["begin"](msg)
         self.assertFalse(self.client.calls)
         self.assertFalse(self.store.rows)
-        self.assertIn("to'liq sozlanmagan", msg.answers[-1][0])
+        self.assertIn("aynan BOT", msg.answers[-1][0])
+        self.assertIn("Deploy", msg.answers[-1][0])
+        self.assertFalse(hasattr(msg.answers[-1][1]['reply_markup'], 'inline_keyboard'))
         self.assertIn("KABUTAR_AUTH_API_URL", logs.output[0])
 
     async def test_old_cabinet_buttons_and_site_command_use_same_usable_entry(self):
