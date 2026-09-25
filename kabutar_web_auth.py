@@ -90,6 +90,20 @@ def is_site_command(message):
                              str(getattr(message, "text", "") or "")))
 
 
+DEFAULT_AUTH_API_URL = "https://talimplatformasi-production.up.railway.app"
+
+
+def derived_bot_secret(bot_token):
+    """Same value as the backend's kabutar_auth.derived_bot_secret: used when
+    KABUTAR_BOT_AUTH_SECRET is not set, since both services share BOT_TOKEN."""
+    import hashlib
+    import hmac
+    token = str(bot_token or "").strip()
+    if not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", token):
+        return ""
+    return hmac.new(token.encode("utf-8"), b"kabutar-bot-auth-v1", hashlib.sha256).hexdigest()
+
+
 @dataclass(frozen=True)
 class Settings:
     api: str
@@ -101,8 +115,10 @@ class Settings:
     @classmethod
     def environment(cls):
         return cls(
-            api=os.getenv("KABUTAR_AUTH_API_URL", "").strip(),
-            secret=os.getenv("KABUTAR_BOT_AUTH_SECRET", "").strip(),
+            api=(os.getenv("KABUTAR_AUTH_API_URL", "").strip()
+                 or os.getenv("BAZA_URL", "").strip() or DEFAULT_AUTH_API_URL).rstrip("/"),
+            secret=(os.getenv("KABUTAR_BOT_AUTH_SECRET", "").strip()
+                    or derived_bot_secret(os.getenv("BOT_TOKEN", ""))),
             database=os.getenv("DATABASE_URL", "").strip(),
             site=os.getenv("KABUTAR_SITE_URL", "https://talimkabutar.uz").strip(),
             site_urls=os.getenv("KABUTAR_SITE_URLS", "").strip(),
@@ -146,7 +162,7 @@ class Settings:
         errors = self.validation_errors()
         details = {
             'KABUTAR_AUTH_API_URL': 'KABUTAR_AUTH_API_URL — bot xizmatida backendning to‘liq HTTPS manzilini kiriting; oxiriga /auth qo‘shmang.',
-            'KABUTAR_BOT_AUTH_SECRET': 'KABUTAR_BOT_AUTH_SECRET — bot va backend xizmatlarida bir xil, kamida 32 belgili qiymat bo‘lsin.',
+            'KABUTAR_BOT_AUTH_SECRET': 'KABUTAR_BOT_AUTH_SECRET — bot va backend xizmatlarida bir xil, kamida 32 belgili qiymat bo‘lsin (yoki ikkala xizmatda bir xil BOT_TOKEN bo‘lsa, bu o‘zgaruvchini umuman o‘chirib qo‘ying).',
             'DATABASE_URL': 'DATABASE_URL — bot xizmatiga PostgreSQL ulanishini biriktiring.',
             'KABUTAR_SITE_URL': 'KABUTAR_SITE_URL — saytning to‘liq HTTPS manzilini kiriting.',
             'KABUTAR_SITE_URLS': 'KABUTAR_SITE_URLS — faqat to‘liq HTTPS sayt manzillarini vergul bilan ajrating.',
