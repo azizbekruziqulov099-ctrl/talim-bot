@@ -111,6 +111,7 @@ class Settings:
     database: str
     site: str
     site_urls: str = ""
+    bot_token: str = ""
 
     @classmethod
     def environment(cls):
@@ -122,6 +123,7 @@ class Settings:
             database=os.getenv("DATABASE_URL", "").strip(),
             site=os.getenv("KABUTAR_SITE_URL", "https://talimkabutar.uz").strip(),
             site_urls=os.getenv("KABUTAR_SITE_URLS", "").strip(),
+            bot_token=os.getenv("BOT_TOKEN", "").strip(),
         )
 
     def allowed_sites(self):
@@ -147,7 +149,7 @@ class Settings:
                     safe_origin(value)
             except (ValueError, UnicodeError):
                 errors.append("KABUTAR_SITE_URLS")
-        if len(self.secret) < 32:
+        if len(self.secret) < 32 and not self.bot_token:
             errors.append("KABUTAR_BOT_AUTH_SECRET")
         if not self.database:
             errors.append("DATABASE_URL")
@@ -183,7 +185,7 @@ class AuthError(Exception):
 
 ERROR_TEXT = {
     400: "Kirish so'rovi yaroqsiz. Botda /sayt orqali yangi kod oling.",
-    401: "Bot va saytning kirish sozlamalari mos emas. Administrator tekshirishi kerak. Saytda boshqa mavjud kirish usulini tanlashingiz mumkin.",
+    401: "Bot va saytning kirish sozlamalari mos emas. Administrator: Railway'da bot va backend xizmatlarida BOT_TOKEN bir xil ekanini tekshirsin, backendda KABUTAR_BOT_USERNAME shu botning @nomi bo'lsin, so'ng ikkala xizmatni qayta Deploy qilsin.",
     403: "Bu so'rovni tasdiqlab bo'lmaydi. Botda /sayt orqali yangi kod oling.",
     404: "Kirish so'rovi topilmadi. Botda /sayt orqali yangi kod oling.",
     409: "Hisoblar o'rtasida mos kelmaslik bor. Hech qanday hisob ko'chirilmadi. Avval eski hisobingizga kirib Telegramni profilidan ulang.",
@@ -196,6 +198,19 @@ class BackendClient:
     def __init__(self, settings):
         self.settings = settings
 
+    def auth_headers(self):
+        """Every proof the bot has; the backend accepts any one that matches.
+        So a KABUTAR_BOT_AUTH_SECRET set in only one service no longer gives 401."""
+        headers = {}
+        if self.settings.secret:
+            headers["X-Kabutar-Bot-Secret"] = self.settings.secret
+        derived = derived_bot_secret(self.settings.bot_token)
+        if derived and derived != self.settings.secret:
+            headers["X-Kabutar-Bot-Proof"] = derived
+        if self.settings.bot_token:
+            headers["X-Kabutar-Bot-Token"] = self.settings.bot_token
+        return headers
+
     async def post(self, operation, payload):
         import aiohttp
         self.settings.validate()
@@ -204,7 +219,7 @@ class BackendClient:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12)) as session:
                 async with session.post(
                     url, json=payload,
-                    headers={"X-Kabutar-Bot-Secret": self.settings.secret},
+                    headers=self.auth_headers(),
                     allow_redirects=False,
                 ) as response:
                     if response.status != 200:
