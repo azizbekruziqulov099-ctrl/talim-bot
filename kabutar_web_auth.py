@@ -84,6 +84,16 @@ def safe_origin(value, allow_internal=False):
     return f"{parts.scheme}://{authority}"
 
 
+def is_cabinet_command(message):
+    """/kabinet yoki /natijalar — saytga ulangan hisobning ixcham kabineti."""
+    return bool(re.fullmatch(r"/(?:kabinet|natijalar|natija)(?:@[A-Za-z0-9_]+)?\s*",
+                             str(getattr(message, "text", "") or "")))
+
+
+def is_bare_start(message):
+    return bool(re.fullmatch(r"/start(?:@[A-Za-z0-9_]+)?\s*", str(getattr(message, "text", "") or "")))
+
+
 def is_site_command(message):
     """Only a standalone command; lesson messages and normal /start stay intact."""
     return bool(re.fullmatch(r"/(?:sayt|kabutar)(?:@[A-Za-z0-9_]+)?\s*",
@@ -348,14 +358,26 @@ class PendingStore:
         return await asyncio.to_thread(self._run, operation, telegram_id, **values)
 
 
-def install_kabutar_auth(dp, settings=None, store=None, client=None):
-    """Register before Talim.py's general /start, contact and callback handlers."""
+def install_kabutar_auth(dp, settings=None, store=None, client=None, cabinet=None):
+    """Register before Talim.py's general /start, contact and callback handlers.
+
+    cabinet(telegram_id) -> awaitable summary|None: saytga ulangan foydalanuvchining ixcham
+    kabineti (profil, test natijalari, saytni ochish tugmalari). Standart holatda bazadan o'qiladi."""
     from aiogram.filters import BaseFilter
     from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
                                InlineKeyboardMarkup, InlineKeyboardButton)
+    try:
+        from aiogram.types import WebAppInfo
+    except Exception:
+        WebAppInfo = None
     settings = settings or Settings.environment()
     store = store or PendingStore(settings.database)
     client = client or BackendClient(settings)
+    if cabinet is None and isinstance(store, PendingStore) and settings.database:
+        from sayt_kabinet import fetch_summary
+
+        async def cabinet(telegram_id):
+            return await asyncio.to_thread(fetch_summary, settings.database, telegram_id)
     configuration_errors = settings.validation_errors()
     configured = not configuration_errors
     if configuration_errors:
@@ -368,6 +390,33 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
             [KeyboardButton(text=CANCEL_TEXT)],
         ], resize_keyboard=True, one_time_keyboard=True)
 
+    async def show_cabinet(message, user):
+        """Saytga ulangan bo'lsa ixcham kabinetni ko'rsatadi va True qaytaradi."""
+        if cabinet is None or not configured:
+            return False
+        try:
+            summary = await cabinet(user.id)
+        except Exception as exc:
+            LOGGER.warning("Kabinet ma'lumoti o'qilmadi: %s", type(exc).__name__)
+            return False
+        if not summary:
+            return False
+        from sayt_kabinet import cabinet_rows, format_summary
+        tickets = {}
+
+        async def ticket(go):
+            try:
+                data = await client.post('ticket', {'telegram_user_id': user.id})
+                if isinstance(data.get('ticket'), str):
+                    tickets[go] = data['ticket']
+            except Exception:
+                pass  # eski backend: tugma oddiy havola bo'lib qoladi
+        await asyncio.gather(*(ticket(go) for go in ('test', 'organish', 'home')))
+        rows = cabinet_rows(safe_origin(settings.site), tickets, InlineKeyboardButton, WebAppInfo)
+        await message.answer(format_summary(summary) + "\n\nBoshqa qurilmada kod bilan kirish: /sayt · Bot menyusi: /menu",
+                             parse_mode='HTML', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return True
+
     async def open_site(message):
         if not private_sender(message):
             await message.answer("Saytga kirish uchun botning shaxsiy chatida /sayt buyrug'ini yuboring.")
@@ -375,6 +424,11 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
         if not configured:
             await message.answer(settings.setup_message(), reply_markup=ReplyKeyboardRemove())
             return
+        # Saytga ulangan foydalanuvchi /start yoki /kabinet bossa — kod emas, ixcham kabinet.
+        if (is_bare_start(message) or is_cabinet_command(message)) and await show_cabinet(message, message.from_user):
+            return
+        if is_cabinet_command(message):
+            await message.answer("Kabinet saytga ulangan hisob uchun. Avval bir marta kiring — quyidagi 3 qadam:")
         try:
             pending = await store.run('get', message.from_user.id)
             if pending and pending.get('busy'):
@@ -652,12 +706,22 @@ def install_kabutar_auth(dp, settings=None, store=None, client=None):
     dp.message.register(open_site, lambda message: private_sender(message) and bool(
         re.fullmatch(r'/start(?:@[A-Za-z0-9_]+)?\s*', str(getattr(message,'text','') or ''))))
     dp.message.register(open_site, is_site_command)
+    dp.message.register(open_site, lambda message: private_sender(message) and is_cabinet_command(message))
+
+    async def cabinet_refresh(call):
+        await call.answer()
+        from types import SimpleNamespace
+        proxy = SimpleNamespace(from_user=call.from_user, chat=call.message.chat, answer=call.message.answer)
+        if not await show_cabinet(proxy, call.from_user):
+            await call.message.answer("Kabinet ochilmadi. Botda /sayt orqali saytga bir marta kiring.")
+    dp.callback_query.register(cabinet_refresh, lambda call: call.data == "kbcab:refresh")
     dp.message.register(cancel, lambda message: getattr(message, "text", None) == CANCEL_TEXT)
     dp.message.register(contact, PendingContact())
     dp.callback_query.register(button, lambda call: str(call.data or "").startswith("kbweb:"))
     dp.callback_query.register(old_link, lambda call: call.data in ("kb_sayt_ulash", "kb_veb_kod"))
     handlers = {"begin": begin, "contact": contact, "button": button, "cancel": cancel,
-            "clear_pending": clear_pending, "open_site": open_site, "old_link": old_link}
+            "clear_pending": clear_pending, "open_site": open_site, "old_link": old_link,
+            "show_cabinet": show_cabinet, "cabinet_refresh": cabinet_refresh}
     dp._kabutar_web_handlers = handlers
     return handlers
 
