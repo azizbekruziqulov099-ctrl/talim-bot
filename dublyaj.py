@@ -333,7 +333,92 @@ def _whisper_ol():
     return _WHISPER_MODEL
 
 
+# ═══════════════ 3a. REV96: BULUTDA MATNGA AYLANTIRISH (o'zbekchani ancha yaxshi tushunadi) ═══════════════
+# Tartib: Groq whisper-large-v3 (bir nechta kalit) → shu kalitda turbo model → OpenAI whisper-1 → mahalliy faster-whisper.
+# Kalitlar: GROQ_API_KEYS="k1,k2" yoki GROQ_API_KEY; OPENAI_API_KEY. Hech biri bo'lmasa — avvalgidek mahalliy model.
+UZ_PROMPT = ("O'zbek tilidagi dars nutqi. Lotin yozuvida yoz: o‘, g‘, sh, ch, ng. "
+             "Masalan: o‘quvchilar, g‘oya, to‘g‘ri, bo‘ladi, qo‘shimcha.")
+
+
+def _kalitlar(nomi):
+    out = []
+    for qism in (os.getenv(f"{nomi}_API_KEYS", ""), os.getenv(f"{nomi}_API_KEY", "")):
+        for k in re.split(r"[,;\s]+", qism or ""):
+            if k and k not in out:
+                out.append(k)
+    return out
+
+
+def _siqilgan_audio(audio_yol):
+    """Bulutga yuborish uchun: mono 16 kHz 32 kbit/s MP3 (1 soat ≈ 14 MB, Groq limiti 25 MB)."""
+    chiqish = audio_yol.rsplit(".", 1)[0] + "_stt.mp3"
+    try:
+        r = subprocess.run(["ffmpeg", "-y", "-i", audio_yol, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", chiqish],
+                           capture_output=True, text=True, timeout=180)
+        if r.returncode == 0 and os.path.getsize(chiqish) > 0:
+            return chiqish
+    except Exception:
+        pass
+    return audio_yol
+
+
+def _segmentlar_javobdan(javob):
+    segs = getattr(javob, "segments", None)
+    if segs is None and isinstance(javob, dict):
+        segs = javob.get("segments")
+    natija = []
+    for s in segs or []:
+        g = s if isinstance(s, dict) else (s.model_dump() if hasattr(s, "model_dump") else vars(s))
+        matn = str(g.get("text") or "").strip()
+        if matn:
+            natija.append((round(float(g.get("start") or 0), 2), round(float(g.get("end") or 0), 2), matn))
+    return natija
+
+
+def bulut_matnga(audio_yol, til="uz"):
+    """([(boshlanish, tugash, matn)], til, xato) — bulut xizmatlari orqali; hech biri ishlamasa (None, None, xato)."""
+    urinishlar = [(k, "https://api.groq.com/openai/v1", m) for k in _kalitlar("GROQ")
+                  for m in ("whisper-large-v3", "whisper-large-v3-turbo")]
+    urinishlar += [(k, None, "whisper-1") for k in _kalitlar("OPENAI")]
+    if not urinishlar:
+        return (None, None, "bulut STT kaliti yo'q")
+    try:
+        from openai import OpenAI
+    except Exception as e:
+        return (None, None, f"openai paketi yo'q: {e}")
+    fayl = _siqilgan_audio(audio_yol)
+    if os.path.getsize(fayl) > 24 * 1024 * 1024:
+        return (None, None, "audio bulut uchun juda katta (25 MB dan oshdi)")
+    xatolar = []
+    for kalit, base, model in urinishlar:
+        try:
+            mijoz = OpenAI(api_key=kalit, base_url=base, timeout=300) if base else OpenAI(api_key=kalit, timeout=300)
+            with open(fayl, "rb") as f:
+                javob = mijoz.audio.transcriptions.create(
+                    model=model, file=f, language=til or None, response_format="verbose_json",
+                    timestamp_granularities=["segment"], prompt=UZ_PROMPT if (til or "uz") == "uz" else None, temperature=0)
+            segs = _segmentlar_javobdan(javob)
+            if segs:
+                return (segs, til or getattr(javob, "language", None) or "uz", None)
+            xatolar.append(f"{model}: bo'sh javob")
+        except Exception as e:
+            xatolar.append(f"{model} …{kalit[-4:]}: {str(e)[:120]}")
+            continue
+    return (None, None, " | ".join(xatolar)[-400:])
+
+
 def matnga_aylantir(audio_yol, til="uz"):
+    """REV96: avval bulut (o'zbekchada ancha aniq), bo'lmasa — mahalliy Whisper."""
+    segs, kod, xato = bulut_matnga(audio_yol, til)
+    if segs:
+        return (segs, kod, None)
+    natija = matnga_aylantir_mahalliy(audio_yol, til)
+    if not natija[0] and xato and xato != "bulut STT kaliti yo'q":
+        return (None, None, f"{natija[2]} (bulut: {xato})")
+    return natija
+
+
+def matnga_aylantir_mahalliy(audio_yol, til="uz"):
     """Audiodan SEGMENTLAR ro'yxatini qaytaradi — har biri o'z vaqti bilan.
     ([(boshlanish_son, tugash_son, matn), ...], til_kodi, xato)
     Vaqt-moslashtirilgan dublyaj uchun shart — har gap o'z vaqtida gapirilishi kerak.
@@ -404,6 +489,7 @@ def tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
     royxat = [{"id": i, "matn": s[2]} for i, s in enumerate(segmentlar)]
     prompt = (
         f"Quyida JSON ro'yxat bor — har birida \"id\" va \"matn\" maydoni bor.\n"
+        f"{UZ_ESLATMA}\n"
         f"Har bir \"matn\"ni {maqsad_nom} tiliga tarjima qil.\n\n"
         f"JAVOBNI FAQAT shu JSON formatda qaytar (boshqa hech narsa yozma, "
         f"``` belgilarisiz):\n"
@@ -435,6 +521,57 @@ def tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
         return (None, f"Gemini javobini o'qib bo'lmadi: {e}")
     except Exception as e:
         return (None, str(e)[:300])
+
+
+UZ_ESLATMA = ("Manba matn nutqdan avtomatik yozilgan o'zbekcha matn: eshitish xatolari, sheva, qo'shilib ketgan "
+              "so'zlar bo'lishi mumkin. Avval ma'nosini to'g'ri tushun, keyin tabiiy va aniq tarjima qil; "
+              "fan atamalarini (matematika, fizika va h.k.) to'g'ri ishlat.")
+
+
+def groq_tarjima_qil_segmentlar(segmentlar, maqsad_til_kod):
+    """Groq (llama-3.3-70b) orqali JSON tarjima — Gemini ishlamasa. ([(b, t, tarjima)], xato)"""
+    kalitlar = _kalitlar("GROQ")
+    if not kalitlar:
+        return (None, "GROQ_API_KEY yo'q")
+    try:
+        from openai import OpenAI
+    except Exception as e:
+        return (None, str(e))
+    royxat = [{"id": i, "matn": s[2]} for i, s in enumerate(segmentlar)]
+    prompt = (f"{UZ_ESLATMA}\nHar bir \"matn\"ni {til_nomi(maqsad_til_kod)} tiliga tarjima qil. "
+              f'Faqat JSON qaytar: {{"tarjimalar":[{{"id":0,"tarjima":"..."}}]}}\n\n{json.dumps(royxat, ensure_ascii=False)}')
+    xato = ""
+    for k in kalitlar:
+        try:
+            mijoz = OpenAI(api_key=k, base_url="https://api.groq.com/openai/v1", timeout=120)
+            javob = mijoz.chat.completions.create(model="llama-3.3-70b-versatile", temperature=0.1,
+                                                  response_format={"type": "json_object"},
+                                                  messages=[{"role": "user", "content": prompt}])
+            data = json.loads(javob.choices[0].message.content)
+            m = {int(t["id"]): t["tarjima"] for t in data.get("tarjimalar", []) if "id" in t and "tarjima" in t}
+            if not m:
+                xato = "bo'sh javob"
+                continue
+            return ([(b, t, m.get(i, asl)) for i, (b, t, asl) in enumerate(segmentlar)], None)
+        except Exception as e:
+            xato = str(e)[:200]
+    return (None, f"Groq: {xato}")
+
+
+def ai_tarjima_segmentlar(segmentlar, manba_til, maqsad_til_kod):
+    """REV96: avtomatik tarjima zanjiri: Gemini → Groq → Google. ([(b, t, tarjima)], xizmat_nomi|xato)"""
+    xatolar = []
+    for nomi, fn in (("Gemini", lambda: tarjima_qil_segmentlar(segmentlar, maqsad_til_kod)),
+                     ("Groq", lambda: groq_tarjima_qil_segmentlar(segmentlar, maqsad_til_kod)),
+                     ("Google", lambda: google_tarjima_qil_segmentlar(segmentlar, (manba_til or "uz")[:2], maqsad_til_kod))):
+        try:
+            natija, xato = fn()
+        except Exception as e:
+            natija, xato = None, str(e)
+        if natija:
+            return (natija, nomi)
+        xatolar.append(f"{nomi}: {xato}")
+    return (None, " | ".join(xatolar)[-500:])
 
 
 # ═══════════════ 5. YANGI OVOZ (edge-tts — jinsga qarab, umumiy ovoz) ═══════════════

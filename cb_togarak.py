@@ -50,6 +50,10 @@ def render_text(t):
 
 async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
     d=call.data
+    # REV96: oylik to'lovlar (saytdagi «Davomat va to'lovlar» bilan bir xil jadval)
+    if d.startswith(("tg_tolovlar:","tg_tl_ok:","tg_tl_undo:")):
+        from togarak_tolov_bot import handle as _tolov_handle
+        return await _tolov_handle(call, user_id, _get_db_conn, ADMINS, InlineKeyboardMarkup, InlineKeyboardButton)
     # ══ TO'GARAK CALLBACKLAR ══
     if call.data == "tg_yangi":
         await call.answer()
@@ -73,7 +77,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
         # Parol yashirin — alohida ko'rish tugmasi
         txt = (f"📚 {t['nomi']}\n📖 Fan: {t['fan'] or '-'}\n"
                f"🆔 ID: {tgid}\n"
-               f"👥 A'zolar: {len(azolar)}/{t['max'] or 25}\n"
+               f"👥 A'zolar: {len(azolar)}/{t['max'] or 50}\n"
                f"💰 Oylik: {t['oylik_summa'] or 0:,} so'm\n"
                f"📅 To'lov sanasi: har oyning {t['oylik_sana'] or 1}-kuni")
 
@@ -105,6 +109,7 @@ async def handle_tg(call, user_id, admin_state, user_state, temp_user, bot):
              InlineKeyboardButton(text="📋 Yoqlama",callback_data=f"tg_yoqlama:{tgid}")],
             [InlineKeyboardButton(text="📈 Guruh holati",callback_data=f"tg_guruh:{tgid}"),
              InlineKeyboardButton(text="📊 Davomat",callback_data=f"tg_stat:{tgid}")],
+            [InlineKeyboardButton(text="💰 To'lovlar",callback_data=f"tg_tolovlar:{tgid}")],
             [InlineKeyboardButton(text=pend_txt,callback_data=f"tg_pending:{tgid}"),
              InlineKeyboardButton(text="💬 Guruh chat",callback_data=f"tg_guruh_chat:{tgid}:0")],
             [InlineKeyboardButton(text="📢 Xabar",callback_data=f"tg_msg_group:{tgid}"),

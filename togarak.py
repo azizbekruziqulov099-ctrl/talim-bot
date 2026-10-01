@@ -30,7 +30,7 @@ def get_teacher_togaraklar(teacher_id: int) -> list:
     return [{"id":r[0],"nomi":r[1],"fan":r[2],"parol":r[3],
              "max":r[4],"oylik_sana":r[5],"oylik_summa":r[6],"azolar":r[7]} for r in rows]
 
-def create_togarak(teacher_id, nomi, fan, parol, max_t=25, oylik_sana=1, oylik_summa=0) -> int:
+def create_togarak(teacher_id, nomi, fan, parol, max_t=50, oylik_sana=1, oylik_summa=0) -> int:
     conn = db(); cur = conn.cursor()
     cur.execute("""
         INSERT INTO togaraklar(nomi,fan,teacher_id,parol,max_talaba,oylik_sana,oylik_summa)

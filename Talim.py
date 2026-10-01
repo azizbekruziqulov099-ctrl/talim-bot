@@ -8434,6 +8434,38 @@ async def _test_buttons_inner(call: CallbackQuery, state: FSMContext, user_id: i
                 f"Tayyor bo'lgach — shu faylni menga qaytarib yuboring."
             ),
             parse_mode="HTML")
+        # REV96: qo'lda tarjima shart emas — AI o'zi tarjima qilib, darhol dublyaj qilishi mumkin.
+        await call.message.answer(
+            "🤖 Yoki tarjimani AI o'zi qilsinmi? (o'zbekcha nutqdagi xatolarni tushunib, ma'nosi bo'yicha tarjima qiladi)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🤖 AI tarjima qilsin", callback_data="dub_ai"),
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data="dub_cancel"),
+            ]]))
+        return
+
+    if call.data == "dub_ai":
+        if not _is_admin(user_id):
+            await call.answer("❌ Ruxsat yo'q", show_alert=True); return
+        _db_ = _modul('dublyaj')
+        ctx = temp_user.get(f"dub_ctx:{user_id}")
+        if not _db_ or not ctx or "jins" not in ctx:
+            await call.answer("⚠️ Sessiya eskirgan, /video dan qaytadan boshlang", show_alert=True); return
+        await call.answer()
+        try: await call.message.edit_reply_markup(reply_markup=None)
+        except Exception: pass
+        admin_state.pop(user_id, None)
+        xabar = await call.message.answer("⏳ 1/3 — AI tarjima qilmoqda...")
+        tarjima, izoh = await asyncio.to_thread(
+            _db_.ai_tarjima_segmentlar, ctx["segmentlar"], ctx.get("manba_til"), ctx.get("maqsad_til", "en"))
+        if not tarjima:
+            admin_state[user_id] = "dub_excel_wait"
+            try: await xabar.edit_text(f"❌ AI tarjima qila olmadi:\n<code>{izoh}</code>\n\nExcel jadvalni to'ldirib yuborsangiz ham bo'ladi.", parse_mode="HTML")
+            except Exception: pass
+            return
+        from dublyaj_yakun import yakunla as _dub_yakunla
+        await _dub_yakunla(call.message, xabar, ctx, tarjima, _db_, manba_izoh=f"AI tarjima ({izoh})")
+        temp_user.pop(f"dub_ctx:{user_id}", None)
+        temp_user.pop(f"vid_link:{user_id}", None)
         return
 
     # ═══ Dublyaj: to'ldirilgan Excel qabul qilinishi — pastda,
