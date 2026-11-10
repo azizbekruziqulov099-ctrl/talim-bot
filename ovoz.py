@@ -106,6 +106,8 @@ def _sonlar(m: str) -> str:
     def _t(x): return f"{tartib_son(int(x.group(1)))} {x.group(2)}"
     m = re.sub(r"\b(\d{1,4})-(sinf|mashq|dars|savol|misol|bob|bet|mavzu|qism)\b",
                _t, m, flags=re.I)
+    # REV465: istalgan so'z bilan tartib son: «7-noyabr» → «yettinchi noyabr», «2026-yil», «1-chorak»
+    m = re.sub(r"\b(\d{1,4})\s*-\s*([A-Za-zʻ'’‘ʼ]{2,})", _t, m)
     # 3,5 -> uch butun besh
     def _b(x): return f"{son_soz(int(x.group(1)))} butun {son_soz(int(x.group(2)))}"
     m = re.sub(r"\b(\d+)[,.](\d+)\b", _b, m)
