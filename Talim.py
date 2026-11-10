@@ -10616,7 +10616,8 @@ async def main():
     # Health server
     try:
         asyncio.create_task(_health_server())
-        asyncio.create_task(_daily_image_resume())
+        # REV460: «🌅 Limit tiklandi … Davom etamizmi?» kunlik xabari o'chirildi (Azizjon so'rovi); rasm chizish faqat qo'lda boshlanadi
+        # asyncio.create_task(_daily_image_resume())
         asyncio.create_task(_dub_temp_tozalash())
         try:
             import ts_cache
